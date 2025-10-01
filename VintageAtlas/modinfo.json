@@ -1,0 +1,16 @@
+{
+  "type": "code",
+  "modid": "vintageatlas",
+  "name": "VintageAtlas",
+  "authors": [
+    "daviaaze"
+  ],
+  "description": "A comprehensive mapping and server monitoring solution for Vintage Story. Features include: dynamic web-based map viewer with live player tracking, automatic map generation with multiple rendering modes, historical player activity tracking and heatmaps, real-time server status API, and admin dashboard. Server-side only - use WebCartographerColorExporter on clients for accurate block colors.",
+  "version": "1.0.0",
+  "side": "server",
+  "requiredOnClient": false,
+  "dependencies": {
+    "game": "1.20.1"
+  },
+  "website": "https://github.com/daviaaze/VintageAtlas"
+}

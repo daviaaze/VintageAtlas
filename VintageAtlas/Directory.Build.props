@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <!-- Try to get VINTAGE_STORY from environment, fallback to common NixOS path -->
+    <VintageStoryPath Condition="'$(VINTAGE_STORY)' != ''">$(VINTAGE_STORY)</VintageStoryPath>
+    <VintageStoryPath Condition="'$(VintageStoryPath)' == ''">$(HOME)/.local/share/Steam/steamapps/common/VintageStory</VintageStoryPath>
+  </PropertyGroup>
+  
+  <!-- Make VintageStoryPath available as VINTAGE_STORY for references -->
+  <PropertyGroup>
+    <VINTAGE_STORY>$(VintageStoryPath)</VINTAGE_STORY>
+  </PropertyGroup>
+</Project>
+
