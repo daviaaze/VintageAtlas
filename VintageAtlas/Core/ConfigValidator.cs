@@ -1,0 +1,114 @@
+using System;
+using System.Collections.Generic;
+using Vintagestory.API.Config;
+
+namespace VintageAtlas.Core;
+
+/// <summary>
+/// Validates mod configuration and provides helpful error messages
+/// </summary>
+public static class ConfigValidator
+{
+    /// <summary>
+    /// Validates the configuration and returns any errors found
+    /// </summary>
+    public static List<string> Validate(ModConfig config)
+    {
+        var errors = new List<string>();
+
+        // Output directory validation
+        if (string.IsNullOrWhiteSpace(config.OutputDirectory))
+        {
+            errors.Add("OutputDirectory cannot be empty");
+        }
+        else if (config.OutputDirectory == GamePaths.DataPath)
+        {
+            errors.Add("OutputDirectory cannot be the data folder - please specify a subfolder");
+        }
+
+        // Tile size validation
+        if (config.TileSize % 32 != 0)
+        {
+            errors.Add($"TileSize ({config.TileSize}) must be evenly divisible by 32");
+        }
+
+        if (config.TileSize < 32 || config.TileSize > 1024)
+        {
+            errors.Add($"TileSize ({config.TileSize}) must be between 32 and 1024");
+        }
+
+        // Zoom level validation
+        if (config.BaseZoomLevel < 1 || config.BaseZoomLevel > 15)
+        {
+            errors.Add($"BaseZoomLevel ({config.BaseZoomLevel}) must be between 1 and 15");
+        }
+
+        // Parallelism validation
+        if (config.MaxDegreeOfParallelism < -1 || config.MaxDegreeOfParallelism == 0)
+        {
+            errors.Add($"MaxDegreeOfParallelism must be -1 (auto) or a positive number");
+        }
+
+        // Web server validation
+        if (config.EnableLiveServer)
+        {
+            if (config.LiveServerPort.HasValue)
+            {
+                if (config.LiveServerPort.Value < 1 || config.LiveServerPort.Value > 65535)
+                {
+                    errors.Add($"LiveServerPort ({config.LiveServerPort.Value}) must be between 1 and 65535");
+                }
+            }
+
+            if (config.MaxConcurrentRequests.HasValue)
+            {
+                if (config.MaxConcurrentRequests.Value < 1 || config.MaxConcurrentRequests.Value > 1000)
+                {
+                    errors.Add($"MaxConcurrentRequests ({config.MaxConcurrentRequests.Value}) must be between 1 and 1000");
+                }
+            }
+
+            if (config.MapExportIntervalMs < 10000)
+            {
+                errors.Add($"MapExportIntervalMs ({config.MapExportIntervalMs}) should be at least 10000ms (10 seconds) to avoid performance issues");
+            }
+        }
+
+        // Historical tracking validation
+        if (config.EnableHistoricalTracking)
+        {
+            if (config.HistoricalTickIntervalMs < 1000)
+            {
+                errors.Add($"HistoricalTickIntervalMs ({config.HistoricalTickIntervalMs}) should be at least 1000ms (1 second)");
+            }
+        }
+
+        return errors;
+    }
+
+    /// <summary>
+    /// Apply automatic fixes to configuration where possible
+    /// </summary>
+    public static void ApplyAutoFixes(ModConfig config)
+    {
+        // Auto-fix tile size to nearest valid value
+        if (config.TileSize % 32 != 0)
+        {
+            config.TileSize = (config.TileSize / 32) * 32;
+            if (config.TileSize < 32) config.TileSize = 32;
+        }
+
+        // Limit parallelism to processor count
+        if (config.MaxDegreeOfParallelism == -1 || config.MaxDegreeOfParallelism > Environment.ProcessorCount * 2)
+        {
+            config.MaxDegreeOfParallelism = Environment.ProcessorCount;
+        }
+
+        // Ensure base path format
+        if (!config.BasePath.StartsWith("/"))
+        {
+            config.BasePath = "/" + config.BasePath;
+        }
+    }
+}
+

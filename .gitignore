@@ -1,0 +1,43 @@
+# Build outputs
+**/bin/
+**/obj/
+**/*.user
+**/*.suo
+**/*.cache
+
+# Release packages (keep only in releases/)
+*.tar.gz
+*.zip
+!releases/*.tar.gz
+!releases/*.zip
+
+# IDE files
+.vs/
+.vscode/
+.idea/
+*.DotSettings.user
+.rider/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Nix
+result
+result-*
+
+# Archive
+archive/
+
+# Temporary files
+*.tmp
+*.log
+
+# Mod config (user-specific)
+ModConfig/
+VintagestoryData/
+
+# Old tarball from root
+WebCartographer-v*.tar.gz

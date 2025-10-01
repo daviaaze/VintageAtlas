@@ -1,0 +1,84 @@
+name: Release VintageAtlas
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+    
+    - name: Download Vintage Story
+      run: |
+        echo "Downloading Vintage Story 1.20.1..."
+        mkdir -p ~/vintagestory
+        wget -q https://cdn.vintagestory.at/gamefiles/stable/vs_archive_1.20.1.tar.gz
+        tar -xzf vs_archive_1.20.1.tar.gz -C ~/vintagestory
+        rm vs_archive_1.20.1.tar.gz
+    
+    - name: Extract version from tag
+      id: version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+    
+    - name: Update modinfo.json version
+      run: |
+        cd VintageAtlas
+        sed -i 's/"version": ".*"/"version": "${{ steps.version.outputs.VERSION }}"/' modinfo.json
+        cat modinfo.json
+    
+    - name: Build Release
+      run: dotnet build VintageAtlas/VintageAtlas.csproj --configuration Release
+      env:
+        VINTAGE_STORY: ${{ github.workspace }}/../vintagestory
+    
+    - name: Package Release
+      run: |
+        cd VintageAtlas/bin/Release/Mods
+        tar -czf ${{ github.workspace }}/VintageAtlas-v${{ steps.version.outputs.VERSION }}.tar.gz vintageatlas/
+        cd ${{ github.workspace }}
+        ls -lh VintageAtlas-v${{ steps.version.outputs.VERSION }}.tar.gz
+    
+    - name: Generate Release Notes
+      id: release_notes
+      run: |
+        if [ -f VintageAtlas/CHANGELOG.md ]; then
+          # Extract the latest version's notes from CHANGELOG
+          echo "NOTES<<EOF" >> $GITHUB_OUTPUT
+          awk '/^## \[/{if(p)exit;p=1;next} p' VintageAtlas/CHANGELOG.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        else
+          echo "NOTES=Release v${{ steps.version.outputs.VERSION }}" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: VintageAtlas-v${{ steps.version.outputs.VERSION }}.tar.gz
+        body: ${{ steps.release_notes.outputs.NOTES }}
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Upload to Mod Database (placeholder)
+      run: |
+        echo "📦 Release package created: VintageAtlas-v${{ steps.version.outputs.VERSION }}.tar.gz"
+        echo "🌐 Manual upload to https://mods.vintagestory.at/ required"
+        echo "   1. Download the release asset from GitHub"
+        echo "   2. Upload to Vintage Story Mod Database"
+        echo "   3. Update mod listing with changelog"
+

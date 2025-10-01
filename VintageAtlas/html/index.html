@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- BASE_PATH will be replaced by server at runtime -->
+    <base href="__BASE_PATH__">
+    <link rel="icon" href="assets/favicon.svg" sizes="any" type="image/svg+xml"><!--Favicon source: Twemoji-->
+    <link href="css/solid.min.css" rel="stylesheet"/>
+    <link href="css/fontawesome.min.css" rel="stylesheet"/>
+    <link rel="stylesheet" title="color" href="css/classicblue.css" type="text/css">
+    <link rel="stylesheet" href="css/default.css" type="text/css">
+    <link rel="stylesheet" href="css/syncControls.css" type="text/css">
+    <link rel="stylesheet" href="lib/ol.css">
+    <link rel="stylesheet" href="lib/ol-ext.min.css">
+    <script src="lib/ol.js"></script>
+    <script src="lib/ol-ext.min.js"></script>
+    <script src="worldExtent.js"></script>
+    <script src="settings.js"></script>
+    <title></title>
+</head>
+<body>
+<div id="map" class="map"></div>
+<div id="mousePos" class="c"></div>
+<div id="layers" class="c">
+    <div class="layerSwitcherTitle">Legend</div>
+    <!-- Server Controls Section -->
+    <div id="sync-controls-section" class="sync-controls-wrapper"></div>
+    <div id="layerSwitcher"></div>
+</div>
+<div id="tools" class="c"></div>
+<div id="contributors" class="c">
+    <div class="left">
+        <p>Data from the <a href="https://www.vintagestory.at">Vintage Story</a> <a id="serverWebsite"></a></p>
+        <p id="lastUpdated"></p>
+        <p><a href="https://github.com/daviaaze/VintageAtlas">VintageAtlas</a> by daviaaze (based on WebCartographer by Th3Dilli).</p>
+    </div>
+    <div class="right">
+        Credits <span class="arrow">◀</span>
+    </div>
+</div>
+<div id="status" class="c">&nbsp;</div>
+<div id="titleBar">
+    <ul>
+        <li><h1 id="titleName"></h1></li>
+        <li><a id="serverWebsite2" class="selected"></a></li>
+        <li><a href="adminDashboard.html" class="selected"><i class="fas fa-chart-line"></i> Admin Dashboard</a></li>
+        <li><a href="https://github.com/daviaaze/VintageAtlas/issues" class="selected">GitHub / Report Bug</a></li>
+        <li><a href="#contribute" class="selected" id="contribute">Guide / Contribute</a></li>
+    </ul>
+</div>
+<script src="automap.js"></script>
+<script src="liveLayers.js"></script>
+<script src="historicalLayers.js"></script>
+<script src="syncControls.js"></script>
+<script>
+    // Initialize sync controls after page load
+    document.addEventListener('DOMContentLoaded', function() {
+        const syncControls = new SyncControls();
+        syncControls.init('#sync-controls-section');
+    });
+</script>
+</body>
+</html>
