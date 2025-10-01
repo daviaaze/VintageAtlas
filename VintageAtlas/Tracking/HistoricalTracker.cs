@@ -39,7 +39,7 @@ namespace VintageAtlas.Tracking
         {
             try
             {
-                var dataPath = Path.Combine(_sapi.DataBasePath, "ModData", "WebCartographer");
+                var dataPath = Path.Combine(_sapi.DataBasePath, "ModData", "VintageAtlas");
                 Directory.CreateDirectory(dataPath);
                 
                 var dbPath = Path.Combine(dataPath, "metrics.db");
@@ -48,11 +48,11 @@ namespace VintageAtlas.Tracking
                 
                 CreateSchema();
                 
-                _sapi.Logger.Notification("[WebCartographer] Historical tracker initialized at: " + dbPath);
+                _sapi.Logger.Notification("[VintageAtlas] Historical tracker initialized at: " + dbPath);
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Error($"[WebCartographer] Failed to initialize historical tracker: {ex.Message}");
+                _sapi.Logger.Error($"[VintageAtlas] Failed to initialize historical tracker: {ex.Message}");
                 _sapi.Logger.Error(ex.StackTrace ?? "");
             }
         }
@@ -136,7 +136,7 @@ namespace VintageAtlas.Tracking
             ";
             cmd.ExecuteNonQuery();
             
-            _sapi.Logger.Debug("[WebCartographer] Database schema created/verified");
+            _sapi.Logger.Debug("[VintageAtlas] Database schema created/verified");
         }
 
         /// <summary>
@@ -174,7 +174,7 @@ namespace VintageAtlas.Tracking
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Warning($"[WebCartographer] Error in historical tracker tick: {ex.Message}");
+                _sapi.Logger.Warning($"[VintageAtlas] Error in historical tracker tick: {ex.Message}");
             }
         }
 
@@ -231,17 +231,17 @@ namespace VintageAtlas.Tracking
                     }
                     catch (Exception ex)
                     {
-                        _sapi.Logger.Debug($"[WebCartographer] Failed to record position for {player.PlayerName}: {ex.Message}");
+                        _sapi.Logger.Debug($"[VintageAtlas] Failed to record position for {player.PlayerName}: {ex.Message}");
                     }
                 }
 
                 transaction.Commit();
-                _sapi.Logger.Debug($"[WebCartographer] Recorded {recorded} player positions");
+                _sapi.Logger.Debug($"[VintageAtlas] Recorded {recorded} player positions");
             }
             catch (Exception ex)
             {
                 transaction.Rollback();
-                _sapi.Logger.Warning($"[WebCartographer] Failed to record player positions: {ex.Message}");
+                _sapi.Logger.Warning($"[VintageAtlas] Failed to record player positions: {ex.Message}");
             }
         }
 
@@ -313,12 +313,12 @@ namespace VintageAtlas.Tracking
                 }
 
                 transaction.Commit();
-                _sapi.Logger.Debug($"[WebCartographer] Recorded census for {entityGroups.Count} entity types");
+                _sapi.Logger.Debug($"[VintageAtlas] Recorded census for {entityGroups.Count} entity types");
             }
             catch (Exception ex)
             {
                 transaction.Rollback();
-                _sapi.Logger.Warning($"[WebCartographer] Failed to record entity census: {ex.Message}");
+                _sapi.Logger.Warning($"[VintageAtlas] Failed to record entity census: {ex.Message}");
             }
         }
 
@@ -346,11 +346,11 @@ namespace VintageAtlas.Tracking
                 cmd.Parameters.AddWithValue("@uptime", (long)(_sapi.World.ElapsedMilliseconds / 1000));
 
                 cmd.ExecuteNonQuery();
-                _sapi.Logger.Debug($"[WebCartographer] Recorded server stats");
+                _sapi.Logger.Debug($"[VintageAtlas] Recorded server stats");
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Warning($"[WebCartographer] Failed to record server stats: {ex.Message}");
+                _sapi.Logger.Warning($"[VintageAtlas] Failed to record server stats: {ex.Message}");
             }
         }
 
@@ -379,11 +379,11 @@ namespace VintageAtlas.Tracking
                 cmd.Parameters.AddWithValue("@source", (object?)damageSource ?? DBNull.Value);
 
                 cmd.ExecuteNonQuery();
-                _sapi.Logger.Notification($"[WebCartographer] Recorded death for {player.PlayerName}");
+                _sapi.Logger.Notification($"[VintageAtlas] Recorded death for {player.PlayerName}");
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Warning($"[WebCartographer] Failed to record player death: {ex.Message}");
+                _sapi.Logger.Warning($"[VintageAtlas] Failed to record player death: {ex.Message}");
             }
         }
 
@@ -410,12 +410,12 @@ namespace VintageAtlas.Tracking
                 
                 if (deleted > 0)
                 {
-                    _sapi.Logger.Debug($"[WebCartographer] Cleaned up {deleted} old position records");
+                    _sapi.Logger.Debug($"[VintageAtlas] Cleaned up {deleted} old position records");
                 }
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Warning($"[WebCartographer] Failed to cleanup old positions: {ex.Message}");
+                _sapi.Logger.Warning($"[VintageAtlas] Failed to cleanup old positions: {ex.Message}");
             }
         }
 
@@ -469,12 +469,12 @@ namespace VintageAtlas.Tracking
                     });
                 }
 
-                _sapi.Logger.Debug($"[WebCartographer] Retrieved {heatmap.Count} heatmap points");
+                _sapi.Logger.Debug($"[VintageAtlas] Retrieved {heatmap.Count} heatmap points");
                 return heatmap;
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Error($"[WebCartographer] Failed to get heatmap: {ex.Message}");
+                _sapi.Logger.Error($"[VintageAtlas] Failed to get heatmap: {ex.Message}");
                 return new List<HeatmapPoint>();
             }
         }
@@ -521,12 +521,12 @@ namespace VintageAtlas.Tracking
                     });
                 }
 
-                _sapi.Logger.Debug($"[WebCartographer] Retrieved path with {path.Count} points for player {queryParams.PlayerUid}");
+                _sapi.Logger.Debug($"[VintageAtlas] Retrieved path with {path.Count} points for player {queryParams.PlayerUid}");
                 return path;
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Error($"[WebCartographer] Failed to get player path: {ex.Message}");
+                _sapi.Logger.Error($"[VintageAtlas] Failed to get player path: {ex.Message}");
                 return new List<PlayerPathPoint>();
             }
         }
@@ -579,12 +579,12 @@ namespace VintageAtlas.Tracking
                     });
                 }
 
-                _sapi.Logger.Debug($"[WebCartographer] Retrieved {census.Count} census records");
+                _sapi.Logger.Debug($"[VintageAtlas] Retrieved {census.Count} census records");
                 return census;
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Error($"[WebCartographer] Failed to get entity census: {ex.Message}");
+                _sapi.Logger.Error($"[VintageAtlas] Failed to get entity census: {ex.Message}");
                 return new List<EntityCensusSnapshot>();
             }
         }
@@ -712,12 +712,12 @@ namespace VintageAtlas.Tracking
                     }
                 }
 
-                _sapi.Logger.Debug("[WebCartographer] Retrieved server statistics");
+                _sapi.Logger.Debug("[VintageAtlas] Retrieved server statistics");
                 return stats;
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Error($"[WebCartographer] Failed to get server statistics: {ex.Message}");
+                _sapi.Logger.Error($"[VintageAtlas] Failed to get server statistics: {ex.Message}");
                 return stats;
             }
         }
@@ -728,7 +728,7 @@ namespace VintageAtlas.Tracking
         {
             if (_metricsDb != null)
             {
-                _sapi.Logger.Notification("[WebCartographer] Shutting down historical tracker");
+                _sapi.Logger.Notification("[VintageAtlas] Shutting down historical tracker");
                 _metricsDb.Close();
                 _metricsDb.Dispose();
                 _metricsDb = null;

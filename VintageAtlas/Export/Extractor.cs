@@ -69,44 +69,44 @@ public class Extractor
     {
         try
         {
-            _server.Api.Logger.Notification("WebCartographer is now starting...");
+            _server.Api.Logger.Notification("VintageAtlas is now starting...");
             if (_config.FixWhiteLines || _config.ExtractWorldMap)
             {
-                _server.Api.Logger.Notification("WebCartographer is now preparing for FixWhiteLines or ExtractWorldMap ...");
+                _server.Api.Logger.Notification("VintageAtlas is now preparing for FixWhiteLines or ExtractWorldMap ...");
                 LoadBlockColorsJson();
             }
 
             if (_config.FixWhiteLines)
             {
-                _server.Api.Logger.Notification("WebCartographer is now running FixWhiteLines...");
+                _server.Api.Logger.Notification("VintageAtlas is now running FixWhiteLines...");
                 FixWhiteLines();
             }
 
             if (_config.ExtractWorldMap)
             {
-                _server.Api.Logger.Notification("WebCartographer is now running ExtractWorldMap...");
+                _server.Api.Logger.Notification("VintageAtlas is now running ExtractWorldMap...");
                 ExtractWorldMap();
             }
 
             if (_config.CreateZoomLevels)
             {
-                _server.Api.Logger.Notification("WebCartographer is now running CreateZoomLevels...");
+                _server.Api.Logger.Notification("VintageAtlas is now running CreateZoomLevels...");
                 CreateZoomLevels();
             }
 
             if (_config.ExtractStructures)
             {
-                _server.Api.Logger.Notification("WebCartographer is now running ExtractStructures...");
+                _server.Api.Logger.Notification("VintageAtlas is now running ExtractStructures...");
                 ExtractStructures();
             }
 
             if (_config.ExportChunkVersionMap)
             {
-                _server.Api.Logger.Notification("WebCartographer is now running ExtractChunkVersions...");
+                _server.Api.Logger.Notification("VintageAtlas is now running ExtractChunkVersions...");
                 ExtractChunkVersions();
             }
 
-            _server.Api.Logger.Notification("WebCartographer did finish");
+            _server.Api.Logger.Notification("VintageAtlas did finish");
         }
         catch (Exception e)
         {
@@ -375,6 +375,7 @@ public class Extractor
 
     private void SaveJsonToFile<T>(T data, string filename)
     {
+        Directory.CreateDirectory(_config.OutputDirectoryGeojson);
         using var file = File.CreateText(Path.Combine(_config.OutputDirectoryGeojson, filename));
         var serializer = new JsonSerializer();
         serializer.Serialize(file, data);
@@ -830,15 +831,20 @@ public class Extractor
                         }
                     }
 
-                    var file = Path.Combine(_config.OutputDirectoryWorld, _config.BaseZoomLevel.ToString(),
-                        $"{chunkGroup.Key.X}_{chunkGroup.Key.Y}.png");
+                    var zoomDir = Path.Combine(_config.OutputDirectoryWorld, _config.BaseZoomLevel.ToString());
+                    Directory.CreateDirectory(zoomDir);
+                    
+                    var file = Path.Combine(zoomDir, $"{chunkGroup.Key.X}_{chunkGroup.Key.Y}.png");
                     using Stream fileStream = File.OpenWrite(file);
                     img.Encode(SKEncodedImageFormat.Png, 100).SaveTo(fileStream);
                     img.Dispose();
 
                     if (_config.ExportHeightmap && imgHeight is not null)
                     {
-                        var heightFile = Path.Combine(_config.OutputDirectory, "heightmap", $"{chunkGroup.Key.X}_{chunkGroup.Key.Y}.png");
+                        var heightmapDir = Path.Combine(_config.OutputDirectory, "heightmap");
+                        Directory.CreateDirectory(heightmapDir);
+                        
+                        var heightFile = Path.Combine(heightmapDir, $"{chunkGroup.Key.X}_{chunkGroup.Key.Y}.png");
                         using Stream fileStreamHeighmap = File.OpenWrite(heightFile);
                         imgHeight.Encode(SKEncodedImageFormat.Png, 100).SaveTo(fileStreamHeighmap);
                         imgHeight.Dispose();
@@ -970,6 +976,14 @@ public class Extractor
         {
             _logger.Notification("Generating zoom level: " + (i - 1));
             var path = Path.Combine(_config.OutputDirectoryWorld, i.ToString());
+            
+            if (!Directory.Exists(path))
+            {
+                _logger.Warning($"Zoom level directory does not exist: {path}");
+                _logger.Warning("Skipping zoom level generation. Did you disable ExtractWorldMap?");
+                return;
+            }
+            
             var imagePaths = Directory.GetFiles(path);
 
             // deconstruct image urls to coords
@@ -1007,7 +1021,10 @@ public class Extractor
 
                 // image.ScalePixels(scaledImage, SKFilterQuality.Medium);
                 var filename = $"{imageGroup.Key.X / 2}_{imageGroup.Key.Y / 2}.png";
-                var file = Path.Combine(_config.OutputDirectoryWorld, (i - 1).ToString(), filename);
+                var zoomLevelDir = Path.Combine(_config.OutputDirectoryWorld, (i - 1).ToString());
+                Directory.CreateDirectory(zoomLevelDir);
+                
+                var file = Path.Combine(zoomLevelDir, filename);
 
                 using Stream fileStream = File.OpenWrite(file);
                 outputImage.Encode(SKEncodedImageFormat.Png, 100).SaveTo(fileStream);
@@ -1238,7 +1255,7 @@ public class Extractor
         var loadModConfig = _server.Api.LoadModConfig<ExportData>("blockColorMapping.json");
         if (_config.Mode != ImageMode.MedievalStyleWithHillShading && loadModConfig == null)
         {
-            throw new Exception("blockColorMapping.json is missing! Stopping WebCartographer");
+            throw new Exception("blockColorMapping.json is missing! Stopping VintageAtlas");
         }
 
         for (var i = 0; i < _colors.Length; i++)

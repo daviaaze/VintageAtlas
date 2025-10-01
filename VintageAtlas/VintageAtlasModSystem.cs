@@ -152,34 +152,65 @@ public class VintageAtlasModSystem : ModSystem
     {
         if (_config == null || _sapi == null) return null;
         
-        // Try multiple locations in order:
-        // 1. OutputDirectory/html (where exports go)
-        // 2. Mod directory/html (bundled with mod)
-        // 3. ModData directory (fallback)
-        var possibleRoots = new[]
-        {
-            Path.Combine(_config.OutputDirectory, "html"),
-            Path.Combine(Path.GetDirectoryName(GetType().Assembly.Location) ?? "", "html"),
-            Path.Combine(_sapi.DataBasePath, "ModData", "VintageAtlas", "html")
-        };
+        // Primary location: OutputDirectory/html (where exports and data go)
+        var outputHtml = Path.Combine(_config.OutputDirectory, "html");
         
-        foreach (var path in possibleRoots)
+        // If OutputDirectory/html doesn't exist, copy HTML files from mod
+        if (!Directory.Exists(outputHtml) || !File.Exists(Path.Combine(outputHtml, "index.html")))
         {
-            _sapi.Logger.Debug($"[VintageAtlas] Checking web root: {path}");
-            if (Directory.Exists(path) && File.Exists(Path.Combine(path, "index.html")))
+            var modHtml = Path.Combine(Path.GetDirectoryName(GetType().Assembly.Location) ?? "", "html");
+            if (Directory.Exists(modHtml))
             {
-                _sapi.Logger.Notification($"[VintageAtlas] Using web root: {path}");
-                return path;
+                _sapi.Logger.Notification($"[VintageAtlas] Copying HTML files from mod to output directory...");
+                _sapi.Logger.Debug($"[VintageAtlas] Source: {modHtml}");
+                _sapi.Logger.Debug($"[VintageAtlas] Target: {outputHtml}");
+                
+                try
+                {
+                    CopyDirectory(modHtml, outputHtml);
+                    _sapi.Logger.Notification("[VintageAtlas] HTML files copied successfully");
+                }
+                catch (Exception ex)
+                {
+                    _sapi.Logger.Error($"[VintageAtlas] Failed to copy HTML files: {ex.Message}");
+                }
             }
         }
         
-        // Create fallback directory
-        var fallback = possibleRoots[2];
-        Directory.CreateDirectory(fallback);
-        _sapi.Logger.Warning($"[VintageAtlas] Created empty web root: {fallback}");
-        _sapi.Logger.Warning("[VintageAtlas] Please copy html/ folder contents or rebuild the mod.");
+        // Always use OutputDirectory/html for web root
+        if (Directory.Exists(outputHtml) && File.Exists(Path.Combine(outputHtml, "index.html")))
+        {
+            _sapi.Logger.Notification($"[VintageAtlas] Using web root: {outputHtml}");
+            return outputHtml;
+        }
         
-        return fallback;
+        _sapi.Logger.Error($"[VintageAtlas] Could not setup web root at: {outputHtml}");
+        return null;
+    }
+    
+    private void CopyDirectory(string sourceDir, string targetDir)
+    {
+        Directory.CreateDirectory(targetDir);
+        
+        // Copy all files
+        foreach (var file in Directory.GetFiles(sourceDir))
+        {
+            var fileName = Path.GetFileName(file);
+            var targetFile = Path.Combine(targetDir, fileName);
+            File.Copy(file, targetFile, overwrite: true);
+        }
+        
+        // Copy all subdirectories
+        foreach (var subDir in Directory.GetDirectories(sourceDir))
+        {
+            var dirName = Path.GetFileName(subDir);
+            
+            // Skip the data directory to avoid overwriting exports
+            if (dirName == "data") continue;
+            
+            var targetSubDir = Path.Combine(targetDir, dirName);
+            CopyDirectory(subDir, targetSubDir);
+        }
     }
 
     private void OnGameTick(float dt)

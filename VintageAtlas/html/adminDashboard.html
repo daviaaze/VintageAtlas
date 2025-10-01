@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebCartographer Admin Dashboard</title>
+    <title>VintageAtlas Admin Dashboard</title>
     <style>
         * {
             box-sizing: border-box;
@@ -206,7 +206,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>📊 WebCartographer Admin Dashboard</h1>
+        <h1>📊 VintageAtlas Admin Dashboard</h1>
         
         <button class="refresh-btn" id="refresh-btn" onclick="loadStats()">
             🔄 Refresh Data
@@ -406,7 +406,7 @@
                 console.error('Failed to load stats:', err);
                 loadingEl.style.display = 'none';
                 errorEl.style.display = 'block';
-                errorEl.textContent = `Failed to load statistics: ${err.message}. Make sure the WebCartographer server is running.`;
+                errorEl.textContent = `Failed to load statistics: ${err.message}. Make sure the VintageAtlas server is running.`;
             }
         }
 

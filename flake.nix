@@ -1,5 +1,5 @@
 {
-  description = "WebCartographer - Vintage Story Map Generator with Live Server";
+  description = "VintageAtlas - A comprehensive mapping and server monitoring solution for Vintage Story";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -24,11 +24,11 @@
 
         vintageStory = pkgs.vintagestory;
 
-        # Custom script to set up WebCartographer development environment
-        setupWebCartographer = pkgs.writeScriptBin "setup-webcartographer" ''
+        # Custom script to set up VintageAtlas development environment
+        setupVintageAtlas = pkgs.writeScriptBin "setup-vintageatlas" ''
           #!${pkgs.bash}/bin/bash
           echo "╔════════════════════════════════════════════════════════════════╗"
-          echo "║   WebCartographer - Development Environment                   ║"
+          echo "║   VintageAtlas - Development Environment                      ║"
           echo "╚════════════════════════════════════════════════════════════════╝"
           echo ""
 
@@ -51,7 +51,7 @@
               echo "✅ Directory found"
               
               # Check for required DLLs
-              local all_found=true
+              all_found=true
               for dll in VintagestoryAPI.dll VintagestoryLib.dll; do
                 if [ -f "$VINTAGE_STORY/$dll" ]; then
                   echo "   ✓ $dll"
@@ -71,26 +71,25 @@
 
           echo ""
           echo "📋 Available commands:"
-          echo "  build-webcartographer       - Build the mod (Release)"
-          echo "  build-webcartographer-debug - Build the mod (Debug)"
-          echo "  test-webcartographer        - Run tests"
-          echo "  install-webcartographer     - Install to VintagestoryData/Mods"
-          echo "  dotnet build                - Build manually"
-          echo "  dotnet test                 - Run tests manually"
+          echo "  build-vintageatlas       - Build the mod (Release)"
+          echo "  build-vintageatlas-debug - Build the mod (Debug)"
+          echo "  install-vintageatlas     - Install to VintagestoryData/Mods"
+          echo "  dotnet build             - Build manually"
           echo ""
           echo "📖 Documentation:"
-          echo "  QUICK-START.md              - Quick start guide"
-          echo "  UNIFIED-MOD-GUIDE.md        - Complete documentation"
-          echo "  INTEGRATION-COMPLETE.md     - Technical details"
+          echo "  README.md                - Repository overview"
+          echo "  VintageAtlas/README.md   - User guide"
+          echo "  CONTRIBUTING.md          - Developer guide"
+          echo "  PUSH-TO-GITHUB.md        - GitHub setup"
           echo ""
         '';
 
-        # Build script for WebCartographer (Release)
-        buildWebCartographer = pkgs.writeScriptBin "build-webcartographer" ''
+        # Build script for VintageAtlas (Release)
+        buildVintageAtlas = pkgs.writeScriptBin "build-vintageatlas" ''
           #!${pkgs.bash}/bin/bash
           set -e
 
-          echo "🔨 Building WebCartographer (Release)..."
+          echo "🔨 Building VintageAtlas (Release)..."
 
           if [ -z "$VINTAGE_STORY" ]; then
             echo "❌ Error: VINTAGE_STORY environment variable not set!"
@@ -99,97 +98,115 @@
           fi
 
           # Build the main project
-          dotnet build WebCartographer/WebCartographer.csproj --configuration Release
+          dotnet build VintageAtlas/VintageAtlas.csproj --configuration Release
 
           if [ $? -eq 0 ]; then
             echo ""
             echo "✅ Build successful!"
             echo ""
-            echo "📦 Output: WebCartographer/bin/Release/Mods/mod/"
+            echo "📦 Output: VintageAtlas/bin/Release/Mods/vintageatlas/"
             echo ""
             echo "📋 Built files:"
-            ls -lh WebCartographer/bin/Release/Mods/mod/ | grep -E '\.(dll|json)$' || true
+            ls -lh VintageAtlas/bin/Release/Mods/vintageatlas/ | grep -E '\.(dll|json)$' || true
             echo ""
-            echo "📁 To install, copy to:"
+            
+            # Create zip package
+            echo "📦 Creating zip package..."
+            VERSION=$(date +%Y%m%d-%H%M%S)
+            ZIP_NAME="VintageAtlas-v$VERSION.zip"
+            
+            cd VintageAtlas/bin/Release/Mods/vintageatlas/
+            ${pkgs.zip}/bin/zip -r "../../../../$ZIP_NAME" *
+            cd ../../../../
+            
+            if [ -f "$ZIP_NAME" ]; then
+              echo ""
+              echo "✅ Package created successfully!"
+              echo "📦 $ZIP_NAME ($(du -h "$ZIP_NAME" | cut -f1))"
+              echo ""
+            fi
+            
+            echo "📁 To install manually, copy to:"
             echo "  ~/.config/VintagestoryData/Mods/"
             echo ""
-            echo "Or run: install-webcartographer"
+            echo "Or run: install-vintageatlas"
           else
             echo "❌ Build failed!"
             exit 1
           fi
         '';
 
-        # Build script for WebCartographer (Debug)
-        buildWebCartographerDebug = pkgs.writeScriptBin "build-webcartographer-debug" ''
+        # Build script for VintageAtlas (Debug)
+        buildVintageAtlasDebug = pkgs.writeScriptBin "build-vintageatlas-debug" ''
           #!${pkgs.bash}/bin/bash
           set -e
 
-          echo "🔨 Building WebCartographer (Debug)..."
+          echo "🔨 Building VintageAtlas (Debug)..."
 
           if [ -z "$VINTAGE_STORY" ]; then
             echo "❌ Error: VINTAGE_STORY environment variable not set!"
             exit 1
           fi
 
-          dotnet build WebCartographer/WebCartographer.csproj --configuration Debug
+          dotnet build VintageAtlas/VintageAtlas.csproj --configuration Debug
 
           if [ $? -eq 0 ]; then
             echo "✅ Build successful (Debug)!"
-            echo "📦 Output: WebCartographer/bin/Debug/Mods/mod/"
+            echo "📦 Output: VintageAtlas/bin/Debug/Mods/vintageatlas/"
           else
             echo "❌ Build failed!"
             exit 1
           fi
         '';
 
-        # Test script
-        testWebCartographer = pkgs.writeScriptBin "test-webcartographer" ''
+        # Package script
+        packageVintageAtlas = pkgs.writeScriptBin "package-vintageatlas" ''
           #!${pkgs.bash}/bin/bash
           set -e
 
-          echo "🧪 Running WebCartographer tests..."
+          echo "📦 Packaging VintageAtlas..."
 
-          if [ -z "$VINTAGE_STORY" ]; then
-            echo "❌ Error: VINTAGE_STORY environment variable not set!"
+          if [ ! -d "VintageAtlas/bin/Release/Mods/vintageatlas" ]; then
+            echo "❌ Build output not found!"
+            echo "Run 'build-vintageatlas' first."
             exit 1
           fi
 
-          dotnet test WebCartographer.Tests/WebCartographer.Tests.csproj
+          cd VintageAtlas/bin/Release/Mods
+          tar -czf ../../../../VintageAtlas-$(date +%Y%m%d).tar.gz vintageatlas/
+          cd ../../../../
 
-          if [ $? -eq 0 ]; then
-            echo "✅ All tests passed!"
-          else
-            echo "❌ Tests failed!"
-            exit 1
-          fi
+          echo "✅ Package created!"
+          ls -lh VintageAtlas-*.tar.gz | tail -1
         '';
 
         # Install script
-        installWebCartographer = pkgs.writeScriptBin "install-webcartographer" ''
+        installVintageAtlas = pkgs.writeScriptBin "install-vintageatlas" ''
           #!${pkgs.bash}/bin/bash
           set -e
 
           MODS_DIR="$HOME/.config/VintagestoryData/Mods"
-          SOURCE_DIR="WebCartographer/bin/Release/Mods/mod"
-          TARGET_DIR="$MODS_DIR/WebCartographer"
+          SOURCE_DIR="VintageAtlas/bin/Release/Mods/vintageatlas"
+          TARGET_DIR="$MODS_DIR/vintageatlas"
 
-          echo "📦 Installing WebCartographer..."
+          echo "📦 Installing VintageAtlas..."
 
           if [ ! -d "$SOURCE_DIR" ]; then
             echo "❌ Build output not found!"
-            echo "Run 'build-webcartographer' first."
+            echo "Run 'build-vintageatlas' first."
             exit 1
           fi
 
           # Create mods directory if it doesn't exist
           mkdir -p "$MODS_DIR"
 
-          # Remove old installation
-          if [ -d "$TARGET_DIR" ]; then
-            echo "🗑️  Removing old installation..."
-            rm -rf "$TARGET_DIR"
-          fi
+          # Remove old installation (both old and new names)
+          for old_dir in "$MODS_DIR/WebCartographer" "$MODS_DIR/webcartographer" "$TARGET_DIR"; do
+            if [ -d "$old_dir" ]; then
+              echo "🗑️  Removing old installation: $old_dir"
+              rm -rf "$old_dir"
+            fi
+          done
 
           # Copy new build
           echo "📋 Copying files to $TARGET_DIR..."
@@ -206,9 +223,11 @@
           echo "🚀 Start Vintage Story to use the mod!"
           echo ""
           echo "📖 Quick Start:"
-          echo "  1. Client: /exportcolors"
-          echo "  2. Server: /webc export"
-          echo "  3. Browser: http://localhost:42421/"
+          echo "  1. Server: /atlas export  (or /va export)"
+          echo "  2. Browser: http://localhost:<port>/"
+          echo "  3. Admin: http://localhost:<port>/adminDashboard.html"
+          echo ""
+          echo "💡 Tip: Port defaults to game_port + 1"
           echo ""
         '';
 
@@ -234,16 +253,17 @@
             curl
             wget
             unzip
+            zip
 
             # Code Quality Tools
             nixpkgs-fmt # For formatting nix files
 
             # Custom Scripts
-            setupWebCartographer
-            buildWebCartographer
-            buildWebCartographerDebug
-            testWebCartographer
-            installWebCartographer
+            setupVintageAtlas
+            buildVintageAtlas
+            buildVintageAtlasDebug
+            packageVintageAtlas
+            installVintageAtlas
           ];
 
           # Environment variables that persist in the shell
@@ -254,15 +274,15 @@
         # Optional: Add packages that can be built/run directly
         packages = {
           inherit 
-            setupWebCartographer 
-            buildWebCartographer 
-            buildWebCartographerDebug
-            testWebCartographer
-            installWebCartographer;
+            setupVintageAtlas 
+            buildVintageAtlas 
+            buildVintageAtlasDebug
+            packageVintageAtlas
+            installVintageAtlas;
+          
+          # Default package - show setup info when running nix run
+          default = setupVintageAtlas;
         };
-
-        # Default package - show setup info when running nix run
-        defaultPackage = setupWebCartographer;
       }
     );
 }

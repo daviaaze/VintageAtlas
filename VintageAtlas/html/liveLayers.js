@@ -1,5 +1,5 @@
 // Direct connection version (no PHP proxy)
-// Connects directly to Vintage Story WebCartographer API
+// Connects directly to Vintage Story VintageAtlas API
 
 function pickAnimalEmoji(str){
   if (!str) return '';

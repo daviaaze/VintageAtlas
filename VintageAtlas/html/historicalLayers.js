@@ -1,4 +1,4 @@
-// Historical Data Layers for WebCartographer
+// Historical Data Layers for VintageAtlas
 // Provides heatmaps, player paths, and time-based visualizations
 
 (function() {
@@ -580,6 +580,6 @@
         createHistoricalUI();
     }
 
-    console.log('[WebCartographer] Historical layers initialized');
+    console.log('[VintageAtlas] Historical layers initialized');
 })();
 

@@ -73,10 +73,26 @@ public class StaticFileServer
             context.Response.ContentType = mimeType;
             context.Response.StatusCode = 200;
 
-            // Cache static assets (but not HTML/JSON which may change)
-            if (extension != ".html" && extension != ".json")
+            // Cache control strategy:
+            // - HTML/JS/JSON: No cache (always fresh for updates)
+            // - Map data: 5 minute cache (updates on export)
+            // - Static assets (CSS/fonts/images): 1 hour cache (rarely change)
+            if (extension == ".html" || extension == ".js" || extension == ".json")
             {
-                context.Response.Headers.Add("Cache-Control", "public, max-age=3600");
+                // Never cache - always fetch fresh for updates
+                context.Response.Headers.Add("Cache-Control", "no-cache, no-store, must-revalidate");
+                context.Response.Headers.Add("Pragma", "no-cache");
+                context.Response.Headers.Add("Expires", "0");
+            }
+            else if (safePath.Contains("/data/"))
+            {
+                // Short cache for map data that updates on export
+                context.Response.Headers.Add("Cache-Control", "public, max-age=300");  // 5 minutes
+            }
+            else
+            {
+                // Longer cache for static assets that rarely change
+                context.Response.Headers.Add("Cache-Control", "public, max-age=3600");  // 1 hour
             }
 
             var buffer = File.ReadAllBytes(filePath);

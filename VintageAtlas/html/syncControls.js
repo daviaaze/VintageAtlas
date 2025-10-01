@@ -1,5 +1,5 @@
 /**
- * WebCartographer Sync Controls
+ * VintageAtlas Sync Controls
  * Provides UI for toggling auto-export and historical tracking
  */
 

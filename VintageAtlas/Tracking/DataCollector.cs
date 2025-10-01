@@ -259,7 +259,7 @@ public class DataCollector : IDataCollector
             // Use cached data if still valid (like ServerstatusQuery)
             if (_animalsCache != null && DateTime.UtcNow < _animalsCacheUntil)
             {
-                _sapi.Logger.Debug($"[WebCartographer] Using cached animal data ({_animalsCache.Count} animals)");
+                _sapi.Logger.Debug($"[VintageAtlas] Using cached animal data ({_animalsCache.Count} animals)");
                 return _animalsCache;
             }
 
@@ -349,7 +349,7 @@ public class DataCollector : IDataCollector
                     }
                 }
 
-                _sapi.Logger.Debug($"[WebCartographer] Animal scan: {totalEntities} total entities, {processedAgents} alive agents, {animals.Count} animals added");
+                _sapi.Logger.Debug($"[VintageAtlas] Animal scan: {totalEntities} total entities, {processedAgents} alive agents, {animals.Count} animals added");
             }
             catch (Exception ex)
             {

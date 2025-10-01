@@ -153,7 +153,7 @@ internal class SavegameDataLoader
             catch (Exception e)
             {
                 ServerMain.Logger.Error(
-                    "WebCartographer error while reading MapRegion, region will not be processed.");
+                    "VintageAtlas error while reading MapRegion, region will not be processed.");
                 ServerMain.Logger.Error(e.Message);
                 continue;
             }
@@ -209,7 +209,7 @@ internal class SavegameDataLoader
             }
             catch (Exception e)
             {
-                _logger.Error("WebCartographer error while saving MapChunks: ");
+                _logger.Error("VintageAtlas error while saving MapChunks: ");
                 _logger.Error(e.Message);
                 sqliteConn.Free();
             }
@@ -232,7 +232,7 @@ internal class SavegameDataLoader
         }
         catch (Exception e)
         {
-            _logger.Error("WebCartographer error while reading ServerMapChunk: ");
+            _logger.Error("VintageAtlas error while reading ServerMapChunk: ");
             _logger.Error(e);
         }
 
@@ -272,7 +272,7 @@ internal class SavegameDataLoader
         }
         catch (Exception e)
         {
-            _logger.Error("WebCartographer error while saving ServerChunk: ");
+            _logger.Error("VintageAtlas error while saving ServerChunk: ");
             _logger.Error(e.Message);
         }
 

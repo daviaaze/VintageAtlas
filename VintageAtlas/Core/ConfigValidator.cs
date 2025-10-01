@@ -83,6 +83,17 @@ public static class ConfigValidator
             }
         }
 
+        // Feature dependency validation
+        if (config.CreateZoomLevels && !config.ExtractWorldMap)
+        {
+            errors.Add("CreateZoomLevels requires ExtractWorldMap to be enabled (it generates zoom levels from the base map tiles)");
+        }
+
+        if (config.ExportHeightmap && !config.ExtractWorldMap)
+        {
+            errors.Add("ExportHeightmap requires ExtractWorldMap to be enabled");
+        }
+
         return errors;
     }
 

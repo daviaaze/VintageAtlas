@@ -56,7 +56,25 @@
 <script>
     // Initialize sync controls after page load
     document.addEventListener('DOMContentLoaded', function() {
-        const syncControls = new SyncControls();
+        // Get base path from <base> tag
+        function getBasePath() {
+            const baseEl = document.querySelector('base[href]');
+            if (baseEl) {
+                const href = baseEl.getAttribute('href');
+                // Check if base tag was set (not the placeholder)
+                if (href && href !== '__BASE_PATH__' && href !== '/') {
+                    // Remove trailing slash for consistency
+                    console.log(href);
+                    console.log(href.endsWith('/') ? href.slice(0, -1) : href);
+                    return href.endsWith('/') ? href.slice(0, -1) : href;
+                }
+            }
+            // Default to root (no base path)
+            return '';
+        }
+        
+        const basePath = getBasePath();
+        const syncControls = new SyncControls(basePath);
         syncControls.init('#sync-controls-section');
     });
 </script>
