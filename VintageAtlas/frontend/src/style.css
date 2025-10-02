@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-background: #ffffff;
+  --color-background-soft: #f8f9fa;
+  --color-background-mute: #e9ecef;
+  --color-border: #dee2e6;
+  --color-border-hover: #adb5bd;
+  --color-border-soft: #ced4da;
+  --color-heading: #212529;
+  --color-text: #343a40;
+  --color-text-dark: #495057;
+  --color-text-light: #6c757d;
+  --color-primary: #007bff;
+  --color-primary-rgb: 0, 123, 255;
+  --color-primary-dark: #0056b3;
+  --color-success: #28a745;
+  --color-warning: #ffc107;
+  --color-warning-dark: #e0a800;
+  --color-danger: #dc3545;
+  --color-danger-dark: #c82333;
+  --color-info: #17a2b8;
+  --color-info-dark: #117a8b;
+
+  --shadow-elevation-xsmall: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-elevation-small: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-elevation-medium: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-elevation-large: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
+  
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html.dark {
+  --color-background: #1a1a1a;
+  --color-background-soft: #212121;
+  --color-background-mute: #2c2c2c;
+  --color-border: #444;
+  --color-border-hover: #666;
+  --color-border-soft: #3a3a3a;
+  --color-heading: #e0e0e0;
+  --color-text: #cccccc;
+  --color-text-dark: #b0b0b0;
+  --color-text-light: #888888;
+  --color-primary: #42b883; /* Vue green */
+  --color-primary-rgb: 66, 184, 131;
+  --color-primary-dark: #369e6e;
+  --color-success: #4CAF50;
+  --color-warning: #FFEB3B;
+  --color-warning-dark: #FBC02D;
+  --color-danger: #f44336;
+  --color-danger-dark: #d32f2f;
+  --color-info: #03A9F4;
+  --color-info-dark: #0288D1;
+
+  --shadow-elevation-xsmall: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-elevation-small: 0 1px 3px rgba(0, 0, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.12);
+  --shadow-elevation-medium: 0 4px 6px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.15);
+  --shadow-elevation-large: 0 10px 15px rgba(0, 0, 0, 0.35), 0 4px 6px rgba(0, 0, 0, 0.18);
+}
+
+@layer base {
+  body {
+    @apply bg-background text-text m-0 min-h-screen;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-gray-900 dark:text-gray-100 font-semibold;
+  }
+  
+  a {
+    @apply text-primary hover:text-primary-dark no-underline;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-md font-medium cursor-pointer transition-colors;
+  }
+  
+  .btn-primary {
+    @apply bg-primary text-white hover:bg-primary-dark;
+  }
+  
+  .btn-secondary {
+    @apply bg-background-soft text-text hover:bg-background-mute;
+  }
+  
+  .card {
+    @apply bg-background p-4 rounded-lg border border-border shadow-sm;
+  }
+  
+  .form-input {
+    @apply w-full px-3 py-2 border border-border rounded-md bg-background text-text focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary;
+  }
+}
+
+#app {
+  @apply h-screen flex flex-col;
+}

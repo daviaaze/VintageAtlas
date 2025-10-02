@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
@@ -89,6 +91,9 @@ public class VintageAtlasModSystem : ModSystem
         _sapi.Logger.Notification("[VintageAtlas] Initialization complete");
     }
 
+    private ChunkChangeTracker? _chunkChangeTracker;
+    private DynamicTileGenerator? _tileGenerator;
+
     private void SetupLiveServer()
     {
         if (_sapi == null || _config == null || _mapExporter == null) return;
@@ -99,6 +104,12 @@ public class VintageAtlasModSystem : ModSystem
             
             // Initialize data collector
             _dataCollector = new DataCollector(_sapi);
+            
+            // Initialize chunk change tracker for dynamic updates
+            _chunkChangeTracker = new ChunkChangeTracker(_sapi);
+            
+            // Initialize dynamic tile generator
+            _tileGenerator = new DynamicTileGenerator(_sapi, _config);
             
             // Initialize historical tracker if enabled
             if (_config.EnableHistoricalTracking)
@@ -122,6 +133,9 @@ public class VintageAtlasModSystem : ModSystem
             var statusController = new StatusController(_sapi, _dataCollector);
             var configController = new ConfigController(_sapi, _config, _mapExporter);
             var historicalController = new HistoricalController(_sapi, _historicalTracker);
+            var geoJsonController = new GeoJsonController(_sapi, _config);
+            var mapConfigController = new MapConfigController(_sapi, _config);
+            var tileController = new TileController(_sapi, _config, _tileGenerator);
             
             var router = new RequestRouter(
                 _sapi,
@@ -129,6 +143,9 @@ public class VintageAtlasModSystem : ModSystem
                 statusController,
                 configController,
                 historicalController,
+                geoJsonController,
+                mapConfigController,
+                tileController,
                 staticFileServer
             );
             
@@ -140,6 +157,8 @@ public class VintageAtlasModSystem : ModSystem
             
             // Register shutdown handler
             _sapi.Event.ServerRunPhase(EnumServerRunPhase.Shutdown, OnShutdown);
+            
+            _sapi.Logger.Notification("[VintageAtlas] Live server ready with dynamic tile generation");
         }
         catch (Exception ex)
         {
@@ -223,7 +242,36 @@ public class VintageAtlasModSystem : ModSystem
             _historicalTracker.OnGameTick(dt);
         }
         
-        // Auto-export map data if enabled and interval has passed
+        // Check for modified chunks and regenerate tiles dynamically
+        if (_chunkChangeTracker != null && _tileGenerator != null && _chunkChangeTracker.ModifiedChunkCount > 0)
+        {
+            // Regenerate tiles for modified chunks every 30 seconds
+            var currentTime = _sapi.World.ElapsedMilliseconds;
+            if ((currentTime - _lastMapExport) >= 30000) // 30 seconds
+            {
+                _lastMapExport = currentTime;
+                
+                var modifiedChunks = _chunkChangeTracker.GetAllModifiedChunks().Keys.ToList();
+                if (modifiedChunks.Count > 0)
+                {
+                    _sapi.Logger.Notification($"[VintageAtlas] Regenerating {modifiedChunks.Count} modified chunk tiles");
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await _tileGenerator.RegenerateTilesForChunksAsync(modifiedChunks);
+                            _chunkChangeTracker.ClearAllChanges();
+                        }
+                        catch (Exception ex)
+                        {
+                            _sapi.Logger.Error($"[VintageAtlas] Failed to regenerate tiles: {ex.Message}");
+                        }
+                    });
+                }
+            }
+        }
+        
+        // Auto-export full map data if enabled and interval has passed (fallback/full regeneration)
         if (_config.AutoExportMap && _config.EnableLiveServer && _mapExporter != null)
         {
             var currentTime = _sapi.World.ElapsedMilliseconds;
@@ -254,6 +302,7 @@ public class VintageAtlasModSystem : ModSystem
         
         _webServer?.Dispose();
         _historicalTracker?.Dispose();
+        _chunkChangeTracker?.Dispose();
         
         _sapi?.Logger.Notification("[VintageAtlas] Shutdown complete");
     }
@@ -295,6 +344,7 @@ public class VintageAtlasModSystem : ModSystem
     {
         _webServer?.Dispose();
         _historicalTracker?.Dispose();
+        _chunkChangeTracker?.Dispose();
         base.Dispose();
     }
 }

@@ -70,11 +70,22 @@
           fi
 
           echo ""
-          echo "📋 Available commands:"
+          echo "📋 Build commands:"
           echo "  build-vintageatlas       - Build the mod (Release)"
           echo "  build-vintageatlas-debug - Build the mod (Debug)"
           echo "  install-vintageatlas     - Install to VintagestoryData/Mods"
-          echo "  dotnet build             - Build manually"
+          echo ""
+          echo "🧪 Test commands:"
+          echo "  quick-test               - Build and start test server"
+          echo "  test-server              - Start server with test data"
+          echo "  test-client              - Launch client to connect"
+          echo "  test-complete            - Full test environment + browser"
+          echo ""
+          echo "💡 Testing workflow:"
+          echo "  Terminal 1: quick-test      (or test-server)"
+          echo "  Terminal 2: test-client"
+          echo "  In game:    /atlas export"
+          echo "  Browser:    http://localhost:42422/"
           echo ""
           echo "📖 Documentation:"
           echo "  README.md                - Repository overview"
@@ -97,7 +108,34 @@
             exit 1
           fi
 
+          # Build the Vue.js frontend first
+          if [ -d "VintageAtlas/frontend" ]; then
+            echo ""
+            echo "🎨 Building Vue.js frontend..."
+            cd VintageAtlas/frontend
+            
+            # Check if node_modules exists
+            if [ ! -d "node_modules" ]; then
+              echo "📦 Installing frontend dependencies..."
+              ${pkgs.nodejs}/bin/npm install
+            fi
+            
+            echo "📦 Building frontend..."
+            ${pkgs.nodejs}/bin/npm run build
+            
+            if [ $? -eq 0 ]; then
+              echo "✅ Frontend build successful!"
+            else
+              echo "❌ Frontend build failed!"
+              exit 1
+            fi
+            
+            cd ../..
+            echo ""
+          fi
+
           # Build the main project
+          echo "🔨 Building C# mod..."
           dotnet build VintageAtlas/VintageAtlas.csproj --configuration Release
 
           if [ $? -eq 0 ]; then
@@ -231,6 +269,164 @@
           echo ""
         '';
 
+        # Test server script - launches a Vintage Story server with test data
+        testServer = pkgs.writeScriptBin "test-server" ''
+          #!${pkgs.bash}/bin/bash
+          set -e
+
+          # Use absolute paths to avoid issues
+          TEST_DATA="$(realpath "$(pwd)/test_server")"
+          MOD_PATH="$(realpath "$(pwd)/VintageAtlas/bin/Release/Mods")"
+          PORT="''${VS_TEST_PORT:-42421}"  # Default test port
+
+          echo "🧪 Starting VintageAtlas Test Server..."
+          echo ""
+
+          # Check if test_server directory exists
+          if [ ! -d "$TEST_DATA" ]; then
+            echo "⚠️  Warning: test_server directory not found at: $TEST_DATA"
+            echo "Creating test server data directory..."
+            mkdir -p "$TEST_DATA"
+          fi
+
+          # Check if mod is built
+          if [ ! -d "$MOD_PATH/vintageatlas" ]; then
+            echo "❌ VintageAtlas mod not found!"
+            echo "Please run 'build-vintageatlas' first."
+            exit 1
+          fi
+
+          echo "📂 Test Data: $TEST_DATA"
+          echo "🔌 Server Port: $PORT"
+          echo "📦 Mod Path: $MOD_PATH"
+          echo ""
+          echo "🌐 Web Interface will be available at:"
+          echo "   http://localhost:$((PORT + 1))/"
+          echo ""
+          echo "📋 Server Commands:"
+          echo "   /atlas export  - Generate map"
+          echo "   /atlas status  - Check mod status"
+          echo "   /help atlas    - Show all commands"
+          echo ""
+          echo "Press Ctrl+C to stop the server"
+          echo "─────────────────────────────────────────────────────"
+          echo ""
+
+          # Ensure Saves directory has proper permissions
+          chmod -R u+rw "$TEST_DATA/Saves" 2>/dev/null || true
+          
+          # Launch server with custom data path and mod path
+          echo "Starting server with:"
+          echo "  dataPath: $TEST_DATA"
+          echo "  modPath: $MOD_PATH"
+          echo ""
+          
+          ${vintageStory}/bin/vintagestory-server \
+            --dataPath="$TEST_DATA" \
+            --addModPath="$MOD_PATH" \
+            --port=$PORT \
+            --maxclients=4
+        '';
+
+        # Test client script - launches a client to connect to test server
+        testClient = pkgs.writeScriptBin "test-client" ''
+          #!${pkgs.bash}/bin/bash
+
+          PORT="''${VS_TEST_PORT:-42421}"
+          HOST="''${VS_TEST_HOST:-localhost}"
+
+          echo "🎮 Launching Vintage Story Client (Test Mode)..."
+          echo ""
+          echo "🔗 Connecting to: $HOST:$PORT"
+          echo ""
+          echo "💡 Manual connection:"
+          echo "   1. Click 'Multiplayer'"
+          echo "   2. Enter server: $HOST:$PORT"
+          echo "   3. Join and test VintageAtlas features"
+          echo ""
+          echo "🌐 After joining, open browser:"
+          echo "   http://localhost:$((PORT + 1))/"
+          echo ""
+
+          # Launch client
+          ${vintageStory}/bin/vintagestory
+        '';
+
+        # Complete test environment - server + browser
+        testComplete = pkgs.writeScriptBin "test-complete" ''
+          #!${pkgs.bash}/bin/bash
+
+          PORT="''${VS_TEST_PORT:-42421}"
+          WEB_PORT=$((PORT + 1))
+
+          echo "╔════════════════════════════════════════════════════════════════╗"
+          echo "║   VintageAtlas - Complete Test Environment                    ║"
+          echo "╚════════════════════════════════════════════════════════════════╝"
+          echo ""
+          echo "🚀 This will:"
+          echo "   1. Start a test server on port $PORT"
+          echo "   2. Open the web interface at http://localhost:$WEB_PORT"
+          echo ""
+          echo "📋 Test Steps:"
+          echo "   1. Wait for server to start"
+          echo "   2. Connect with 'test-client' in another terminal"
+          echo "   3. Run '/atlas export' in game"
+          echo "   4. Check web interface for map"
+          echo ""
+          echo "Press Enter to continue, or Ctrl+C to cancel..."
+          read
+
+          # Start server in background
+          echo "🖥️  Starting test server..."
+          test-server &
+          SERVER_PID=$!
+
+          # Wait a bit for server to start
+          sleep 5
+
+          # Open browser
+          echo "🌐 Opening web interface..."
+          ${pkgs.xdg-utils}/bin/xdg-open "http://localhost:$WEB_PORT" 2>/dev/null || \
+            echo "   → http://localhost:$WEB_PORT"
+
+          echo ""
+          echo "✅ Test environment running!"
+          echo ""
+          echo "📋 Next steps:"
+          echo "   • In another terminal: test-client"
+          echo "   • In game: /atlas export"
+          echo "   • Check browser for map updates"
+          echo ""
+          echo "Press Ctrl+C to stop everything"
+
+          # Wait for Ctrl+C
+          trap 'echo ""; echo "[STOP] Stopping test server..."; kill $SERVER_PID 2>/dev/null; exit 0' INT
+          wait $SERVER_PID
+        '';
+
+        # Quick test - build, install to test, and start
+        quickTest = pkgs.writeScriptBin "quick-test" ''
+          #!${pkgs.bash}/bin/bash
+          set -e
+
+          echo "⚡ Quick Test - Building and Starting..."
+          echo ""
+
+          # Build
+          echo "1️⃣  Building VintageAtlas..."
+          build-vintageatlas || exit 1
+
+          echo ""
+          echo "2️⃣  Starting test server..."
+          echo ""
+          echo "💡 In another terminal, run: test-client"
+          echo ""
+          sleep 2
+
+          # Start server
+          test-server
+        '';
+
       in
       {
         devShells.default = pkgs.mkShell {
@@ -248,12 +444,17 @@
             # Development Tools
             omnisharp-roslyn # C# language server for LSP
 
+            # Node.js for frontend development
+            nodejs
+            nodePackages.npm
+
             # General Development Utilities
             git
             curl
             wget
             unzip
             zip
+            xdg-utils # For opening browser in test-complete
 
             # Code Quality Tools
             nixpkgs-fmt # For formatting nix files
@@ -264,6 +465,12 @@
             buildVintageAtlasDebug
             packageVintageAtlas
             installVintageAtlas
+            
+            # Test Scripts
+            testServer
+            testClient
+            testComplete
+            quickTest
           ];
 
           # Environment variables that persist in the shell
@@ -278,7 +485,11 @@
             buildVintageAtlas 
             buildVintageAtlasDebug
             packageVintageAtlas
-            installVintageAtlas;
+            installVintageAtlas
+            testServer
+            testClient
+            testComplete
+            quickTest;
           
           # Default package - show setup info when running nix run
           default = setupVintageAtlas;

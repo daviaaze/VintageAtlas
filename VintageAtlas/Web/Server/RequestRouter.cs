@@ -18,6 +18,9 @@ public class RequestRouter
     private readonly StatusController _statusController;
     private readonly ConfigController _configController;
     private readonly HistoricalController _historicalController;
+    private readonly GeoJsonController _geoJsonController;
+    private readonly MapConfigController _mapConfigController;
+    private readonly TileController _tileController;
     private readonly StaticFileServer _staticFileServer;
 
     public RequestRouter(
@@ -26,6 +29,9 @@ public class RequestRouter
         StatusController statusController,
         ConfigController configController,
         HistoricalController historicalController,
+        GeoJsonController geoJsonController,
+        MapConfigController mapConfigController,
+        TileController tileController,
         StaticFileServer staticFileServer)
     {
         _sapi = sapi;
@@ -33,12 +39,22 @@ public class RequestRouter
         _statusController = statusController;
         _configController = configController;
         _historicalController = historicalController;
+        _geoJsonController = geoJsonController;
+        _mapConfigController = mapConfigController;
+        _tileController = tileController;
         _staticFileServer = staticFileServer;
     }
 
     public async Task RouteRequest(HttpListenerContext context)
     {
         var path = context.Request.Url?.AbsolutePath ?? "/";
+        
+        // Route tile requests (with caching)
+        if (TileController.IsTilePath(path))
+        {
+            await _tileController.ServeTile(context, path);
+            return;
+        }
         
         // Route API requests
         if (path.StartsWith("/api/"))
@@ -129,6 +145,44 @@ public class RequestRouter
         if (apiPath == "stats" || apiPath == "stats/")
         {
             await _historicalController.ServeStats(context);
+            return;
+        }
+
+        // Map configuration endpoints
+        if (apiPath.StartsWith("map/config") || apiPath == "map-config")
+        {
+            await _mapConfigController.ServeMapConfig(context);
+            return;
+        }
+
+        if (apiPath.StartsWith("map/extent") || apiPath == "map-extent")
+        {
+            await _mapConfigController.ServeWorldExtent(context);
+            return;
+        }
+
+        // GeoJSON endpoints
+        if (apiPath.StartsWith("geojson/signs") || apiPath == "signs.geojson")
+        {
+            await _geoJsonController.ServeSigns(context);
+            return;
+        }
+
+        if (apiPath.StartsWith("geojson/signposts") || apiPath == "signposts.geojson")
+        {
+            await _geoJsonController.ServeSignPosts(context);
+            return;
+        }
+
+        if (apiPath.StartsWith("geojson/traders") || apiPath == "traders.geojson")
+        {
+            await _geoJsonController.ServeTraders(context);
+            return;
+        }
+
+        if (apiPath.StartsWith("geojson/translocators") || apiPath == "translocators.geojson")
+        {
+            await _geoJsonController.ServeTranslocators(context);
             return;
         }
 

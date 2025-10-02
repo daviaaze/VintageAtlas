@@ -38,4 +38,10 @@ archive/
 # Mod config (user-specific)
 ModConfig/
 VintagestoryData/
+test_server/
 
+# Built Vue.js frontend (keep source in frontend/, built output ignored)
+VintageAtlas/html/index.html
+VintageAtlas/html/assets/
+VintageAtlas/html/vite.svg
+# Keep: css/, data/, webfonts/ (shared static resources)
