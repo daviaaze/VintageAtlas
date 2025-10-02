@@ -186,6 +186,12 @@ public class RequestRouter
             return;
         }
 
+        if (apiPath.StartsWith("geojson/chunks") || apiPath == "chunks.geojson")
+        {
+            await _geoJsonController.ServeChunks(context);
+            return;
+        }
+
         // API endpoint not found
         await ServeError(context, "API endpoint not found", 404);
     }

@@ -23,7 +23,7 @@ public static class ConfigValidator
         }
         else if (config.OutputDirectory == GamePaths.DataPath)
         {
-            errors.Add("OutputDirectory cannot be the data folder - please specify a subfolder");
+            errors.Add("OutputDirectory cannot be the root data folder - please specify a subfolder (e.g., ModData/VintageAtlas)");
         }
 
         // Tile size validation
@@ -105,7 +105,7 @@ public static class ConfigValidator
         // Auto-fix tile size to nearest valid value
         if (config.TileSize % 32 != 0)
         {
-            config.TileSize = (config.TileSize / 32) * 32;
+            config.TileSize = config.TileSize / 32 * 32;
             if (config.TileSize < 32) config.TileSize = 32;
         }
 

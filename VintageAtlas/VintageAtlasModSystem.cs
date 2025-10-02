@@ -93,6 +93,8 @@ public class VintageAtlasModSystem : ModSystem
 
     private ChunkChangeTracker? _chunkChangeTracker;
     private DynamicTileGenerator? _tileGenerator;
+    private TileGenerationState? _tileState;
+    private BackgroundTileService? _backgroundTileService;
 
     private void SetupLiveServer()
     {
@@ -110,6 +112,24 @@ public class VintageAtlasModSystem : ModSystem
             
             // Initialize dynamic tile generator
             _tileGenerator = new DynamicTileGenerator(_sapi, _config);
+            
+            // Initialize tile generation state database
+            _tileState = new TileGenerationState(_sapi, _config.OutputDirectory);
+            
+            // Initialize background tile generation service
+            _backgroundTileService = new BackgroundTileService(
+                _sapi, 
+                _config, 
+                _tileState, 
+                _tileGenerator, 
+                _chunkChangeTracker
+            );
+            
+            // IMPROVED: Register as async server system (proper Vintage Story API integration)
+            _sapi.Server.AddServerThread("tile_service", _backgroundTileService);
+            _sapi.Logger.Debug("[VintageAtlas] Background tile service registered as async system");
+            
+            _backgroundTileService.Start();
             
             // Initialize historical tracker if enabled
             if (_config.EnableHistoricalTracking)
@@ -158,7 +178,7 @@ public class VintageAtlasModSystem : ModSystem
             // Register shutdown handler
             _sapi.Event.ServerRunPhase(EnumServerRunPhase.Shutdown, OnShutdown);
             
-            _sapi.Logger.Notification("[VintageAtlas] Live server ready with dynamic tile generation");
+            _sapi.Logger.Notification("[VintageAtlas] Live server ready with background tile generation");
         }
         catch (Exception ex)
         {
@@ -171,65 +191,20 @@ public class VintageAtlasModSystem : ModSystem
     {
         if (_config == null || _sapi == null) return null;
         
-        // Primary location: OutputDirectory/html (where exports and data go)
-        var outputHtml = Path.Combine(_config.OutputDirectory, "html");
+        // Serve HTML directly from the mod's bundled html directory
+        // No need to copy - static files are served from the mod
+        var modHtml = Path.Combine(Path.GetDirectoryName(GetType().Assembly.Location) ?? "", "html");
         
-        // If OutputDirectory/html doesn't exist, copy HTML files from mod
-        if (!Directory.Exists(outputHtml) || !File.Exists(Path.Combine(outputHtml, "index.html")))
+        if (Directory.Exists(modHtml) && File.Exists(Path.Combine(modHtml, "index.html")))
         {
-            var modHtml = Path.Combine(Path.GetDirectoryName(GetType().Assembly.Location) ?? "", "html");
-            if (Directory.Exists(modHtml))
-            {
-                _sapi.Logger.Notification($"[VintageAtlas] Copying HTML files from mod to output directory...");
-                _sapi.Logger.Debug($"[VintageAtlas] Source: {modHtml}");
-                _sapi.Logger.Debug($"[VintageAtlas] Target: {outputHtml}");
-                
-                try
-                {
-                    CopyDirectory(modHtml, outputHtml);
-                    _sapi.Logger.Notification("[VintageAtlas] HTML files copied successfully");
-                }
-                catch (Exception ex)
-                {
-                    _sapi.Logger.Error($"[VintageAtlas] Failed to copy HTML files: {ex.Message}");
-                }
-            }
+            _sapi.Logger.Notification($"[VintageAtlas] Serving static files from mod directory: {modHtml}");
+            _sapi.Logger.Notification($"[VintageAtlas] Generated data will be stored in: {_config.OutputDirectory}");
+            return modHtml;
         }
         
-        // Always use OutputDirectory/html for web root
-        if (Directory.Exists(outputHtml) && File.Exists(Path.Combine(outputHtml, "index.html")))
-        {
-            _sapi.Logger.Notification($"[VintageAtlas] Using web root: {outputHtml}");
-            return outputHtml;
-        }
-        
-        _sapi.Logger.Error($"[VintageAtlas] Could not setup web root at: {outputHtml}");
+        _sapi.Logger.Error($"[VintageAtlas] Could not find HTML files in mod directory: {modHtml}");
+        _sapi.Logger.Error("[VintageAtlas] Please ensure the mod was built correctly with embedded HTML files.");
         return null;
-    }
-    
-    private void CopyDirectory(string sourceDir, string targetDir)
-    {
-        Directory.CreateDirectory(targetDir);
-        
-        // Copy all files
-        foreach (var file in Directory.GetFiles(sourceDir))
-        {
-            var fileName = Path.GetFileName(file);
-            var targetFile = Path.Combine(targetDir, fileName);
-            File.Copy(file, targetFile, overwrite: true);
-        }
-        
-        // Copy all subdirectories
-        foreach (var subDir in Directory.GetDirectories(sourceDir))
-        {
-            var dirName = Path.GetFileName(subDir);
-            
-            // Skip the data directory to avoid overwriting exports
-            if (dirName == "data") continue;
-            
-            var targetSubDir = Path.Combine(targetDir, dirName);
-            CopyDirectory(subDir, targetSubDir);
-        }
     }
 
     private void OnGameTick(float dt)
@@ -242,52 +217,25 @@ public class VintageAtlasModSystem : ModSystem
             _historicalTracker.OnGameTick(dt);
         }
         
-        // Check for modified chunks and regenerate tiles dynamically
-        if (_chunkChangeTracker != null && _tileGenerator != null && _chunkChangeTracker.ModifiedChunkCount > 0)
-        {
-            // Regenerate tiles for modified chunks every 30 seconds
-            var currentTime = _sapi.World.ElapsedMilliseconds;
-            if ((currentTime - _lastMapExport) >= 30000) // 30 seconds
-            {
-                _lastMapExport = currentTime;
-                
-                var modifiedChunks = _chunkChangeTracker.GetAllModifiedChunks().Keys.ToList();
-                if (modifiedChunks.Count > 0)
-                {
-                    _sapi.Logger.Notification($"[VintageAtlas] Regenerating {modifiedChunks.Count} modified chunk tiles");
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            await _tileGenerator.RegenerateTilesForChunksAsync(modifiedChunks);
-                            _chunkChangeTracker.ClearAllChanges();
-                        }
-                        catch (Exception ex)
-                        {
-                            _sapi.Logger.Error($"[VintageAtlas] Failed to regenerate tiles: {ex.Message}");
-                        }
-                    });
-                }
-            }
-        }
+        // Note: Tile regeneration is now handled by BackgroundTileService
+        // It runs in a separate thread and doesn't block the game thread
         
-        // Auto-export full map data if enabled and interval has passed (fallback/full regeneration)
-        if (_config.AutoExportMap && _config.EnableLiveServer && _mapExporter != null)
-        {
-            var currentTime = _sapi.World.ElapsedMilliseconds;
-            if ((currentTime - _lastMapExport) >= _config.MapExportIntervalMs)
-            {
-                _lastMapExport = currentTime;
-                _mapExporter.StartExport();
-            }
-        }
+        // Auto-export full map data if enabled and interval has passed (optional full regeneration)
+        if (!_config.AutoExportMap || !_config.EnableLiveServer || _mapExporter == null) return;
+        
+        var currentTime = _sapi.World.ElapsedMilliseconds;
+        
+        if (currentTime - _lastMapExport < _config.MapExportIntervalMs) return;
+        
+        _lastMapExport = currentTime;
+        _mapExporter.StartExport();
     }
 
     private void OnPlayerDeath(IServerPlayer byPlayer, DamageSource damageSource)
     {
         if (_historicalTracker == null) return;
         
-        string? source = damageSource?.Type.ToString();
+        var source = damageSource?.Type.ToString();
         if (damageSource?.SourceEntity != null)
         {
             source = damageSource.SourceEntity.Code?.ToString() ?? source;
@@ -300,6 +248,8 @@ public class VintageAtlasModSystem : ModSystem
     {
         _sapi?.Logger.Notification("[VintageAtlas] Shutting down...");
         
+        _backgroundTileService?.Stop();
+        _tileState?.Dispose();
         _webServer?.Dispose();
         _historicalTracker?.Dispose();
         _chunkChangeTracker?.Dispose();
@@ -327,14 +277,18 @@ public class VintageAtlasModSystem : ModSystem
         {
             _sapi.Logger.Warning("[VintageAtlas] No configuration found, creating default config");
 
+            // Use ModData directory for all VintageAtlas data
+            var modDataPath = Path.Combine(GamePaths.DataPath, "ModData", "VintageAtlas");
+            
             config = new ModConfig
             {
                 Mode = ImageMode.MedievalStyleWithHillShading,
-                OutputDirectory = Path.Combine(GamePaths.DataPath, "vintageatlas")
+                OutputDirectory = modDataPath
             };
             
             _sapi.StoreModConfig(config, "VintageAtlasConfig.json");
             _sapi.Logger.Notification($"[VintageAtlas] Created default config at: {Path.Combine(GamePaths.ModConfig, "VintageAtlasConfig.json")}");
+            _sapi.Logger.Notification($"[VintageAtlas] Data will be stored in: {modDataPath}");
         }
 
         return config;
@@ -342,6 +296,8 @@ public class VintageAtlasModSystem : ModSystem
 
     public override void Dispose()
     {
+        _backgroundTileService?.Dispose();
+        _tileState?.Dispose();
         _webServer?.Dispose();
         _historicalTracker?.Dispose();
         _chunkChangeTracker?.Dispose();

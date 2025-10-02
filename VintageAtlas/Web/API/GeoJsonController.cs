@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
@@ -20,7 +21,8 @@ using VintageAtlas.GeoJson.Translocator;
 namespace VintageAtlas.Web.API;
 
 /// <summary>
-/// Provides GeoJSON data dynamically via API instead of static files
+/// Provides GeoJSON data dynamically via API with efficient caching
+/// Scans loaded chunks in memory to find signs, signposts, traders, and translocators
 /// </summary>
 public class GeoJsonController
 {
@@ -28,16 +30,27 @@ public class GeoJsonController
     private readonly ModConfig _config;
     private readonly JsonSerializerSettings _jsonSettings;
     
-    // Cache GeoJSON data with timestamps
+    // Cache GeoJSON data with timestamps (in milliseconds)
     private SingGeoJson? _cachedSigns;
     private SignPostGeoJson? _cachedSignPosts;
     private TraderGeoJson? _cachedTraders;
     private TranslocatorGeoJson? _cachedTranslocators;
+    private ChunkversionGeoJson? _cachedChunks;
     private long _lastSignUpdate;
     private long _lastTraderUpdate;
     private long _lastTranslocatorUpdate;
+    private long _lastChunkUpdate;
     
     private readonly object _cacheLock = new();
+    
+    // Cache duration constants
+    private const int SIGN_CACHE_MS = 300000; // 5 minutes - signs change rarely
+    private const int TRADER_CACHE_MS = 60000; // 1 minute - traders can move/spawn
+    private const int TRANSLOCATOR_CACHE_MS = 120000; // 2 minutes - translocators are semi-static
+    private const int CHUNK_CACHE_MS = 600000; // 10 minutes - chunks change very rarely
+    
+    // Scan radius in chunks around players
+    private const int SCAN_RADIUS_CHUNKS = 16; // ~512 blocks radius (16 * 32)
 
     public GeoJsonController(ICoreServerAPI sapi, ModConfig config)
     {
@@ -176,32 +189,83 @@ public class GeoJsonController
         }
     }
 
-    private Task<SingGeoJson> GetSignsGeoJsonAsync()
+    /// <summary>
+    /// Get chunk boundaries as GeoJSON
+    /// </summary>
+    public async Task ServeChunks(HttpListenerContext context)
+    {
+        try
+        {
+            var ifNoneMatch = context.Request.Headers["If-None-Match"];
+            var geoJson = await GetChunksGeoJsonAsync();
+            
+            var json = JsonConvert.SerializeObject(geoJson, _jsonSettings);
+            var etag = GenerateETag(json);
+            
+            if (ifNoneMatch == etag)
+            {
+                context.Response.StatusCode = 304;
+                context.Response.Headers.Add("ETag", etag);
+                context.Response.Close();
+                return;
+            }
+            
+            await ServeGeoJson(context, json, etag);
+        }
+        catch (Exception ex)
+        {
+            _sapi.Logger.Error($"[VintageAtlas] Error serving chunks GeoJSON: {ex.Message}");
+            await ServeError(context, "Failed to generate chunks data", 500);
+        }
+    }
+
+    private async Task<SingGeoJson> GetSignsGeoJsonAsync()
     {
         var now = _sapi.World.ElapsedMilliseconds;
         
         lock (_cacheLock)
         {
-            // Cache for 30 seconds
-            if (_cachedSigns != null && (now - _lastSignUpdate) < 30000)
+            // Return cached data if still valid
+            if (_cachedSigns != null && now - _lastSignUpdate < SIGN_CACHE_MS)
             {
-                return Task.FromResult(_cachedSigns);
+                return _cachedSigns;
             }
         }
 
-        // Generate fresh data
-        // Note: Live sign data would require scanning all loaded chunks which is expensive.
-        // Signs should be loaded from static exports generated via /atlas export
-        // This endpoint returns empty for now - use static geojson files instead
+        // Scan for signs asynchronously
         var signs = new SingGeoJson();
+        var signPosts = new SignPostGeoJson();
+        
+        await Task.Run(() =>
+        {
+            try
+            {
+                // Get chunks to scan (around players and spawn)
+                var chunksToScan = GetChunksToScan();
+                
+                _sapi.Logger.Debug($"[VintageAtlas] Scanning {chunksToScan.Count} chunks for signs");
+                
+                foreach (var chunkPos in chunksToScan)
+                {
+                    ScanChunkForSigns(chunkPos, signs, signPosts);
+                }
+                
+                _sapi.Logger.Debug($"[VintageAtlas] Found {signs.Features.Count} signs and {signPosts.Features.Count} signposts");
+            }
+            catch (Exception ex)
+            {
+                _sapi.Logger.Warning($"[VintageAtlas] Error scanning for signs: {ex.Message}");
+            }
+        });
 
         lock (_cacheLock)
         {
             _cachedSigns = signs;
+            _cachedSignPosts = signPosts;
             _lastSignUpdate = now;
         }
 
-        return Task.FromResult(signs);
+        return signs;
     }
 
     private Task<SignPostGeoJson> GetSignPostsGeoJsonAsync()
@@ -210,23 +274,20 @@ public class GeoJsonController
         
         lock (_cacheLock)
         {
-            if (_cachedSignPosts != null && (now - _lastSignUpdate) < 30000)
+            // Return cached data if still valid
+            if (_cachedSignPosts != null && now - _lastSignUpdate < SIGN_CACHE_MS)
             {
                 return Task.FromResult(_cachedSignPosts);
             }
         }
 
-        var signPosts = new SignPostGeoJson();
-        // Note: Live signpost data would require scanning all loaded chunks which is expensive.
-        // Signposts should be loaded from static exports generated via /atlas export
+        // Signs and signposts are cached together, so trigger sign update
+        GetSignsGeoJsonAsync().Wait();
 
         lock (_cacheLock)
         {
-            _cachedSignPosts = signPosts;
-            _lastSignUpdate = now;
+            return Task.FromResult(_cachedSignPosts ?? new SignPostGeoJson());
         }
-
-        return Task.FromResult(signPosts);
     }
 
     private async Task<TraderGeoJson> GetTradersGeoJsonAsync()
@@ -235,7 +296,7 @@ public class GeoJsonController
         
         lock (_cacheLock)
         {
-            if (_cachedTraders != null && (now - _lastTraderUpdate) < 60000) // Cache for 1 minute
+            if (_cachedTraders != null && now - _lastTraderUpdate < TRADER_CACHE_MS)
             {
                 return _cachedTraders;
             }
@@ -245,10 +306,12 @@ public class GeoJsonController
         
         await Task.Run(() =>
         {
-            // Get all loaded entities
-            foreach (var entity in _sapi.World.LoadedEntities.Values)
+            try
             {
-                if (entity is EntityTrader trader)
+                // Get all loaded entities and filter for traders
+                foreach (var entity in _sapi.World.LoadedEntities.Values)
+                {
+                    if (entity is EntityTrader trader)
                 {
                     var feature = CreateTraderFeature(trader);
                     if (feature != null)
@@ -256,6 +319,13 @@ public class GeoJsonController
                         traders.Features.Add(feature);
                     }
                 }
+                }
+                
+                _sapi.Logger.Debug($"[VintageAtlas] Found {traders.Features.Count} traders");
+            }
+            catch (Exception ex)
+            {
+                _sapi.Logger.Warning($"[VintageAtlas] Error scanning for traders: {ex.Message}");
             }
         });
 
@@ -268,21 +338,42 @@ public class GeoJsonController
         return traders;
     }
 
-    private Task<TranslocatorGeoJson> GetTranslocatorsGeoJsonAsync()
+    private async Task<TranslocatorGeoJson> GetTranslocatorsGeoJsonAsync()
     {
         var now = _sapi.World.ElapsedMilliseconds;
         
         lock (_cacheLock)
         {
-            if (_cachedTranslocators != null && (now - _lastTranslocatorUpdate) < 60000)
+            if (_cachedTranslocators != null && now - _lastTranslocatorUpdate < TRANSLOCATOR_CACHE_MS)
             {
-                return Task.FromResult(_cachedTranslocators);
+                return _cachedTranslocators;
             }
         }
 
         var translocators = new TranslocatorGeoJson();
-        // Note: Live translocator data would require scanning all loaded chunks which is expensive.
-        // Translocators should be loaded from static exports generated via /atlas export
+        
+        await Task.Run(() =>
+        {
+            try
+            {
+                // Get chunks to scan (around players and spawn)
+                var chunksToScan = GetChunksToScan();
+                var processedPairs = new HashSet<string>();
+                
+                _sapi.Logger.Debug($"[VintageAtlas] Scanning {chunksToScan.Count} chunks for translocators");
+                
+                foreach (var chunkPos in chunksToScan)
+                {
+                    ScanChunkForTranslocators(chunkPos, translocators, processedPairs);
+                }
+                
+                _sapi.Logger.Debug($"[VintageAtlas] Found {translocators.Features.Count} translocators");
+            }
+            catch (Exception ex)
+            {
+                _sapi.Logger.Warning($"[VintageAtlas] Error scanning for translocators: {ex.Message}");
+            }
+        });
 
         lock (_cacheLock)
         {
@@ -290,7 +381,224 @@ public class GeoJsonController
             _lastTranslocatorUpdate = now;
         }
 
-        return Task.FromResult(translocators);
+        return translocators;
+    }
+
+    private async Task<ChunkversionGeoJson> GetChunksGeoJsonAsync()
+    {
+        var now = _sapi.World.ElapsedMilliseconds;
+        
+        lock (_cacheLock)
+        {
+            if (_cachedChunks != null && now - _lastChunkUpdate < CHUNK_CACHE_MS)
+            {
+                return _cachedChunks;
+            }
+        }
+
+        var chunks = new ChunkversionGeoJson { Name = "chunks" };
+        
+        await Task.Run(() =>
+        {
+            try
+            {
+                // Get chunks to visualize (around players and spawn)
+                var chunksToVisualize = GetChunksToScan();
+                
+                _sapi.Logger.Debug($"[VintageAtlas] Generating boundaries for {chunksToVisualize.Count} chunks");
+                
+                foreach (var chunkPos in chunksToVisualize)
+                {
+                    var feature = CreateChunkBoundaryFeature(chunkPos);
+                    if (feature != null)
+                    {
+                        chunks.Features.Add(feature);
+                    }
+                }
+                
+                _sapi.Logger.Debug($"[VintageAtlas] Generated {chunks.Features.Count} chunk boundaries");
+            }
+            catch (Exception ex)
+            {
+                _sapi.Logger.Warning($"[VintageAtlas] Error generating chunk boundaries: {ex.Message}");
+            }
+        });
+
+        lock (_cacheLock)
+        {
+            _cachedChunks = chunks;
+            _lastChunkUpdate = now;
+        }
+
+        return chunks;
+    }
+
+    /// <summary>
+    /// Get list of chunk positions to scan (around players and spawn)
+    /// </summary>
+    private HashSet<Vec2i> GetChunksToScan()
+    {
+        var chunks = new HashSet<Vec2i>();
+        
+        // Add chunks around spawn point
+        var spawnPos = _sapi.World.DefaultSpawnPosition?.AsBlockPos;
+        if (spawnPos != null)
+        {
+            AddChunksAroundPosition(chunks, spawnPos.X, spawnPos.Z);
+        }
+        
+        // Add chunks around all online players
+        foreach (var player in _sapi.World.AllOnlinePlayers)
+        {
+            if (player?.Entity?.Pos != null)
+            {
+                var pos = player.Entity.Pos.AsBlockPos;
+                AddChunksAroundPosition(chunks, pos.X, pos.Z);
+            }
+        }
+        
+        return chunks;
+    }
+
+    /// <summary>
+    /// Add chunks in a radius around a world position
+    /// </summary>
+    private void AddChunksAroundPosition(HashSet<Vec2i> chunks, int worldX, int worldZ)
+    {
+        var centerChunkX = worldX / 32;
+        var centerChunkZ = worldZ / 32;
+        
+        for (int x = centerChunkX - SCAN_RADIUS_CHUNKS; x <= centerChunkX + SCAN_RADIUS_CHUNKS; x++)
+        {
+            for (int z = centerChunkZ - SCAN_RADIUS_CHUNKS; z <= centerChunkZ + SCAN_RADIUS_CHUNKS; z++)
+            {
+                chunks.Add(new Vec2i(x, z));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Scan a chunk for signs and signposts
+    /// </summary>
+    private void ScanChunkForSigns(Vec2i chunkPos, SingGeoJson signs, SignPostGeoJson signPosts)
+    {
+        try
+        {
+            // Scan all Y levels for this X/Z chunk column
+            int chunkSize = 32;
+            int mapSizeY = _sapi.World.BlockAccessor.MapSizeY;
+            
+            for (int chunkY = 0; chunkY < mapSizeY / chunkSize; chunkY++)
+            {
+                // Iterate through blocks in the chunk
+                for (int x = 0; x < chunkSize; x++)
+                {
+                    for (int y = 0; y < chunkSize; y++)
+                    {
+                        for (int z = 0; z < chunkSize; z++)
+                        {
+                            var worldPos = new BlockPos(
+                                chunkPos.X * chunkSize + x,
+                                chunkY * chunkSize + y,
+                                chunkPos.Y * chunkSize + z
+                            );
+                            
+                            var blockEntity = _sapi.World.BlockAccessor.GetBlockEntity(worldPos);
+                            
+                            if (blockEntity is BlockEntitySign signEntity)
+                            {
+                                var feature = CreateSignFeature(signEntity);
+                                if (feature != null)
+                                {
+                                    lock (signs)
+                                    {
+                                        signs.Features.Add(feature);
+                                    }
+                                }
+                            }
+                            else if (blockEntity is BlockEntitySignPost signPostEntity)
+                            {
+                                var features = CreateSignPostFeatures(signPostEntity);
+                                if (features.Count > 0)
+                                {
+                                    lock (signPosts)
+                                    {
+                                        signPosts.Features.AddRange(features);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _sapi.Logger.Debug($"[VintageAtlas] Error scanning chunk {chunkPos}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Scan a chunk for translocators
+    /// </summary>
+    private void ScanChunkForTranslocators(Vec2i chunkPos, TranslocatorGeoJson translocators, HashSet<string> processedPairs)
+    {
+        try
+        {
+            // Scan all Y levels for this X/Z chunk column
+            int chunkSize = 32;
+            int mapSizeY = _sapi.World.BlockAccessor.MapSizeY;
+            
+            for (int chunkY = 0; chunkY < mapSizeY / chunkSize; chunkY++)
+            {
+                // Iterate through blocks in the chunk
+                for (int x = 0; x < chunkSize; x++)
+                {
+                    for (int y = 0; y < chunkSize; y++)
+                    {
+                        for (int z = 0; z < chunkSize; z++)
+                        {
+                            var worldPos = new BlockPos(
+                                chunkPos.X * chunkSize + x,
+                                chunkY * chunkSize + y,
+                                chunkPos.Y * chunkSize + z
+                            );
+                            
+                            var blockEntity = _sapi.World.BlockAccessor.GetBlockEntity(worldPos);
+                            
+                            if (blockEntity is BlockEntityStaticTranslocator tlEntity && tlEntity.TargetLocation != null)
+                            {
+                                // Create unique pair ID to avoid duplicates
+                                var pairId = $"{tlEntity.Pos}:{tlEntity.TargetLocation}";
+                                var reversePairId = $"{tlEntity.TargetLocation}:{tlEntity.Pos}";
+                                
+                                lock (processedPairs)
+                                {
+                                    if (!processedPairs.Contains(pairId) && !processedPairs.Contains(reversePairId))
+                                    {
+                                        processedPairs.Add(pairId);
+                                        processedPairs.Add(reversePairId);
+                                        
+                                        var feature = CreateTranslocatorFeature(tlEntity);
+                                        if (feature != null)
+                                        {
+                                            lock (translocators)
+                                            {
+                                                translocators.Features.Add(feature);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _sapi.Logger.Debug($"[VintageAtlas] Error scanning chunk {chunkPos} for translocators: {ex.Message}");
+        }
     }
 
     private SignFeature? CreateSignFeature(BlockEntitySign signEntity)
@@ -300,14 +608,12 @@ public class GeoJsonController
         // Apply same filtering logic as Extractor
         var text = signEntity.text.Trim();
         
-        // Check for tagged signs
-        if (text.StartsWith("<AM:"))
+        // Check for tagged signs using regex (same pattern as Extractor)
+        var match = Regex.Match(text, "^<AM:(.*)>\n(.*)", RegexOptions.Singleline);
+        if (match.Success)
         {
-            var endTag = text.IndexOf('>');
-            if (endTag > 0)
-            {
-                var tag = text.Substring(4, endTag - 4).ToLowerInvariant();
-                var content = text.Substring(endTag + 1).Trim();
+            var tag = match.Groups[1].Value.ToLowerInvariant();
+            var content = match.Groups[2].Value.Trim();
                 
                 if (tag == "base" || tag == "misc" || tag == "server" || (_config.ExportCustomTaggedSigns && tag != "tl"))
                 {
@@ -315,7 +621,6 @@ public class GeoJsonController
                         new SignProperties(content, signEntity.Pos.Y, char.ToUpper(tag[0]) + tag.Substring(1)),
                         new PointGeometry(GetGeoJsonCoordinates(signEntity.Pos))
                     );
-                }
             }
         }
         else if (_config.ExportUntaggedSigns)
@@ -376,6 +681,52 @@ public class GeoJsonController
         );
     }
 
+    private ChunkVersionFeature? CreateChunkBoundaryFeature(Vec2i chunkPos)
+    {
+        try
+        {
+            const int chunkSize = 32; // Chunks are 32x32 blocks
+            
+            // Calculate world coordinates for chunk corners
+            var worldX = chunkPos.X * chunkSize;
+            var worldZ = chunkPos.Y * chunkSize;
+            
+            // Create polygon coordinates (clockwise from top-left)
+            // In GeoJSON, first and last coordinate must be the same to close the polygon
+            var corner1 = GetGeoJsonCoordinates(new BlockPos(worldX, 0, worldZ));
+            var corner2 = GetGeoJsonCoordinates(new BlockPos(worldX + chunkSize, 0, worldZ));
+            var corner3 = GetGeoJsonCoordinates(new BlockPos(worldX + chunkSize, 0, worldZ + chunkSize));
+            var corner4 = GetGeoJsonCoordinates(new BlockPos(worldX, 0, worldZ + chunkSize));
+            
+            // Create the polygon ring (outer boundary)
+            var ring = new List<List<int>>
+            {
+                corner1,
+                corner2,
+                corner3,
+                corner4,
+                corner1 // Close the polygon
+            };
+            
+            var coordinates = new List<List<List<int>>> { ring };
+            
+            var properties = new ChunkVersionProperties(
+                Color: "rgba(100, 149, 237, 0.2)", // Light blue with transparency
+                Version: $"Chunk {chunkPos.X},{chunkPos.Y}"
+            );
+            
+            return new ChunkVersionFeature(
+                properties,
+                new PolygonGeometry(coordinates)
+            );
+        }
+        catch (Exception ex)
+        {
+            _sapi.Logger.Debug($"[VintageAtlas] Error creating chunk boundary for {chunkPos}: {ex.Message}");
+            return null;
+        }
+    }
+
     private List<int> GetGeoJsonCoordinates(BlockPos pos)
     {
         var x = pos.X;
@@ -425,6 +776,7 @@ public class GeoJsonController
             _cachedSignPosts = null;
             _cachedTraders = null;
             _cachedTranslocators = null;
+            _cachedChunks = null;
         }
         
         _sapi.Logger.Debug("[VintageAtlas] GeoJSON cache invalidated");
@@ -450,4 +802,3 @@ public class GeoJsonController
         }
     }
 }
-

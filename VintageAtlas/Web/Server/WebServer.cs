@@ -36,7 +36,7 @@ public class WebServer : IDisposable
 
         try
         {
-            var port = _config.LiveServerPort ?? (_sapi.Server.Config.Port + 1);
+            var port = _config.LiveServerPort ?? _sapi.Server.Config.Port + 1;
             
             _sapi.Logger.Notification($"[VintageAtlas] Starting web server on port {port}");
             

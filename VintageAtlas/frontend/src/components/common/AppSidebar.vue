@@ -101,6 +101,20 @@
             <span class="toggle-slider"></span>
           </label>
         </div>
+        <div 
+          class="nav-item" 
+          :class="{ 'active': mapStore.layerVisibility.animals }"
+          @click="toggleLayer('animals')"
+        >
+          <span class="nav-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="4" r="2"></circle><circle cx="18" cy="8" r="2"></circle><circle cx="20" cy="16" r="2"></circle><path d="M9 10a5 5 0 0 1 5 5v3.5a3.5 3.5 0 0 1-6.84 1.045Q6.52 17.48 4.46 16.84A3.5 3.5 0 0 1 5.5 10Z"></path></svg>
+          </span>
+          <span class="nav-label">Animals</span>
+          <label class="toggle-switch">
+            <input type="checkbox" :checked="mapStore.layerVisibility.animals" @change="toggleLayer('animals')">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
       </div>
       
       <div class="nav-section online-players" v-if="serverStore.onlinePlayers.length > 0">
@@ -131,192 +145,93 @@ function toggleLayer(layer: string) {
 
 <style scoped>
 .app-sidebar {
-  width: 280px;
-  background-color: #f8f9fa;
-  border-right: 1px solid #e9ecef;
-  overflow-y: auto;
+  @apply w-[280px] bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 overflow-y-auto h-full shadow-sm;
   transition: width 0.3s;
-  height: 100%;
-  box-shadow: 1px 0 5px rgba(0, 0, 0, 0.05);
-}
-
-/* Dark mode */
-:global(html.dark) .app-sidebar {
-  background-color: #1e1e1e;
-  border-right-color: #333;
-  box-shadow: 1px 0 5px rgba(0, 0, 0, 0.2);
 }
 
 .sidebar-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  padding: 1rem 0;
+  @apply flex flex-col gap-6 py-4;
 }
 
 .nav-section {
-  padding: 0 1rem;
+  @apply px-4;
 }
 
 .nav-title {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: #adb5bd;
-  margin-bottom: 0.75rem;
-  padding-left: 0.5rem;
-  font-weight: 600;
-}
-
-:global(html.dark) .nav-title {
-  color: #6c757d;
+  @apply text-xs uppercase tracking-wide text-gray-500 dark:text-gray-500 mb-3 pl-2 font-semibold;
 }
 
 .nav-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 0.75rem;
-  border-radius: 6px;
-  cursor: pointer;
-  text-decoration: none;
-  color: #495057;
-  margin-bottom: 0.25rem;
-  transition: all 0.2s ease;
-  position: relative;
+  @apply flex items-center gap-3 px-3 py-3 rounded-md cursor-pointer no-underline text-gray-700 dark:text-gray-300 mb-1 transition-all;
 }
 
 .nav-item:hover {
-  background-color: #e9ecef;
-  color: #212529;
+  @apply bg-gray-200 dark:bg-gray-800;
 }
 
 .nav-item.router-link-active {
-  background-color: #e3f2fd;
-  color: #0d6efd;
-  font-weight: 500;
+  @apply bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium;
 }
 
 .nav-item.active {
-  color: #0d6efd;
-}
-
-:global(html.dark) .nav-item {
-  color: #ced4da;
-}
-
-:global(html.dark) .nav-item:hover {
-  background-color: #2c3032;
-}
-
-:global(html.dark) .nav-item.router-link-active {
-  background-color: #1e2f42;
-  color: #90caf9;
-}
-
-:global(html.dark) .nav-item.active {
-  color: #90caf9;
+  @apply text-blue-600 dark:text-blue-400;
 }
 
 .nav-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  color: #adb5bd;
+  @apply flex items-center justify-center w-5 h-5 text-gray-400 dark:text-gray-500;
 }
 
 .nav-item.router-link-active .nav-icon,
 .nav-item.active .nav-icon {
-  color: #0d6efd;
-}
-
-:global(html.dark) .nav-item.router-link-active .nav-icon,
-:global(html.dark) .nav-item.active .nav-icon {
-  color: #90caf9;
+  @apply text-blue-600 dark:text-blue-400;
 }
 
 .nav-label {
-  flex: 1;
-  font-size: 0.9rem;
+  @apply flex-1 text-sm;
 }
 
 .toggle-switch {
-  position: relative;
-  display: inline-block;
-  width: 36px;
-  height: 20px;
-  margin-left: auto;
+  @apply relative inline-block w-9 h-5 ml-auto;
 }
 
 .toggle-switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
+  @apply opacity-0 w-0 h-0;
 }
 
 .toggle-slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: #dee2e6;
-  transition: .4s;
-  border-radius: 34px;
+  @apply absolute cursor-pointer inset-0 bg-gray-300 dark:bg-gray-600 transition-all duration-300 rounded-full;
 }
 
 .toggle-slider:before {
-  position: absolute;
-  content: "";
-  height: 16px;
-  width: 16px;
-  left: 2px;
-  bottom: 2px;
-  background-color: white;
-  transition: .4s;
-  border-radius: 50%;
-}
-
-input:checked + .toggle-slider {
-  background-color: #0d6efd;
-}
-
-input:focus + .toggle-slider {
-  box-shadow: 0 0 1px #0d6efd;
+  @apply absolute content-[''] h-4 w-4 left-0.5 bottom-0.5 bg-white transition-all duration-300 rounded-full;
 }
 
 input:checked + .toggle-slider:before {
-  transform: translateX(16px);
+  @apply translate-x-4;
 }
 
-:global(html.dark) .toggle-slider {
-  background-color: #6c757d;
+.toggle-slider {
+  @apply bg-gray-300 dark:bg-gray-600;
 }
 
-:global(html.dark) .toggle-slider:before {
-  background-color: #f8f9fa;
+input:checked + .toggle-slider {
+  @apply bg-blue-600 dark:bg-emerald-500;
 }
 
-:global(html.dark) input:checked + .toggle-slider {
-  background-color: #0d6efd;
+input:focus + .toggle-slider {
+  @apply ring-2 ring-blue-600/20 dark:ring-emerald-500/20;
 }
 
 .player-status {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+  @apply w-2 h-2 rounded-full;
 }
 
 .player-status.online {
-  background-color: #10b981;
-  box-shadow: 0 0 5px #10b981;
+  @apply bg-emerald-500 shadow-[0_0_5px_rgb(16_185_129)];
 }
 
 .player-icon {
-  color: #10b981;
+  @apply text-emerald-500;
 }
 
 /* Responsive */

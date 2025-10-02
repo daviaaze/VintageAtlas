@@ -4,6 +4,7 @@
 import Control from 'ol/control/Control';
 import ScaleLine from 'ol/control/ScaleLine';
 import type { Map } from 'ol';
+import { formatCoordinates } from './mapConfig';
 
 /**
  * Create scale line control
@@ -136,7 +137,10 @@ export class CoordinatesControl extends Control {
     if (map) {
       map.on('pointermove', (e) => {
         const coords = e.coordinate;
-        this.coordsElement.innerHTML = `X: ${Math.round(coords[0])}, Z: ${Math.round(-coords[1])}`;
+        // Note: coords[1] is already in the correct coordinate system (flipped if relative)
+        // But OpenLayers uses Y+ going up, Vintage Story uses Z+ going down
+        // So we still need to negate it for display
+        this.coordsElement.innerHTML = formatCoordinates(coords[0], -coords[1]);
       });
     }
   }

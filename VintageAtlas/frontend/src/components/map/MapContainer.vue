@@ -36,9 +36,6 @@
       </div>
     </div>
 
-    <!-- Live controls -->
-    <LiveControls />
-    
     <!-- Live layers (these are wrapper components, actual rendering is done by OpenLayers) -->
     <PlayerLayer />
     <AnimalLayer />
@@ -76,7 +73,8 @@ import {
   defaultCenter, 
   defaultZoom, 
   minZoom, 
-  maxZoom 
+  maxZoom,
+  initializeMapConfig
 } from '@/utils/mapConfig';
 
 // Optimized layer factory
@@ -100,7 +98,6 @@ import {
 } from '@/utils/mapControls';
 
 // Live components
-import LiveControls from '@/components/live/LiveControls.vue';
 import PlayerLayer from '@/components/live/PlayerLayer.vue';
 import AnimalLayer from '@/components/live/AnimalLayer.vue';
 import SpawnMarker from '@/components/live/SpawnMarker.vue';
@@ -150,8 +147,11 @@ const {
 const showFeaturePopup = computed(() => selectedFeature.value !== null && overlayContent.value !== null);
 
 // Set up map
-onMounted(() => {
+onMounted(async () => {
   if (!mapRef.value) return;
+  
+  // Initialize map configuration from API
+  await initializeMapConfig();
   
 // Create tile layer for terrain using dynamic tile API
       // Note: Tile directories are 1-9, but OpenLayers zoom is 0-9, so we add 1
@@ -164,7 +164,7 @@ onMounted(() => {
             const z = tileCoord[0] + 1; // Adjust zoom: OL zoom 0->directory 1, etc.
             const x = tileCoord[1];
             const y = tileCoord[2];
-            return `/tiles/${z}/${x}_${-y-1}.png`; // Dynamic tile generation API
+            return `/tiles/${z}/${x}_${-y-1}.png`; // Dynamic tiles from API
           },
         }),
         visible: mapStore.layerVisibility.terrain,
@@ -435,289 +435,116 @@ async function addExamplePlayer() {
 
 <style scoped>
 .map-container {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  min-height: 400px;
-  overflow: hidden;
+  @apply relative w-full h-full min-h-[400px] overflow-hidden;
 }
 
 .map {
-  width: 100%;
-  height: 100%;
-  background-color: #e9f2fa;
+  @apply w-full h-full bg-blue-50 dark:bg-gray-800;
 }
 
 .map-controls {
-  position: absolute;
-  bottom: 20px;
-  right: 20px;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  @apply absolute bottom-5 right-5 z-10 flex flex-col gap-2.5;
 }
 
 .zoom-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  border-radius: 8px;
-  overflow: hidden;
+  @apply flex flex-col gap-px shadow-md rounded-lg overflow-hidden;
 }
 
 .zoom-btn {
-  width: 36px;
-  height: 36px;
-  background-color: white;
-  border: none;
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-  color: #495057;
+  @apply w-9 h-9 bg-white dark:bg-gray-800 border-none text-base leading-none cursor-pointer flex items-center justify-center transition-all text-gray-700 dark:text-gray-300;
 }
 
 .zoom-btn:hover {
-  background-color: #f8f9fa;
-  color: #4285f4;
+  @apply bg-gray-100 dark:bg-gray-700 text-blue-600 dark:text-blue-400;
 }
 
-/* Coordinates now displayed by OpenLayers control */
-
 .map-compass {
-  position: absolute;
-  bottom: 20px;
-  left: 20px;
-  background-color: rgba(255, 255, 255, 0.9);
-  border-radius: 50%;
-  padding: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  color: #495057;
+  @apply absolute bottom-5 left-5 bg-white/90 dark:bg-gray-800/90 rounded-full p-2 shadow-md text-gray-700 dark:text-gray-300;
 }
 
 .map-loading-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(255, 255, 255, 0.95);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
+  @apply absolute inset-0 bg-white/95 dark:bg-gray-900/95 flex items-center justify-center z-[100];
 }
 
 .loading-content {
-  text-align: center;
+  @apply text-center;
 }
 
 .spinner {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  border: 4px solid rgba(13, 110, 253, 0.1);
-  border-top-color: #0d6efd;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 16px;
+  @apply w-12 h-12 rounded-full border-4 border-blue-600/10 dark:border-blue-400/20 animate-spin mx-auto mb-4;
+  border-top-color: rgb(37 99 235 / 1);
+}
+
+:global(html.dark) .spinner {
+  border-top-color: rgb(96 165 250 / 1);
 }
 
 .loading-text {
-  font-size: 18px;
-  font-weight: 500;
-  color: #0d6efd;
+  @apply text-lg font-medium text-blue-600 dark:text-blue-400;
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
-/* Dark mode */
-:global(html.dark) .map {
-  background-color: #102a43;
-}
-
-:global(html.dark) .zoom-btn {
-  background-color: #2c2c2c;
-  color: #ced4da;
-}
-
-:global(html.dark) .zoom-btn:hover {
-  background-color: #3c3c3c;
-  color: #90caf9;
-}
-
-/* Dark mode coordinates removed - using OpenLayers control */
-
-:global(html.dark) .map-compass {
-  background-color: rgba(44, 44, 44, 0.9);
-  color: #ced4da;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
-:global(html.dark) .map-loading-overlay {
-  background-color: rgba(18, 18, 18, 0.95);
-}
-
-:global(html.dark) .spinner {
-  border-color: rgba(144, 202, 249, 0.1);
-  border-top-color: #90caf9;
-}
-
-:global(html.dark) .loading-text {
-  color: #90caf9;
-}
-
 /* Feature popup overlay */
 .feature-popup {
-  background-color: white;
-  padding: 16px;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  min-width: 200px;
-  max-width: 300px;
-  position: relative;
+  @apply bg-white dark:bg-gray-800 p-4 rounded-lg shadow-lg min-w-[200px] max-w-[300px] relative;
 }
 
 .popup-close {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  background: none;
-  border: none;
-  font-size: 24px;
-  color: #666;
-  cursor: pointer;
-  line-height: 1;
-  padding: 0;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  @apply absolute top-2 right-2 bg-transparent border-none text-2xl text-gray-600 dark:text-gray-400 cursor-pointer leading-none p-0 w-6 h-6 flex items-center justify-center transition-colors;
 }
 
 .popup-close:hover {
-  color: #333;
+  @apply text-gray-900 dark:text-gray-200;
 }
 
 .popup-title {
-  margin: 0 0 12px 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #333;
-  padding-right: 24px;
+  @apply m-0 mb-3 text-base font-semibold text-gray-900 dark:text-gray-100 pr-6;
 }
 
 .popup-content {
-  font-size: 14px;
+  @apply text-sm;
 }
 
 .popup-details p {
-  margin: 6px 0;
-  color: #495057;
+  @apply my-1.5 text-gray-700 dark:text-gray-300;
 }
 
 .popup-details strong {
-  color: #333;
+  @apply text-gray-900 dark:text-gray-100;
 }
 
-/* Dark mode for popup */
-:global(html.dark) .feature-popup {
-  background-color: #2c2c2c;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-}
-
-:global(html.dark) .popup-close {
-  color: #ced4da;
-}
-
-:global(html.dark) .popup-close:hover {
-  color: #fff;
-}
-
-:global(html.dark) .popup-title {
-  color: #e0e0e0;
-}
-
-:global(html.dark) .popup-details p {
-  color: #ced4da;
-}
-
-:global(html.dark) .popup-details strong {
-  color: #e0e0e0;
-}
-
-/* Custom controls styles - positioned bottom-right next to zoom */
+/* Custom controls styles - positioned bottom-right with zoom controls */
 :global(.screenshot-control) {
-  bottom: 20px;
-  right: 74px; /* Next to zoom controls */
-  top: auto;
+  @apply absolute bottom-[102px] right-5 !left-auto top-auto;
 }
 
 :global(.fullscreen-control) {
-  bottom: 20px;
-  right: 118px; /* Next to screenshot */
-  top: auto;
+  @apply absolute bottom-[148px] right-5 !left-auto top-auto;
 }
 
 :global(.coordinates-control) {
-  bottom: 20px;
-  right: 162px; /* Next to fullscreen */
-  top: auto;
+  @apply absolute bottom-5 left-20 right-auto top-auto;
 }
 
 :global(.screenshot-control-button),
 :global(.fullscreen-control-button) {
-  width: 36px;
-  height: 36px;
-  background-color: white;
-  border: none;
-  font-size: 18px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-  color: #495057;
-  border-radius: 4px;
+  @apply w-9 h-9 bg-white dark:bg-gray-800 border-none text-base cursor-pointer flex items-center justify-center transition-all text-gray-700 dark:text-gray-300 rounded-lg shadow-md;
 }
 
 :global(.screenshot-control-button:hover),
 :global(.fullscreen-control-button:hover) {
-  background-color: #f8f9fa;
-  color: #4285f4;
+  @apply bg-gray-100 dark:bg-gray-700 text-blue-600 dark:text-blue-400;
+}
+
+:global(.screenshot-control-button:active),
+:global(.fullscreen-control-button:active) {
+  @apply scale-95;
 }
 
 :global(.coordinates-display) {
-  background-color: white;
-  padding: 8px 12px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-family: monospace;
-  color: #495057;
-  font-weight: 600;
-}
-
-:global(html.dark .screenshot-control-button),
-:global(html.dark .fullscreen-control-button) {
-  background-color: #2c2c2c;
-  color: #ced4da;
-}
-
-:global(html.dark .screenshot-control-button:hover),
-:global(html.dark .fullscreen-control-button:hover) {
-  background-color: #3c3c3c;
-  color: #90caf9;
-}
-
-:global(html.dark .coordinates-display) {
-  background-color: #2c2c2c;
-  color: #ced4da;
+  @apply bg-white dark:bg-gray-800 px-3 py-2 rounded-lg text-xs font-mono text-gray-700 dark:text-gray-300 font-semibold shadow-md;
 }
 </style>

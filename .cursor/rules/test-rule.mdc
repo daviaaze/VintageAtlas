@@ -1,0 +1,544 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+# VintageAtlas - Cursor Rules
+
+## Project Overview
+
+VintageAtlas is a comprehensive mapping and server monitoring mod for Vintage Story, providing:
+- Dynamic web-based map generation with multiple rendering modes
+- Real-time player and entity tracking via web interface
+- Historical tracking (heatmaps, paths, statistics)
+- RESTful API for external integrations
+- Live web server with admin dashboard
+
+**Technology Stack:**
+- Backend: C# (.NET 8.0) using Vintage Story API (1.20.1+)
+- Frontend: Vue 3 + TypeScript + Vite
+- Mapping: OpenLayers
+- Development: NixOS/Nix with flake.nix
+
+**Repository:** https://github.com/daviaaze/VintageAtlas
+
+---
+
+## Development Constraints
+
+### Vintage Story API Requirements
+
+**CRITICAL:** All backend code must comply with Vintage Story's server-side mod API:
+
+1. **Mod Structure:**
+   - Must extend `ModSystem` class
+   - All initialization in `Start()`, `StartServerSide()`, etc.
+   - Proper cleanup in `Dispose()`
+   - Server-side only (`"side": "server"` in modinfo.json)
+
+2. **Threading:**
+   - Game runs on main thread - **NEVER block it**
+   - Use `api.Event.EnqueueMainThreadTask()` for game state access
+   - Background tasks must use `System.Threading.Tasks.Task`
+   - All chunk/world access must be on main thread
+
+3. **API Access:**
+   - Access game state via `ICoreServerAPI`
+   - Use `api.World`, `api.ModLoader`, `api.Event`, etc.
+   - Never cache chunk data - always request fresh
+   - Respect game's save/load lifecycle
+
+4. **Performance:**
+   - Map generation is CPU-intensive - use multi-threading wisely
+   - Chunk loading can cause lag - batch operations
+   - Large maps can be 30GB+ - optimize memory usage
+   - Tile generation should happen in background
+
+5. **Asset References:**
+   - Use `VintagestoryAPI.dll` and `VintagestoryLib.dll` via VINTAGE_STORY path
+   - Reference path set in `Directory.Build.props`
+   - Never bundle VS DLLs with mod
+
+### NixOS/Nix Development
+
+**Environment Setup:**
+- Always use `nix develop` to enter dev shell
+- VINTAGE_STORY environment variable must point to VS installation
+- If tool missing, use `nix run nixpkgs#{package-name}`
+
+**Available Commands:**
+- `build-vintageatlas` - Build release (includes frontend)
+- `build-vintageatlas-debug` - Build debug
+- `quick-test` - Build and start test server
+- `test-server` - Run test server with test_server/ data
+- `test-client` - Launch VS client
+
+**Build Process:**
+1. Frontend build: `cd VintageAtlas/frontend && npm run build`
+2. Backend build: `dotnet build --configuration Release`
+3. Output: `VintageAtlas/bin/Release/Mods/vintageatlas/`
+
+---
+
+## Project Structure
+
+```
+VintageAtlas/
+├── Core/                          # Configuration, interfaces, utilities
+│   ├── IAtlasConfig.cs           # Configuration interface
+│   ├── ConfigValidator.cs        # Validates config on load
+│   └── ...
+│
+├── Models/                        # Data transfer objects
+│   ├── PlayerStatus.cs           # Player tracking data
+│   ├── ServerStatus.cs           # Server status data
+│   └── ...
+│
+├── Export/                        # Map generation (CPU-intensive)
+│   ├── MapExporter.cs            # Orchestrates export process
+│   ├── DynamicTileGenerator.cs   # On-demand tile generation
+│   ├── Extractor.cs              # Chunk color extraction
+│   ├── BlurTool.cs               # Tile processing
+│   ├── PyramidTileDownsampler.cs # Zoom level generation
+│   └── SavegameDataLoader.cs     # Savegame access
+│
+├── Storage/                       # Persistent storage (MBTiles, etc.)
+│   └── MBTilesStorage.cs         # SQLite-based tile storage
+│
+├── Tracking/                      # Historical data tracking
+│   ├── ChunkChangeTracker.cs     # Detects chunk changes
+│   ├── HistoricalTracker.cs      # Player/entity history
+│   ├── DataCollector.cs          # Statistics collection
+│   ├── BackgroundTileService.cs  # Background tile generation
+│   └── TileGenerationState.cs    # Tracks tile generation progress
+│
+├── Web/                           # HTTP server and API
+│   ├── Server/
+│   │   ├── WebServer.cs          # HTTP server implementation
+│   │   └── RequestRouter.cs      # Routes requests to controllers
+│   └── API/
+│       ├── MapConfigController.cs # Map config endpoints
+│       └── GeoJsonController.cs   # GeoJSON marker endpoints
+│
+├── Commands/                      # Chat commands
+│   └── AtlasCommands.cs          # /atlas export, /va export
+│
+├── frontend/                      # Vue 3 + TypeScript frontend
+│   ├── src/
+│   │   ├── components/           # Vue components
+│   │   ├── services/             # API clients
+│   │   ├── utils/                # Map utilities, config
+│   │   └── App.vue               # Main app component
+│   ├── vite.config.ts            # Vite configuration
+│   └── package.json              # Frontend dependencies
+│
+├── html/                          # Static web assets (legacy)
+│   └── index.html                # Main page (uses frontend build)
+│
+├── VintageAtlasModSystem.cs      # Main mod entry point
+├── modinfo.json                  # Mod metadata
+└── VintageAtlas.csproj           # C# project file
+```
+
+### Key Design Principles
+
+1. **Separation of Concerns:**
+   - Export/ handles map generation (offline, CPU-heavy)
+   - Tracking/ handles runtime data collection
+   - Web/ handles HTTP/API (lightweight, async)
+
+2. **Thread Safety:**
+   - Map generation runs in background tasks
+   - Main thread only for game state access
+   - Web server runs on separate thread pool
+
+3. **Configuration:**
+   - Runtime config via `WebCartographerConfig.json`
+   - Can be updated via API without restart
+   - Validated on load and update
+
+---
+
+## Coding Standards
+
+### C# Backend
+
+1. **Naming:**
+   - PascalCase for classes, methods, properties
+   - camelCase for local variables, parameters
+   - Prefix interfaces with `I` (e.g., `IAtlasConfig`)
+
+2. **Error Handling:**
+   - Always log errors via `api.Logger`
+   - Graceful degradation - don't crash the game
+   - Return null or default on failure, log reason
+
+3. **Async/Threading:**
+   ```csharp
+   // GOOD: Background task for CPU-intensive work
+   Task.Run(() => {
+       // Heavy computation
+   }).ContinueWith(task => {
+       api.Event.EnqueueMainThreadTask(() => {
+           // Update game state on main thread
+       });
+   });
+   
+   // BAD: Blocking main thread
+   Thread.Sleep(5000); // NEVER do this
+   ```
+
+4. **API Usage:**
+   ```csharp
+   // GOOD: Access via server API
+   var chunk = api.World.BlockAccessor.GetChunk(chunkX, chunkY, chunkZ);
+   
+   // BAD: Direct field access or caching
+   var cachedChunk = savedChunk; // Chunks can unload!
+   ```
+
+### TypeScript Frontend
+
+1. **Naming:**
+   - PascalCase for components, types, interfaces
+   - camelCase for functions, variables
+   - UPPER_SNAKE_CASE for constants
+
+2. **Component Structure:**
+   ```vue
+   <script setup lang="ts">
+   // Imports
+   // Composables
+   // Props/Emits
+   // State
+   // Computed
+   // Methods
+   // Lifecycle hooks
+   </script>
+   
+   <template>
+     <!-- Template -->
+   </template>
+   
+   <style scoped>
+     /* Styles */
+   </style>
+   ```
+
+3. **OpenLayers Integration:**
+   - Always use TypeScript types from `ol` package
+   - Properly dispose of layers when unmounting
+   - Use reactive refs for map state
+   - Coordinate system: Web Mercator (EPSG:3857) for display
+
+4. **API Calls:**
+   ```typescript
+   // Use centralized API client
+   import { apiClient } from '@/services/api/client';
+   
+   // Handle errors gracefully
+   try {
+     const data = await apiClient.get('/api/status');
+   } catch (error) {
+     console.error('API error:', error);
+     // Show user-friendly error
+   }
+   ```
+
+---
+
+## OpenLayers Specifications
+
+### Coordinate Systems
+
+**Game Coordinates:**
+- Origin: World spawn (0, 0)
+- X: East (+) / West (-)
+- Z: South (+) / North (-)
+- Y: Height (not used in 2D map)
+
+**Map Coordinates (Web Mercator EPSG:3857):**
+- Used by OpenLayers for display
+- Origin: (0, 0) at map center
+- Transformation required between game and map coords
+
+**Tile Coordinates:**
+- Standard XYZ tile scheme: `tiles/{z}/{x}/{y}.png`
+- Zoom levels: 0 (furthest out) to N (closest in)
+- Tile size: 256×256 pixels (or configured `tileSize`)
+
+### Map Configuration
+
+```typescript
+// Map setup with custom projection
+const extent = [-mapSize/2, -mapSize/2, mapSize/2, mapSize/2];
+const projection = new Projection({
+  code: 'SIMPLE',
+  units: 'pixels',
+  extent: extent
+});
+
+// Tile layer with proper URL template
+const tileLayer = new TileLayer({
+  source: new XYZ({
+    url: `${baseUrl}/tiles/{z}/{x}/{y}.png`,
+    projection: projection,
+    tileSize: [256, 256],
+    minZoom: 0,
+    maxZoom: config.maxZoom
+  })
+});
+```
+
+### Layer Management
+
+1. **Base Map Layer:** XYZ tiles from server
+2. **Marker Layers:** Vector layers for POIs (traders, translocators, signs)
+3. **Player Layer:** Real-time player positions (updates via API)
+4. **Drawing Layer:** User annotations (if enabled)
+
+---
+
+## Testing
+
+### Backend Testing
+
+1. **Build and Run:**
+   ```bash
+   nix develop
+   quick-test  # Builds and starts test server
+   ```
+
+2. **Test Commands:**
+   - In-game: `/atlas export` to trigger map generation
+   - Check logs: `test_server/Logs/server-main.log`
+   - Verify output: `test_server/ModData/vintageatlas/`
+
+3. **API Testing:**
+   ```bash
+   curl http://localhost:42422/api/status
+   curl http://localhost:42422/api/config
+   ```
+
+### Frontend Testing
+
+1. **Development Server:**
+   ```bash
+   cd VintageAtlas/frontend
+   npm run dev  # Vite dev server on port 5173
+   ```
+
+2. **Build Testing:**
+   ```bash
+   npm run build  # Output to dist/
+   # Backend build will copy dist/ to mod package
+   ```
+
+3. **Integration Testing:**
+   - Start test server with mod
+   - Open http://localhost:42422/
+   - Verify map tiles load
+   - Check player positions update
+   - Test API endpoints
+
+---
+
+## API References
+
+### @Vintage Story API
+
+**Key Interfaces:**
+- `ICoreServerAPI` - Main server API
+- `IServerPlayer` - Player access
+- `IWorldAccessor` - World/chunk access
+- `IBlockAccessor` - Block reading
+- `ILogger` - Logging
+
+**Key Events:**
+- `api.Event.PlayerJoin` - Track player joins
+- `api.Event.PlayerNowPlaying` - Player state changes
+- `api.Event.ChunkDirty` - Chunk modifications
+- `api.Event.SaveGameLoaded` - Savegame ready
+
+**Documentation:** https://wiki.vintagestory.at/
+
+### @Vintage Story Modding
+
+**Mod Lifecycle:**
+1. Constructor called
+2. `Start(ICoreAPI api)` - Client and server
+3. `StartServerSide(ICoreServerAPI api)` - Server only
+4. `Dispose()` - Cleanup
+
+**Best Practices:**
+- Use `api.ModLoader.GetModSystem<T>()` for mod communication
+- Register commands in `StartServerSide()`
+- Store data in `api.GetOrCreateDataPath("modid")`
+- Use `api.World.RegisterGameTickListener()` for periodic tasks
+
+**Resources:**
+- Mod Template: https://github.com/copygirl/vscode-vintagestory
+- API Docs: https://apidocs.vintagestory.at/
+
+### @OpenLayers
+
+**Core Classes:**
+- `Map` - Main map instance
+- `View` - Map view with center/zoom
+- `Layer` - Base layer class
+- `Source` - Data source for layers
+- `Feature` - Geographic features
+- `Projection` - Coordinate system
+
+**Common Sources:**
+- `XYZ` - Tiled images
+- `Vector` - Vector features (markers, polygons)
+- `ImageStatic` - Single static image
+
+**Coordinate Transforms:**
+```typescript
+import { transform } from 'ol/proj';
+const worldCoords = transform(
+  [mapX, mapY],
+  'EPSG:3857',
+  'SIMPLE'
+);
+```
+
+**Documentation:** https://openlayers.org/
+
+---
+
+## Documentation
+
+All project documentation should be organized in `docs/`:
+
+- `docs/README.md` - Documentation index
+- `docs/architecture/` - System design docs
+- `docs/api/` - API documentation
+- `docs/guides/` - User and developer guides
+- `docs/archive/` - Historical/outdated docs
+
+**When creating new documentation:**
+- Place in appropriate `docs/` subdirectory
+- Update `docs/README.md` index
+- Use clear, descriptive filenames
+- Include date or version if relevant
+- Move outdated docs to `docs/archive/`
+
+---
+
+## Common Tasks
+
+### Adding New API Endpoint
+
+1. Create controller in `Web/API/`
+2. Implement endpoint methods
+3. Register in `RequestRouter.cs`
+4. Add TypeScript client in `frontend/src/services/api/`
+5. Update API documentation
+
+### Adding New Map Feature
+
+1. Backend: Implement data collection in `Tracking/` or `Export/`
+2. API: Add endpoint to expose data
+3. Frontend: Create component in `frontend/src/components/`
+4. Integration: Wire up in `App.vue` or relevant parent
+
+### Modifying Configuration
+
+1. Update `IAtlasConfig` interface
+2. Update `ConfigValidator.cs` with validation logic
+3. Handle in relevant systems (export, tracking, web)
+4. Document in README and config comments
+5. Consider backward compatibility
+
+---
+
+## Performance Considerations
+
+1. **Map Export:**
+   - Can take 15-20 minutes for large worlds (35GB+)
+   - Uses all CPU cores via parallel processing
+   - Memory usage can spike - monitor `dotnet` process
+
+2. **Tile Serving:**
+   - Cache tiles aggressively (browser + server)
+   - Consider MBTiles storage for production
+   - Pre-generate zoom levels during export
+
+3. **Player Tracking:**
+   - Update every 1-5 seconds (configurable)
+   - Use delta updates when possible
+   - Limit historical data retention
+
+4. **Database:**
+   - SQLite for historical tracking
+   - Periodic cleanup of old data
+   - Index frequently queried columns
+
+---
+
+## Security
+
+1. **Web Server:**
+   - Listen only on localhost by default
+   - CORS headers for cross-origin requests
+   - Rate limiting on API endpoints
+   - No authentication by default (relies on network security)
+
+2. **Commands:**
+   - Require appropriate privileges (`controlserver`, etc.)
+   - Validate all inputs
+   - Log administrative actions
+
+3. **File Access:**
+   - Only serve files from designated output directory
+   - Validate paths to prevent directory traversal
+   - No write access via web interface (except config API)
+
+---
+
+## Troubleshooting
+
+### Build Issues
+
+**Problem:** Missing VINTAGE_STORY
+**Solution:** Set environment variable or use `nix develop`
+
+**Problem:** Frontend build fails
+**Solution:** `cd VintageAtlas/frontend && rm -rf node_modules && npm install`
+
+**Problem:** DLL not found
+**Solution:** Check `Directory.Build.props` references
+
+### Runtime Issues
+
+**Problem:** Mod not loading
+**Solution:** Check `server-main.log` for errors, verify modinfo.json
+
+**Problem:** Map not generating
+**Solution:** Check permissions on output directory, verify savegame path
+
+**Problem:** Web interface not accessible
+**Solution:** Verify port is open, check firewall, confirm EnableLiveServer=true
+
+### Performance Issues
+
+**Problem:** Export too slow
+**Solution:** Reduce zoom levels, increase ThreadCount, close other apps
+
+**Problem:** Web server sluggish
+**Solution:** Enable caching, pre-generate tiles, check network latency
+
+---
+
+## Notes
+
+- This is a server-side only mod - clients don't need to install it
+- WebCartographerColorExporter (separate mod) needed for accurate block colors
+- Compatible with Vintage Story 1.20.1+ (tested on 1.20.1)
+- Based on original WebCartographer by Th3Dilli, fully refactored
+
+**When in doubt:** Check the Vintage Story wiki, API docs, or ask in official Discord.
+

@@ -1,5 +1,5 @@
 <template>
-  <header class="bg-gradient-to-r from-[#2c3e50] to-[#3a506b] text-white py-0 px-4 shadow-md h-[60px] flex items-center z-10">
+  <header class="bg-gradient-to-r from-[#2c3e50] to-[#3a506b] dark:from-gray-800 dark:to-gray-900 text-white py-0 px-4 shadow-md h-[60px] flex items-center z-10">
     <div class="flex items-center justify-between w-full max-w-7xl mx-auto">
       <div class="flex items-center gap-4">
         <button 

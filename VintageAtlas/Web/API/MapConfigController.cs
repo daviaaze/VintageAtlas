@@ -101,7 +101,7 @@ public class MapConfigController
         lock (_cacheLock)
         {
             // Cache for 5 minutes
-            if (_cachedConfig != null && (now - _lastConfigUpdate) < 300000)
+            if (_cachedConfig != null && now - _lastConfigUpdate < 300000)
             {
                 return _cachedConfig;
             }
@@ -159,7 +159,10 @@ public class MapConfigController
             
             // Server info
             ServerName = _sapi.Server.Config.ServerName,
-            WorldName = _sapi.World.SavegameIdentifier
+            WorldName = _sapi.World.SavegameIdentifier,
+            
+            // Coordinate system
+            AbsolutePositions = _config.AbsolutePositions
         };
     }
 
@@ -358,6 +361,7 @@ public class MapConfigData
     public TileStatistics? TileStats { get; set; }
     public string? ServerName { get; set; }
     public string? WorldName { get; set; }
+    public bool AbsolutePositions { get; set; }
 }
 
 public class WorldExtentData

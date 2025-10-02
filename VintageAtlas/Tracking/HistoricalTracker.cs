@@ -1,16 +1,14 @@
 using System;
 using System.Collections.Generic;
-using System.Data;
 using System.IO;
 using System.Linq;
 using Microsoft.Data.Sqlite;
+using VintageAtlas.Core;
+using VintageAtlas.Models;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
 using Vintagestory.API.Datastructures;
-using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
-using VintageAtlas.Models;
-using VintageAtlas.Core;
 
 namespace VintageAtlas.Tracking
 {
@@ -18,28 +16,22 @@ namespace VintageAtlas.Tracking
     /// Historical data tracker using SQLite for persistence
     /// Tracks player positions, entity census, server stats, and events
     /// </summary>
-    public class HistoricalTracker : IHistoricalTracker
+    public class HistoricalTracker(ICoreServerAPI sapi) : IHistoricalTracker
     {
-        private readonly ICoreServerAPI _sapi;
         private SqliteConnection? _metricsDb;
-        private long _lastPlayerSnapshot = 0;
-        private long _lastCensusSnapshot = 0;
-        private long _lastStatsSnapshot = 0;
+        private long _lastPlayerSnapshot;
+        private long _lastCensusSnapshot;
+        private long _lastStatsSnapshot;
         private const int PLAYER_SNAPSHOT_INTERVAL_MS = 15000; // 15 seconds
         private const int CENSUS_SNAPSHOT_INTERVAL_MS = 60000; // 1 minute
         private const int STATS_SNAPSHOT_INTERVAL_MS = 30000;  // 30 seconds
         private const int MAX_POSITIONS_PER_PLAYER = 10000; // Limit history per player
 
-        public HistoricalTracker(ICoreServerAPI sapi)
-        {
-            _sapi = sapi;
-        }
-
         public void Initialize()
         {
             try
             {
-                var dataPath = Path.Combine(_sapi.DataBasePath, "ModData", "VintageAtlas");
+                var dataPath = Path.Combine(sapi.DataBasePath, "ModData", "VintageAtlas");
                 Directory.CreateDirectory(dataPath);
                 
                 var dbPath = Path.Combine(dataPath, "metrics.db");
@@ -48,12 +40,12 @@ namespace VintageAtlas.Tracking
                 
                 CreateSchema();
                 
-                _sapi.Logger.Notification("[VintageAtlas] Historical tracker initialized at: " + dbPath);
+                sapi.Logger.Notification("[VintageAtlas] Historical tracker initialized at: " + dbPath);
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Error($"[VintageAtlas] Failed to initialize historical tracker: {ex.Message}");
-                _sapi.Logger.Error(ex.StackTrace ?? "");
+                sapi.Logger.Error($"[VintageAtlas] Failed to initialize historical tracker: {ex.Message}");
+                sapi.Logger.Error(ex.StackTrace ?? "");
             }
         }
 
@@ -62,81 +54,83 @@ namespace VintageAtlas.Tracking
             if (_metricsDb == null) return;
 
             var cmd = _metricsDb.CreateCommand();
-            cmd.CommandText = @"
-                -- Player position history
-                CREATE TABLE IF NOT EXISTS player_positions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp INTEGER NOT NULL,
-                    player_uid TEXT NOT NULL,
-                    player_name TEXT NOT NULL,
-                    x REAL NOT NULL,
-                    y REAL NOT NULL,
-                    z REAL NOT NULL,
-                    health REAL,
-                    max_health REAL,
-                    hunger REAL,
-                    max_hunger REAL,
-                    temperature REAL,
-                    body_temp REAL
-                );
-                
-                CREATE INDEX IF NOT EXISTS idx_player_positions_uid_time 
-                    ON player_positions(player_uid, timestamp);
-                CREATE INDEX IF NOT EXISTS idx_player_positions_time 
-                    ON player_positions(timestamp);
-                
-                -- Entity census
-                CREATE TABLE IF NOT EXISTS entity_census (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp INTEGER NOT NULL,
-                    entity_type TEXT NOT NULL,
-                    count INTEGER NOT NULL,
-                    avg_health REAL,
-                    min_x REAL,
-                    max_x REAL,
-                    min_z REAL,
-                    max_z REAL
-                );
-                
-                CREATE INDEX IF NOT EXISTS idx_entity_census_time 
-                    ON entity_census(timestamp);
-                CREATE INDEX IF NOT EXISTS idx_entity_census_type_time 
-                    ON entity_census(entity_type, timestamp);
-                
-                -- Server statistics
-                CREATE TABLE IF NOT EXISTS server_stats (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp INTEGER NOT NULL,
-                    players_online INTEGER NOT NULL,
-                    entities_loaded INTEGER NOT NULL,
-                    chunks_loaded INTEGER NOT NULL,
-                    memory_mb REAL,
-                    server_uptime_seconds REAL NOT NULL
-                );
-                
-                CREATE INDEX IF NOT EXISTS idx_server_stats_time 
-                    ON server_stats(timestamp);
-                
-                -- Player death events
-                CREATE TABLE IF NOT EXISTS player_deaths (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp INTEGER NOT NULL,
-                    player_uid TEXT NOT NULL,
-                    player_name TEXT NOT NULL,
-                    x REAL NOT NULL,
-                    y REAL NOT NULL,
-                    z REAL NOT NULL,
-                    damage_source TEXT
-                );
-                
-                CREATE INDEX IF NOT EXISTS idx_player_deaths_uid 
-                    ON player_deaths(player_uid);
-                CREATE INDEX IF NOT EXISTS idx_player_deaths_time 
-                    ON player_deaths(timestamp);
-            ";
+            cmd.CommandText = """
+
+                                              -- Player position history
+                                              CREATE TABLE IF NOT EXISTS player_positions (
+                                                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                  timestamp INTEGER NOT NULL,
+                                                  player_uid TEXT NOT NULL,
+                                                  player_name TEXT NOT NULL,
+                                                  x REAL NOT NULL,
+                                                  y REAL NOT NULL,
+                                                  z REAL NOT NULL,
+                                                  health REAL,
+                                                  max_health REAL,
+                                                  hunger REAL,
+                                                  max_hunger REAL,
+                                                  temperature REAL,
+                                                  body_temp REAL
+                                              );
+                                              
+                                              CREATE INDEX IF NOT EXISTS idx_player_positions_uid_time 
+                                                  ON player_positions(player_uid, timestamp);
+                                              CREATE INDEX IF NOT EXISTS idx_player_positions_time 
+                                                  ON player_positions(timestamp);
+                                              
+                                              -- Entity census
+                                              CREATE TABLE IF NOT EXISTS entity_census (
+                                                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                  timestamp INTEGER NOT NULL,
+                                                  entity_type TEXT NOT NULL,
+                                                  count INTEGER NOT NULL,
+                                                  avg_health REAL,
+                                                  min_x REAL,
+                                                  max_x REAL,
+                                                  min_z REAL,
+                                                  max_z REAL
+                                              );
+                                              
+                                              CREATE INDEX IF NOT EXISTS idx_entity_census_time 
+                                                  ON entity_census(timestamp);
+                                              CREATE INDEX IF NOT EXISTS idx_entity_census_type_time 
+                                                  ON entity_census(entity_type, timestamp);
+                                              
+                                              -- Server statistics
+                                              CREATE TABLE IF NOT EXISTS server_stats (
+                                                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                  timestamp INTEGER NOT NULL,
+                                                  players_online INTEGER NOT NULL,
+                                                  entities_loaded INTEGER NOT NULL,
+                                                  chunks_loaded INTEGER NOT NULL,
+                                                  memory_mb REAL,
+                                                  server_uptime_seconds REAL NOT NULL
+                                              );
+                                              
+                                              CREATE INDEX IF NOT EXISTS idx_server_stats_time 
+                                                  ON server_stats(timestamp);
+                                              
+                                              -- Player death events
+                                              CREATE TABLE IF NOT EXISTS player_deaths (
+                                                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                  timestamp INTEGER NOT NULL,
+                                                  player_uid TEXT NOT NULL,
+                                                  player_name TEXT NOT NULL,
+                                                  x REAL NOT NULL,
+                                                  y REAL NOT NULL,
+                                                  z REAL NOT NULL,
+                                                  damage_source TEXT
+                                              );
+                                              
+                                              CREATE INDEX IF NOT EXISTS idx_player_deaths_uid 
+                                                  ON player_deaths(player_uid);
+                                              CREATE INDEX IF NOT EXISTS idx_player_deaths_time 
+                                                  ON player_deaths(timestamp);
+                                          
+                              """;
             cmd.ExecuteNonQuery();
             
-            _sapi.Logger.Debug("[VintageAtlas] Database schema created/verified");
+            sapi.Logger.Debug("[VintageAtlas] Database schema created/verified");
         }
 
         /// <summary>
@@ -146,7 +140,7 @@ namespace VintageAtlas.Tracking
         {
             if (_metricsDb == null) return;
 
-            var now = _sapi.World.ElapsedMilliseconds;
+            var now = sapi.World.ElapsedMilliseconds;
 
             try
             {
@@ -174,7 +168,7 @@ namespace VintageAtlas.Tracking
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Warning($"[VintageAtlas] Error in historical tracker tick: {ex.Message}");
+                sapi.Logger.Warning($"[VintageAtlas] Error in historical tracker tick: {ex.Message}");
             }
         }
 
@@ -182,7 +176,7 @@ namespace VintageAtlas.Tracking
         {
             if (_metricsDb == null) return;
 
-            var timestamp = _sapi.World.ElapsedMilliseconds;
+            var timestamp = sapi.World.ElapsedMilliseconds;
             
             using var transaction = _metricsDb.BeginTransaction();
             try
@@ -196,7 +190,7 @@ namespace VintageAtlas.Tracking
                 ";
 
                 int recorded = 0;
-                foreach (var player in _sapi.World.AllOnlinePlayers)
+                foreach (var player in sapi.World.AllOnlinePlayers)
                 {
                     if (player?.Entity == null) continue;
 
@@ -210,7 +204,7 @@ namespace VintageAtlas.Tracking
                         var bodyTempTree = attrs?.GetTreeAttribute("bodyTemp");
                         
                         var blockPos = pos.AsBlockPos;
-                        var climate = _sapi.World.BlockAccessor?.GetClimateAt(blockPos, EnumGetClimateMode.NowValues);
+                        var climate = sapi.World.BlockAccessor?.GetClimateAt(blockPos);
 
                         cmd.Parameters.Clear();
                         cmd.Parameters.AddWithValue("@ts", timestamp);
@@ -219,29 +213,29 @@ namespace VintageAtlas.Tracking
                         cmd.Parameters.AddWithValue("@x", pos.X);
                         cmd.Parameters.AddWithValue("@y", pos.Y);
                         cmd.Parameters.AddWithValue("@z", pos.Z);
-                        cmd.Parameters.AddWithValue("@health", (object?)healthTree?.GetFloat("currenthealth", 0f) ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@health", (object?)healthTree?.GetFloat("currenthealth") ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@maxHealth", (object?)healthTree?.GetFloat("maxhealth", 20f) ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@hunger", (object?)hungerTree?.GetFloat("currentsaturation", 0f) ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@hunger", (object?)hungerTree?.GetFloat("currentsaturation") ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@maxHunger", (object?)hungerTree?.GetFloat("maxsaturation", 1500f) ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@temp", (object?)climate?.Temperature ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@bodyTemp", (object?)bodyTempTree?.GetFloat("bodytemp", 0f) ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@bodyTemp", (object?)bodyTempTree?.GetFloat("bodytemp") ?? DBNull.Value);
 
                         cmd.ExecuteNonQuery();
                         recorded++;
                     }
                     catch (Exception ex)
                     {
-                        _sapi.Logger.Debug($"[VintageAtlas] Failed to record position for {player.PlayerName}: {ex.Message}");
+                        sapi.Logger.Debug($"[VintageAtlas] Failed to record position for {player.PlayerName}: {ex.Message}");
                     }
                 }
 
                 transaction.Commit();
-                _sapi.Logger.Debug($"[VintageAtlas] Recorded {recorded} player positions");
+                sapi.Logger.Debug($"[VintageAtlas] Recorded {recorded} player positions");
             }
             catch (Exception ex)
             {
                 transaction.Rollback();
-                _sapi.Logger.Warning($"[VintageAtlas] Failed to record player positions: {ex.Message}");
+                sapi.Logger.Warning($"[VintageAtlas] Failed to record player positions: {ex.Message}");
             }
         }
 
@@ -249,11 +243,11 @@ namespace VintageAtlas.Tracking
         {
             if (_metricsDb == null) return;
 
-            var timestamp = _sapi.World.ElapsedMilliseconds;
+            var timestamp = sapi.World.ElapsedMilliseconds;
             var entityGroups = new Dictionary<string, List<Entity>>();
 
             // Group entities by type
-            foreach (var entity in _sapi.World.LoadedEntities.Values)
+            foreach (var entity in sapi.World.LoadedEntities.Values)
             {
                 if (entity == null || !entity.Alive) continue;
                 if (entity is EntityPlayer) continue;
@@ -287,9 +281,9 @@ namespace VintageAtlas.Tracking
 
                     foreach (var entity in entities)
                     {
-                        var health = (entity.WatchedAttributes as TreeAttribute)
+                        var health = entity.WatchedAttributes
                             ?.GetTreeAttribute("health")
-                            ?.GetFloat("currenthealth", 0f) ?? 0f;
+                            ?.GetFloat("currenthealth") ?? 0f;
                         if (health > 0) healthValues.Add(health);
 
                         var pos = entity.ServerPos ?? entity.Pos;
@@ -303,22 +297,22 @@ namespace VintageAtlas.Tracking
                     cmd.Parameters.AddWithValue("@ts", timestamp);
                     cmd.Parameters.AddWithValue("@type", group.Key);
                     cmd.Parameters.AddWithValue("@count", entities.Count);
-                    cmd.Parameters.AddWithValue("@avgHealth", healthValues.Any() ? (object)healthValues.Average() : DBNull.Value);
-                    cmd.Parameters.AddWithValue("@minX", minX != double.MaxValue ? (object)minX : DBNull.Value);
-                    cmd.Parameters.AddWithValue("@maxX", maxX != double.MinValue ? (object)maxX : DBNull.Value);
-                    cmd.Parameters.AddWithValue("@minZ", minZ != double.MaxValue ? (object)minZ : DBNull.Value);
-                    cmd.Parameters.AddWithValue("@maxZ", maxZ != double.MinValue ? (object)maxZ : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@avgHealth", healthValues.Any() ? healthValues.Average() : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@minX", minX != double.MaxValue ? minX : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@maxX", maxX != double.MinValue ? maxX : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@minZ", minZ != double.MaxValue ? minZ : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@maxZ", maxZ != double.MinValue ? maxZ : DBNull.Value);
 
                     cmd.ExecuteNonQuery();
                 }
 
                 transaction.Commit();
-                _sapi.Logger.Debug($"[VintageAtlas] Recorded census for {entityGroups.Count} entity types");
+                sapi.Logger.Debug($"[VintageAtlas] Recorded census for {entityGroups.Count} entity types");
             }
             catch (Exception ex)
             {
                 transaction.Rollback();
-                _sapi.Logger.Warning($"[VintageAtlas] Failed to record entity census: {ex.Message}");
+                sapi.Logger.Warning($"[VintageAtlas] Failed to record entity census: {ex.Message}");
             }
         }
 
@@ -328,29 +322,32 @@ namespace VintageAtlas.Tracking
 
             try
             {
-                var timestamp = _sapi.World.ElapsedMilliseconds;
+                var timestamp = sapi.World.ElapsedMilliseconds;
                 var cmd = _metricsDb.CreateCommand();
-                cmd.CommandText = @"
-                    INSERT INTO server_stats 
-                    (timestamp, players_online, entities_loaded, chunks_loaded, memory_mb, server_uptime_seconds)
-                    VALUES (@ts, @players, @entities, @chunks, @memory, @uptime)
-                ";
+                cmd.CommandText = """
+
+                                                      INSERT INTO server_stats 
+                                                      (timestamp, players_online, entities_loaded, chunks_loaded, memory_mb, server_uptime_seconds)
+                                                      VALUES (@ts, @players, @entities, @chunks, @memory, @uptime)
+                                                  
+                                  """;
 
                 var memoryMb = GC.GetTotalMemory(false) / 1024.0 / 1024.0;
-
+                
+                // Get actual loaded chunk count from Vintage Story API
                 cmd.Parameters.AddWithValue("@ts", timestamp);
-                cmd.Parameters.AddWithValue("@players", _sapi.World.AllOnlinePlayers.Length);
-                cmd.Parameters.AddWithValue("@entities", _sapi.World.LoadedEntities.Count);
-                cmd.Parameters.AddWithValue("@chunks", 0); // TODO: Get actual chunk count if available
+                cmd.Parameters.AddWithValue("@players", sapi.World.AllOnlinePlayers.Length);
+                cmd.Parameters.AddWithValue("@entities", sapi.World.LoadedEntities.Count);
+                cmd.Parameters.AddWithValue("@chunks", sapi.World.LoadedMapChunkIndices.Length);
                 cmd.Parameters.AddWithValue("@memory", memoryMb);
-                cmd.Parameters.AddWithValue("@uptime", (long)(_sapi.World.ElapsedMilliseconds / 1000));
+                cmd.Parameters.AddWithValue("@uptime", sapi.World.ElapsedMilliseconds / 1000);
 
                 cmd.ExecuteNonQuery();
-                _sapi.Logger.Debug($"[VintageAtlas] Recorded server stats");
+                sapi.Logger.Debug("[VintageAtlas] Recorded server stats");
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Warning($"[VintageAtlas] Failed to record server stats: {ex.Message}");
+                sapi.Logger.Warning($"[VintageAtlas] Failed to record server stats: {ex.Message}");
             }
         }
 
@@ -370,7 +367,7 @@ namespace VintageAtlas.Tracking
                     VALUES (@ts, @uid, @name, @x, @y, @z, @source)
                 ";
 
-                cmd.Parameters.AddWithValue("@ts", _sapi.World.ElapsedMilliseconds);
+                cmd.Parameters.AddWithValue("@ts", sapi.World.ElapsedMilliseconds);
                 cmd.Parameters.AddWithValue("@uid", player.PlayerUID);
                 cmd.Parameters.AddWithValue("@name", player.PlayerName);
                 cmd.Parameters.AddWithValue("@x", pos.X);
@@ -379,11 +376,11 @@ namespace VintageAtlas.Tracking
                 cmd.Parameters.AddWithValue("@source", (object?)damageSource ?? DBNull.Value);
 
                 cmd.ExecuteNonQuery();
-                _sapi.Logger.Notification($"[VintageAtlas] Recorded death for {player.PlayerName}");
+                sapi.Logger.Notification($"[VintageAtlas] Recorded death for {player.PlayerName}");
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Warning($"[VintageAtlas] Failed to record player death: {ex.Message}");
+                sapi.Logger.Warning($"[VintageAtlas] Failed to record player death: {ex.Message}");
             }
         }
 
@@ -410,12 +407,12 @@ namespace VintageAtlas.Tracking
                 
                 if (deleted > 0)
                 {
-                    _sapi.Logger.Debug($"[VintageAtlas] Cleaned up {deleted} old position records");
+                    sapi.Logger.Debug($"[VintageAtlas] Cleaned up {deleted} old position records");
                 }
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Warning($"[VintageAtlas] Failed to cleanup old positions: {ex.Message}");
+                sapi.Logger.Warning($"[VintageAtlas] Failed to cleanup old positions: {ex.Message}");
             }
         }
 
@@ -432,7 +429,7 @@ namespace VintageAtlas.Tracking
             {
                 var gridSize = queryParams.GridSize ?? 32;
                 var hoursBack = queryParams.Hours ?? 24;
-                var cutoffTime = _sapi.World.ElapsedMilliseconds - (hoursBack * 3600000);
+                var cutoffTime = sapi.World.ElapsedMilliseconds - hoursBack * 3600000;
 
                 var cmd = _metricsDb.CreateCommand();
                 var whereClauses = new List<string> { "timestamp >= @cutoff" };
@@ -469,12 +466,12 @@ namespace VintageAtlas.Tracking
                     });
                 }
 
-                _sapi.Logger.Debug($"[VintageAtlas] Retrieved {heatmap.Count} heatmap points");
+                sapi.Logger.Debug($"[VintageAtlas] Retrieved {heatmap.Count} heatmap points");
                 return heatmap;
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Error($"[VintageAtlas] Failed to get heatmap: {ex.Message}");
+                sapi.Logger.Error($"[VintageAtlas] Failed to get heatmap: {ex.Message}");
                 return new List<HeatmapPoint>();
             }
         }
@@ -500,8 +497,8 @@ namespace VintageAtlas.Tracking
                 ";
 
                 var hoursBack = queryParams.Hours ?? 1;
-                var toTime = queryParams.ToTimestamp ?? _sapi.World.ElapsedMilliseconds;
-                var fromTime = queryParams.FromTimestamp ?? (toTime - hoursBack * 3600000);
+                var toTime = queryParams.ToTimestamp ?? sapi.World.ElapsedMilliseconds;
+                var fromTime = queryParams.FromTimestamp ?? toTime - hoursBack * 3600000;
 
                 cmd.Parameters.AddWithValue("@uid", queryParams.PlayerUid);
                 cmd.Parameters.AddWithValue("@from", fromTime);
@@ -521,12 +518,12 @@ namespace VintageAtlas.Tracking
                     });
                 }
 
-                _sapi.Logger.Debug($"[VintageAtlas] Retrieved path with {path.Count} points for player {queryParams.PlayerUid}");
+                sapi.Logger.Debug($"[VintageAtlas] Retrieved path with {path.Count} points for player {queryParams.PlayerUid}");
                 return path;
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Error($"[VintageAtlas] Failed to get player path: {ex.Message}");
+                sapi.Logger.Error($"[VintageAtlas] Failed to get player path: {ex.Message}");
                 return new List<PlayerPathPoint>();
             }
         }
@@ -541,7 +538,7 @@ namespace VintageAtlas.Tracking
             try
             {
                 var hoursBack = queryParams.Hours ?? 24;
-                var cutoffTime = _sapi.World.ElapsedMilliseconds - (hoursBack * 3600000);
+                var cutoffTime = sapi.World.ElapsedMilliseconds - hoursBack * 3600000;
 
                 var cmd = _metricsDb.CreateCommand();
                 var whereClauses = new List<string> { "timestamp >= @cutoff" };
@@ -579,12 +576,12 @@ namespace VintageAtlas.Tracking
                     });
                 }
 
-                _sapi.Logger.Debug($"[VintageAtlas] Retrieved {census.Count} census records");
+                sapi.Logger.Debug($"[VintageAtlas] Retrieved {census.Count} census records");
                 return census;
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Error($"[VintageAtlas] Failed to get entity census: {ex.Message}");
+                sapi.Logger.Error($"[VintageAtlas] Failed to get entity census: {ex.Message}");
                 return new List<EntityCensusSnapshot>();
             }
         }
@@ -596,7 +593,7 @@ namespace VintageAtlas.Tracking
         {
             var stats = new ServerStatistics
             {
-                CurrentTimestamp = _sapi.World.ElapsedMilliseconds
+                CurrentTimestamp = sapi.World.ElapsedMilliseconds
             };
 
             if (_metricsDb == null) return stats;
@@ -712,12 +709,12 @@ namespace VintageAtlas.Tracking
                     }
                 }
 
-                _sapi.Logger.Debug("[VintageAtlas] Retrieved server statistics");
+                sapi.Logger.Debug("[VintageAtlas] Retrieved server statistics");
                 return stats;
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Error($"[VintageAtlas] Failed to get server statistics: {ex.Message}");
+                sapi.Logger.Error($"[VintageAtlas] Failed to get server statistics: {ex.Message}");
                 return stats;
             }
         }
@@ -728,7 +725,7 @@ namespace VintageAtlas.Tracking
         {
             if (_metricsDb != null)
             {
-                _sapi.Logger.Notification("[VintageAtlas] Shutting down historical tracker");
+                sapi.Logger.Notification("[VintageAtlas] Shutting down historical tracker");
                 _metricsDb.Close();
                 _metricsDb.Dispose();
                 _metricsDb = null;

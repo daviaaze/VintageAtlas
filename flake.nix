@@ -321,6 +321,9 @@
           echo "  modPath: $MOD_PATH"
           echo ""
           
+          # Change to test_data directory so relative paths work
+          cd "$TEST_DATA"
+          
           ${vintageStory}/bin/vintagestory-server \
             --dataPath="$TEST_DATA" \
             --addModPath="$MOD_PATH" \

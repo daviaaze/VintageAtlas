@@ -21,6 +21,10 @@ export default defineConfig({
       '/data': {
         target: 'http://localhost:42422',
         changeOrigin: true
+      },
+      '/tiles': {
+        target: 'http://localhost:42422',
+        changeOrigin: true
       }
     }
   },

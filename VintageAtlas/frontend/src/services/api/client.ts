@@ -171,6 +171,8 @@ apiClient.interceptors.response.use(
   error => {
     // If we're using mock data and the request fails, return mock data
     if (useMockData && error.config && error.config.url) {
+
+      console.log(error);
       console.log(`Using mock data for ${error.config.url}`);
       const mockResult = getMockData(error.config.url);
       if (mockResult) {

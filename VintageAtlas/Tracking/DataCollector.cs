@@ -116,7 +116,7 @@ public class DataCollector : IDataCollector
             if (dayOfYear < 0) dayOfYear = 0;
             if (dayOfYear >= daysPerYear) dayOfYear = daysPerYear - 1;
             
-            int day = (dayOfYear % daysPerMonth) + 1;
+            int day = dayOfYear % daysPerMonth + 1;
             int fullHour = calendar.FullHourOfDay;
             int minute = (int)Math.Floor((calendar.HourOfDay - fullHour) * 60.0 + 0.0000001);
             

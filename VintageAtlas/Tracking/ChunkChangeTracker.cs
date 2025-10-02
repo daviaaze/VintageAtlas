@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using Vintagestory.API.Common;
+using Vintagestory.API.Common.Entities;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 
@@ -36,13 +37,9 @@ public class ChunkChangeTracker : IDisposable
 
     private void RegisterEventHandlers()
     {
-        // Track block changes that affect the map
+        // Use BreakBlock and DidPlaceBlock for tracking block changes
+        _sapi.Event.BreakBlock += OnBlockBreaking;
         _sapi.Event.DidPlaceBlock += OnBlockPlaced;
-        // Note: DidBreakBlock delegate signature varies across VS versions, disabled for now
-        // _sapi.Event.DidBreakBlock += OnBlockBroken;
-        
-        // Track sign changes
-        _sapi.Event.DidPlaceBlock += OnPotentialSignPlaced;
         
         // Track chunk generation
         _sapi.Event.ChunkColumnLoaded += OnChunkColumnLoaded;
@@ -50,6 +47,7 @@ public class ChunkChangeTracker : IDisposable
         _sapi.Logger.Debug("[VintageAtlas] Registered chunk change event handlers");
     }
 
+    // Note: Parameters required by Vintage Story API event signatures
     private void OnBlockPlaced(IServerPlayer byPlayer, int oldblockId, BlockSelection blockSel, ItemStack withItemStack)
     {
         TrackBlockChange(blockSel.Position, ChunkChangeType.BlockModified);
@@ -62,8 +60,10 @@ public class ChunkChangeTracker : IDisposable
         }
     }
 
-    private void OnBlockBroken(IServerPlayer byPlayer, BlockSelection blockSel)
+    // Note: Parameters required by Vintage Story API event signature
+    private void OnBlockBreaking(IServerPlayer byPlayer, BlockSelection blockSel, ref float dropQuantityMultiplier, ref EnumHandling handled)
     {
+        // Called when block is about to be broken (more stable than DidBreakBlock)
         TrackBlockChange(blockSel.Position, ChunkChangeType.BlockModified);
         
         // Check if a structure block was removed
@@ -74,27 +74,15 @@ public class ChunkChangeTracker : IDisposable
         }
     }
 
-    private void OnPotentialSignPlaced(IServerPlayer byPlayer, int oldblockId, BlockSelection blockSel, ItemStack withItemStack)
-    {
-        // Additional sign tracking - will be called after placement
-        var blockEntity = _sapi.World.BlockAccessor.GetBlockEntity(blockSel.Position);
-        if (blockEntity?.GetType().Name.Contains("Sign") == true)
-        {
-            InvalidateGeoJson("sign");
-        }
-    }
-
     private void OnChunkColumnLoaded(Vec2i chunkCoord, IWorldChunk[] chunks)
     {
         // Track newly generated chunks
-        if (chunks != null && chunks.Length > 0)
+        if (chunks.Length <= 0) return;
+        // Check if this is a newly generated chunk (not just loaded from disk)
+        var bottomChunk = chunks.FirstOrDefault();
+        if (bottomChunk != null)
         {
-            // Check if this is a newly generated chunk (not just loaded from disk)
-            var bottomChunk = chunks.FirstOrDefault(c => c != null);
-            if (bottomChunk != null)
-            {
-                TrackChunkChange(chunkCoord, ChunkChangeType.NewlyGenerated);
-            }
+            TrackChunkChange(chunkCoord, ChunkChangeType.NewlyGenerated);
         }
     }
 
@@ -113,7 +101,7 @@ public class ChunkChangeTracker : IDisposable
         // Track the type of change
         _chunkChangeTypes.AddOrUpdate(
             chunkCoord,
-            new HashSet<ChunkChangeType> { changeType },
+            [changeType],
             (key, existing) =>
             {
                 lock (_lock)
@@ -215,8 +203,8 @@ public class ChunkChangeTracker : IDisposable
     public void Dispose()
     {
         // Unregister event handlers
+        _sapi.Event.BreakBlock -= OnBlockBreaking;
         _sapi.Event.DidPlaceBlock -= OnBlockPlaced;
-        // _sapi.Event.DidBreakBlock -= OnBlockBroken;
         _sapi.Event.ChunkColumnLoaded -= OnChunkColumnLoaded;
         
         _modifiedChunks.Clear();

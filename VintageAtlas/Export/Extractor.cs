@@ -39,12 +39,12 @@ public class Extractor
 
     private readonly ModConfig _config;
 
-    public readonly ILogger _logger;
+    private readonly ILogger _logger;
 
-    private int _mapXHalf;
-    private int _mapZHalf;
-    private int _mapYHalf;
-    private int _mapSizeY;
+    private readonly int _mapXHalf;
+    private readonly int _mapZHalf;
+    private readonly int _mapYHalf;
+    private readonly int _mapSizeY;
 
     private byte[] _block2Color = null!;
     private bool[] _blockIsLake = null!;
@@ -467,7 +467,7 @@ public class Extractor
                             {
                                 var chunk = serverChunks[dy / _chunkSize];
                                 if (chunk is null) continue;
-                                var index = ((dy % _chunkSize) * _chunkSize + dz) * _chunkSize + dx;
+                                var index = (dy % _chunkSize * _chunkSize + dz) * _chunkSize + dx;
                                 var block =
                                     _server.World.Blocks[chunk.Data.GetBlockId(index, BlockLayersAccess.FluidOrSolid)];
 
@@ -486,14 +486,11 @@ public class Extractor
                         }
                     }
 
-                    if (toSave.Count >= 10000)
+                    if (toSave.Count is >= 10000)
                     {
-                        if (toSave.Count >= 10000)
-                        {
-                            _logger.Notification("Saving 10000 chunks...");
-                            _savegameDataLoader.SaveMapChunks(toSave);
-                            toSave.Clear();
-                        }
+                        _logger.Notification("Saving 10000 chunks...");
+                        _savegameDataLoader.SaveMapChunks(toSave);
+                        toSave.Clear();
                     }
                 }
 

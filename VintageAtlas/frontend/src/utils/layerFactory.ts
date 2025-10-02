@@ -220,7 +220,7 @@ export function createSignsLayer(visible = true) {
 export function createChunkLayer(visible = false) {
   return createVectorLayer({
     name: 'chunks',
-    url: '/api/geojson/chunks',  // TODO: Implement chunks API endpoint
+    url: '/api/geojson/chunks',
     visible,
     zIndex: 10,
     useImage: true,

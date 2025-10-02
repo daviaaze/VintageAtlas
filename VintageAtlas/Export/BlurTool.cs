@@ -78,7 +78,7 @@ public class BlurTool
 
                 byte[] newColors = new byte[h];
                 int oldPixelOffset = -(halfRange + 1) * w;
-                int newPixelOffset = (halfRange) * w;
+                int newPixelOffset = halfRange * w;
 
                 for (int x = xStart; x < xEnd; x++)
                 {

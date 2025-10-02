@@ -27,6 +27,7 @@ export interface MapConfigData {
   };
   serverName?: string;
   worldName?: string;
+  absolutePositions: boolean;
 }
 
 export interface WorldExtentData {
@@ -127,7 +128,8 @@ function getFallbackConfig(): MapConfigData {
     spawnPosition: [0, 0],
     mapSizeX: 1024000,
     mapSizeZ: 1024000,
-    mapSizeY: 256
+    mapSizeY: 256,
+    absolutePositions: false
   };
 }
 

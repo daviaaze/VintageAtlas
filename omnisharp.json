@@ -1,0 +1,10 @@
+{
+  "msbuild": {
+    "loadProjectsOnDemand": false,
+    "useBundledOnly": false
+  },
+  "RoslynExtensionsOptions": {
+    "EnableAnalyzersSupport": true
+  }
+}
+
