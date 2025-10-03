@@ -4,8 +4,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using SkiaSharp;
 using Vintagestory.API.Server;
-using Vintagestory.Server;
-using Vintagestory.ServerMods;
 using VintageAtlas.Core;
 using VintageAtlas.Models;
 using VintageAtlas.Storage;
@@ -20,27 +18,31 @@ public class DynamicTileGenerator : IDisposable
 {
     private readonly ICoreServerAPI _sapi;
     private readonly ModConfig _config;
-    private readonly ServerMain _server;
-    private readonly MBTilesStorage _storage;
+    private readonly MbTilesStorage _storage;
     private readonly ChunkDataExtractor _extractor;
+    private readonly BlockColorCache _colorCache;
+    private readonly PyramidTileDownsampler _downsampler;
 
     // In-memory cache for frequently accessed tiles
     private readonly ConcurrentDictionary<string, CachedTile> _memoryCache = new();
-    
+
     private const int CHUNK_SIZE = 32;
     private const int MAX_CACHE_SIZE = 100; // Keep 100 most recent tiles in memory
 
-    public DynamicTileGenerator(ICoreServerAPI sapi, ModConfig config)
+    public DynamicTileGenerator(ICoreServerAPI sapi, ModConfig config, BlockColorCache colorCache)
     {
         _sapi = sapi;
         _config = config;
-        _server = (ServerMain)sapi.World;
         _extractor = new ChunkDataExtractor(sapi, config);
-        
+        _colorCache = colorCache;
+
         // Initialize MBTiles storage
         var dbPath = System.IO.Path.Combine(config.OutputDirectory, "tiles.mbtiles");
-        _storage = new MBTilesStorage(dbPath);
-        
+        _storage = new MbTilesStorage(dbPath);
+
+        // Initialize downsampler for lower zoom levels
+        _downsampler = new PyramidTileDownsampler(sapi, config, this);
+
         _sapi.Logger.Notification($"[VintageAtlas] Using MBTiles storage: {dbPath}");
     }
 
@@ -83,7 +85,7 @@ public class DynamicTileGenerator : IDisposable
             
             CacheInMemory(tileKey, tileData, etag, lastModified);
             
-            _sapi.Logger.VerboseDebug($"[VintageAtlas] Serving cached tile from DB: {zoom}/{tileX}_{tileZ}");
+            _sapi.Logger.Debug($"[VintageAtlas] ✅ Found tile in DB: {zoom}/{tileX}_{tileZ}, size={tileData.Length} bytes");
             
             return new TileResult
             {
@@ -93,23 +95,39 @@ public class DynamicTileGenerator : IDisposable
                 ContentType = "image/png"
             };
         }
+        
+        _sapi.Logger.Debug($"[VintageAtlas] ❌ Tile NOT in DB: {zoom}/{tileX}_{tileZ}, will generate new tile");
 
         // Generate new tile
         _sapi.Logger.Debug($"[VintageAtlas] Generating new tile: {zoom}/{tileX}_{tileZ}");
+        
+        // Log coordinate calculation details
+        var chunksPerTile = _config.TileSize / CHUNK_SIZE;
+        var startChunkX = tileX * chunksPerTile;
+        var startChunkZ = tileZ * chunksPerTile;
+        var startWorldX = startChunkX * CHUNK_SIZE;
+        var startWorldZ = startChunkZ * CHUNK_SIZE;
+        _sapi.Logger.Debug($"[VintageAtlas] Tile coords: ({tileX},{tileZ}) -> Chunk coords: ({startChunkX},{startChunkZ}) -> World coords: ({startWorldX},{startWorldZ})");
         
         try
         {
             byte[]? newTileData = null;
             
-            // Only generate base zoom level from world data
             if (zoom == _config.BaseZoomLevel)
             {
+                // Base zoom: generate from world data (chunks)
                 newTileData = await GenerateTileFromWorldDataAsync(zoom, tileX, tileZ);
+            }
+            else if (zoom < _config.BaseZoomLevel)
+            {
+                // Lower zoom levels: generate by downsampling from higher zoom
+                newTileData = await _downsampler.GenerateTileByDownsamplingAsync(zoom, tileX, tileZ);
             }
             
             // Fallback to placeholder
             if (newTileData == null)
             {
+                _sapi.Logger.Warning($"[VintageAtlas] ⚠️  Tile generation returned null, creating placeholder tile: {zoom}/{tileX}_{tileZ}");
                 newTileData = await GeneratePlaceholderTileAsync(zoom, tileX, tileZ);
             }
             
@@ -178,6 +196,14 @@ public class DynamicTileGenerator : IDisposable
         return stats;
     }
 
+    /// <summary>
+    /// Get tile extent (min/max coordinates) for a specific zoom level from the database
+    /// </summary>
+    public async Task<Storage.TileExtent?> GetTileExtentAsync(int zoom)
+    {
+        return await _storage.GetTileExtentAsync(zoom);
+    }
+
     private void CacheInMemory(string key, byte[] data, string etag, DateTime lastModified)
     {
         // Implement simple LRU cache by removing oldest entries
@@ -232,10 +258,19 @@ public class DynamicTileGenerator : IDisposable
             
             var tileData = await tcs.Task;
             
-            if (tileData == null || tileData.Chunks.Count == 0)
+            if (tileData == null)
             {
+                _sapi.Logger.Warning($"[VintageAtlas] ⚠️  ChunkDataExtractor returned null for tile {zoom}/{tileX}_{tileZ}");
                 return null;
             }
+            
+            if (tileData.Chunks.Count == 0)
+            {
+                _sapi.Logger.Warning($"[VintageAtlas] ⚠️  No chunks found for tile {zoom}/{tileX}_{tileZ} (area may not be explored yet)");
+                return null;
+            }
+            
+            _sapi.Logger.Debug($"[VintageAtlas] Extracted {tileData.Chunks.Count} chunks for tile {zoom}/{tileX}_{tileZ}");
             
             // STEP 2: Render tile on BACKGROUND THREAD
             return await Task.Run(() => RenderTileFromSnapshot(tileData));
@@ -263,6 +298,8 @@ public class DynamicTileGenerator : IDisposable
             var startChunkX = tileData.TileX * chunksPerTile;
             var startChunkZ = tileData.TileZ * chunksPerTile;
             
+            _sapi.Logger.Debug($"[VintageAtlas] Rendering tile z{tileData.Zoom} t({tileData.TileX},{tileData.TileZ}), start chunk=({startChunkX},{startChunkZ}), total chunks={tileData.Chunks.Count}");
+            
             for (var offsetX = 0; offsetX < chunksPerTile; offsetX++)
             {
                 for (var offsetZ = 0; offsetZ < chunksPerTile; offsetZ++)
@@ -271,17 +308,28 @@ public class DynamicTileGenerator : IDisposable
                     var chunkZ = startChunkZ + offsetZ;
                     
                     var snapshot = tileData.GetChunk(chunkX, chunkZ, 0);
-                    if (snapshot != null && snapshot.IsLoaded)
+                    if (snapshot == null)
                     {
-                        RenderChunkSnapshotToTile(canvas, snapshot, 
-                            offsetX * CHUNK_SIZE, offsetZ * CHUNK_SIZE);
-                        chunksRendered++;
+                        _sapi.Logger.VerboseDebug($"[VintageAtlas]   Chunk ({chunkX},{chunkZ}) is NULL");
+                        continue;
                     }
+                    if (!snapshot.IsLoaded)
+                    {
+                        _sapi.Logger.Warning($"[VintageAtlas]   ⚠️  Chunk ({chunkX},{chunkZ}) exists but IsLoaded=false!");
+                        continue;
+                    }
+                    
+                    RenderChunkSnapshotToTile(canvas, snapshot, 
+                        offsetX * CHUNK_SIZE, offsetZ * CHUNK_SIZE);
+                    chunksRendered++;
                 }
             }
             
+            _sapi.Logger.Debug($"[VintageAtlas] Rendered {chunksRendered}/{tileData.Chunks.Count} chunks successfully");
+            
             if (chunksRendered == 0)
             {
+                _sapi.Logger.Warning($"[VintageAtlas] ⚠️  NO chunks were rendered (all had IsLoaded=false or were null)!");
                 return null;
             }
             
@@ -297,33 +345,81 @@ public class DynamicTileGenerator : IDisposable
     }
 
     /// <summary>
-    /// Render a chunk snapshot onto the tile canvas
-    /// TODO: Update this file to use new ChunkSnapshot pattern like main DynamicTileGenerator
+    /// Render a chunk snapshot onto the tile canvas using block colors
+    /// Uses BlockColorCache for proper terrain rendering
     /// </summary>
     private void RenderChunkSnapshotToTile(SKCanvas canvas, ChunkSnapshot snapshot, int offsetX, int offsetZ)
     {
         try
         {
             var heightMap = snapshot.HeightMap;
-            if (heightMap.Length == 0) return;
-            
+            var blockIds = snapshot.BlockIds;
+
+            if (heightMap.Length == 0 || blockIds.Length == 0) return;
+
             using var paint = new SKPaint();
-            
+            var random = new Random(snapshot.ChunkX * 31 + snapshot.ChunkZ); // Deterministic per-chunk seed
+
             for (var x = 0; x < CHUNK_SIZE; x++)
             {
                 for (var z = 0; z < CHUNK_SIZE; z++)
                 {
                     var heightIndex = z * CHUNK_SIZE + x;
                     if (heightIndex >= heightMap.Length) continue;
-                    
+
                     var height = heightMap[heightIndex];
                     if (height == 0) continue; // Skip uninitialized areas
-                    
-                    // Normalize height to 0-1 based on typical surface range (64-192)
-                    var normalizedHeight = Math.Clamp((height - 64.0f) / 128.0f, 0, 1);
-                    var gray = (byte)(normalizedHeight * 255);
-                    
-                    paint.Color = new SKColor(gray, gray, gray);
+
+                    // Get the surface block at this position
+                    // Height is absolute Y coordinate, convert to local Y within chunk
+                    var localY = height - (snapshot.ChunkY * CHUNK_SIZE);
+
+                    // Clamp to chunk bounds
+                    if (localY < 0 || localY >= CHUNK_SIZE)
+                    {
+                        // Surface is in different Y chunk, use default color
+                        paint.Color = new SKColor(172, 136, 88); // Default land color
+                        canvas.DrawPoint(offsetX + x, offsetZ + z, paint);
+                        continue;
+                    }
+
+                    // Get block ID at surface position
+                    var blockIndex = localY * CHUNK_SIZE * CHUNK_SIZE + z * CHUNK_SIZE + x;
+                    if (blockIndex < 0 || blockIndex >= blockIds.Length)
+                    {
+                        paint.Color = new SKColor(172, 136, 88); // Default land color
+                        canvas.DrawPoint(offsetX + x, offsetZ + z, paint);
+                        continue;
+                    }
+
+                    var blockId = blockIds[blockIndex];
+
+                    // Get color based on render mode
+                    uint color;
+                    switch (_config.Mode)
+                    {
+                        case ImageMode.ColorVariations:
+                        case ImageMode.ColorVariationsWithHeight:
+                            color = _colorCache.GetRandomColorVariation(blockId, random);
+                            break;
+
+                        case ImageMode.MedievalStyleWithHillShading:
+                            // TODO Phase 5: Implement water edge detection
+                            color = _colorCache.GetMedievalStyleColor(blockId, false);
+                            break;
+
+                        default:
+                            color = _colorCache.GetBaseColor(blockId);
+                            break;
+                    }
+
+                    // Convert uint ARGB to SKColor
+                    var a = (byte)((color >> 24) & 0xFF);
+                    var r = (byte)((color >> 16) & 0xFF);
+                    var g = (byte)((color >> 8) & 0xFF);
+                    var b = (byte)(color & 0xFF);
+
+                    paint.Color = new SKColor(r, g, b, a);
                     canvas.DrawPoint(offsetX + x, offsetZ + z, paint);
                 }
             }
@@ -346,12 +442,10 @@ public class DynamicTileGenerator : IDisposable
                 
                 canvas.Clear(new SKColor(41, 128, 185));
                 
-                using var gridPaint = new SKPaint
-                {
-                    Color = new SKColor(52, 152, 219),
-                    StrokeWidth = 1,
-                    Style = SKPaintStyle.Stroke
-                };
+                using var gridPaint = new SKPaint();
+                gridPaint.Color = new SKColor(52, 152, 219);
+                gridPaint.StrokeWidth = 1;
+                gridPaint.Style = SKPaintStyle.Stroke;
 
                 for (var i = 0; i < tileSize; i += 32)
                 {
@@ -365,7 +459,8 @@ public class DynamicTileGenerator : IDisposable
                     IsAntialias = true
                 };
 
-                using var font = new SKFont { Size = 12 };
+                using var font = new SKFont();
+                font.Size = 12;
                 var text = $"z{zoom} x{tileX} z{tileZ}";
                 canvas.DrawText(text, 10, 20, SKTextAlign.Left, font, textPaint);
                 
@@ -394,7 +489,7 @@ public class DynamicTileGenerator : IDisposable
 
 public class CachedTile
 {
-    public byte[] Data { get; set; } = Array.Empty<byte>();
+    public byte[] Data { get; set; } = [];
     public string ETag { get; set; } = "";
     public DateTime LastModified { get; set; }
 }

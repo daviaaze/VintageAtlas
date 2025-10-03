@@ -6,5 +6,5 @@ namespace VintageAtlas.Export;
 [ProtoContract(ImplicitFields = ImplicitFields.AllPublic)]
 public class ExportData
 {
-    public Dictionary<string, int[]> Blocks { get; set; } = new();
+    public Dictionary<string, uint[]> Blocks { get; set; } = new();
 }

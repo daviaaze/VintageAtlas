@@ -443,6 +443,8 @@
             msbuild
             vintageStory
             icu
+
+            sqlite3
             
             # Development Tools
             omnisharp-roslyn # C# language server for LSP
@@ -479,13 +481,19 @@
           # Environment variables that persist in the shell
           DOTNET_CLI_TELEMETRY_OPTOUT = "1";
           DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1";
+          
+          # Make ICU library available to C# language server
+          LD_LIBRARY_PATH = "${pkgs.icu}/lib:${pkgs.dotnet-sdk_8}/lib";
+          
+          # Prefer using the Nix-provided .NET SDK
+          DOTNET_ROOT = "${pkgs.dotnet-sdk_8}";
         };
 
         # Optional: Add packages that can be built/run directly
         packages = {
           inherit 
             setupVintageAtlas 
-            buildVintageAtlas 
+            buildVintageAtlas
             buildVintageAtlasDebug
             packageVintageAtlas
             installVintageAtlas

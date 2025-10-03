@@ -28,6 +28,7 @@ export interface MapConfigData {
   serverName?: string;
   worldName?: string;
   absolutePositions: boolean;
+  tileOffset?: number[]; // Tile coordinate offset for spawn-relative mode
 }
 
 export interface WorldExtentData {
@@ -43,34 +44,55 @@ let configPromise: Promise<MapConfigData> | null = null;
 /**
  * Fetch map configuration from the server
  * Results are cached for the session
+ * @throws Error if config cannot be fetched
  */
 export async function fetchMapConfig(): Promise<MapConfigData> {
   // Return cached config if available
   if (cachedConfig) {
+    console.log('✅ [MapConfigAPI] Using cached config');
     return cachedConfig;
   }
 
   // If a request is already in progress, wait for it
   if (configPromise) {
+    console.log('⏳ [MapConfigAPI] Waiting for ongoing request...');
     return configPromise;
   }
 
+  console.log('📡 [MapConfigAPI] Fetching from /api/map-config...');
+  
   // Make the request
   configPromise = (async () => {
     try {
       const response = await fetch('/api/map-config');
       
       if (!response.ok) {
-        throw new Error(`Failed to fetch map config: ${response.statusText}`);
+        throw new Error(`❌ HTTP ${response.status}: ${response.statusText}`);
       }
 
       const config = await response.json();
+      
+      // Validate required fields
+      const requiredFields: (keyof MapConfigData)[] = [
+        'worldExtent', 'worldOrigin', 'defaultCenter', 'defaultZoom',
+        'minZoom', 'maxZoom', 'tileSize', 'tileResolutions', 'viewResolutions',
+        'spawnPosition', 'absolutePositions'
+      ];
+      
+      const missingFields = requiredFields.filter(field => 
+        config[field] === undefined || config[field] === null
+      );
+      
+      if (missingFields.length > 0) {
+        throw new Error(`❌ Server config is missing required fields: ${missingFields.join(', ')}`);
+      }
+      
+      console.log('✅ [MapConfigAPI] Config validated and cached');
       cachedConfig = config;
       return config;
     } catch (error) {
-      console.error('Error fetching map config:', error);
-      // Return fallback config
-      return getFallbackConfig();
+      console.error('❌ [MapConfigAPI] Failed to fetch config:', error);
+      throw new Error(`Cannot fetch map configuration from server: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       configPromise = null;
     }
@@ -81,24 +103,23 @@ export async function fetchMapConfig(): Promise<MapConfigData> {
 
 /**
  * Fetch world extent separately (lighter endpoint)
+ * @throws Error if extent cannot be fetched
  */
 export async function fetchWorldExtent(): Promise<WorldExtentData> {
   try {
+    console.log('📡 [MapConfigAPI] Fetching from /api/map-extent...');
     const response = await fetch('/api/map-extent');
     
     if (!response.ok) {
-      throw new Error(`Failed to fetch world extent: ${response.statusText}`);
+      throw new Error(`❌ HTTP ${response.status}: ${response.statusText}`);
     }
 
-    return await response.json();
+    const extent = await response.json();
+    console.log('✅ [MapConfigAPI] World extent fetched:', extent);
+    return extent;
   } catch (error) {
-    console.error('Error fetching world extent:', error);
-    return {
-      minX: -512000,
-      minZ: -512000,
-      maxX: 512000,
-      maxZ: 512000
-    };
+    console.error('❌ [MapConfigAPI] Failed to fetch world extent:', error);
+    throw new Error(`Cannot fetch world extent from server: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -109,27 +130,3 @@ export function invalidateMapConfig(): void {
   cachedConfig = null;
   configPromise = null;
 }
-
-/**
- * Get fallback configuration if API is unavailable
- */
-function getFallbackConfig(): MapConfigData {
-  return {
-    worldExtent: [-512000, -512000, 512000, 512000],
-    worldOrigin: [-512000, 512000],
-    defaultCenter: [0, -5000],
-    defaultZoom: 7,
-    minZoom: 0,
-    maxZoom: 9,
-    baseZoomLevel: 9,
-    tileSize: 256,
-    tileResolutions: [512, 256, 128, 64, 32, 16, 8, 4, 2, 1],
-    viewResolutions: [256, 128, 64, 32, 16, 8, 4, 2, 1, 0.5, 0.25, 0.125],
-    spawnPosition: [0, 0],
-    mapSizeX: 1024000,
-    mapSizeZ: 1024000,
-    mapSizeY: 256,
-    absolutePositions: false
-  };
-}
-

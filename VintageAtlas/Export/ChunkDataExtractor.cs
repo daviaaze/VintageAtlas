@@ -6,6 +6,8 @@ using Vintagestory.API.Server;
 using Vintagestory.Server;
 using VintageAtlas.Core;
 using Vintagestory.API.Config;
+using Vintagestory.Common.Database;
+using Vintagestory.API.Common;
 
 namespace VintageAtlas.Export;
 
@@ -16,12 +18,17 @@ namespace VintageAtlas.Export;
 /// - Chunk access MUST be on main thread
 /// - Cannot cache chunk references (prevents unloading)
 /// - Extract quickly, minimize main thread time
+/// 
+/// HYBRID APPROACH:
+/// - Try to get chunks from memory first (fast, preferred)
+/// - Fall back to database read if not in memory (slower but works)
 /// </summary>
 public class ChunkDataExtractor
 {
     private readonly ICoreServerAPI _sapi;
     private readonly ServerMain _server;
     private readonly ModConfig _config;
+    private readonly SavegameDataLoader? _dataLoader;
     private const int CHUNK_SIZE = 32;
     
     public ChunkDataExtractor(ICoreServerAPI sapi, ModConfig config)
@@ -29,17 +36,29 @@ public class ChunkDataExtractor
         _sapi = sapi;
         _server = (ServerMain)sapi.World;
         _config = config;
+        
+        // NOTE: Database fallback disabled due to lock conflicts with live server
+        // The game's savegame DB is locked during runtime, causing "database is locked" errors
+        // Live map will only show currently loaded chunks (explored areas)
+        // For full map export, use /atlas export command instead
+        _sapi.Logger.Notification("[VintageAtlas] ChunkDataExtractor initialized (memory-only mode)");
+        _sapi.Logger.Debug("[VintageAtlas] Live map shows explored areas only. Use /atlas export for full map.");
+        _dataLoader = null;
     }
     
     /// <summary>
     /// Extract all chunks needed for a tile
     /// MUST be called from main thread or via EnqueueMainThreadTask
+    ///
+    /// IMPORTANT: Tile coordinates are ALWAYS in absolute chunk space.
+    /// The coordinate transformation happens in MapConfigController when serving extent/config to frontend.
+    /// This ensures tiles are generated at their actual world positions.
     /// </summary>
     public TileChunkData ExtractTileData(int zoom, int tileX, int tileZ)
     {
         var tileSize = _config.TileSize;
         var chunksPerTile = tileSize / CHUNK_SIZE;
-        
+
         var tileData = new TileChunkData
         {
             TileX = tileX,
@@ -48,29 +67,15 @@ public class ChunkDataExtractor
             TileSize = tileSize,
             ChunksPerTileEdge = chunksPerTile
         };
-        
+
         // Calculate starting chunk coordinates for this tile
-        // If using relative positioning, offset by spawn position
-        var chunkOffsetX = 0;
-        var chunkOffsetZ = 0;
-        
-        if (!_config.AbsolutePositions && _sapi.World.DefaultSpawnPosition != null)
-        {
-            // Convert spawn position to chunk coordinates
-            var spawnChunkX = _sapi.World.DefaultSpawnPosition.AsBlockPos.X / CHUNK_SIZE;
-            var spawnChunkZ = _sapi.World.DefaultSpawnPosition.AsBlockPos.Z / CHUNK_SIZE;
-            chunkOffsetX = spawnChunkX;
-            chunkOffsetZ = spawnChunkZ;
-            
-            _sapi.Logger.Debug(
-                $"[VintageAtlas] Using spawn-relative coordinates: spawn chunk=({spawnChunkX},{spawnChunkZ})");
-        }
-        
-        var startChunkX = tileX * chunksPerTile + chunkOffsetX;
-        var startChunkZ = tileZ * chunksPerTile + chunkOffsetZ;
-        
+        // Tiles are always in absolute world coordinates - no offset needed here
+        // The frontend handles coordinate transformation via worldExtent from MapConfigController
+        var startChunkX = tileX * chunksPerTile;
+        var startChunkZ = tileZ * chunksPerTile;
+
         _sapi.Logger.VerboseDebug(
-            $"[VintageAtlas] Extracting tile z{zoom} t({tileX},{tileZ}) → chunks({startChunkX},{startChunkZ})-({startChunkX + chunksPerTile - 1},{startChunkZ + chunksPerTile - 1}) [offset=({chunkOffsetX},{chunkOffsetZ})]");
+            $"[VintageAtlas] Extracting tile z{zoom} t({tileX},{tileZ}) → chunks({startChunkX},{startChunkZ})-({startChunkX + chunksPerTile - 1},{startChunkZ + chunksPerTile - 1}) [absolute coordinates]");
         
         // Extract all chunks that make up this tile
         for (var offsetX = 0; offsetX < chunksPerTile; offsetX++)
@@ -104,93 +109,128 @@ public class ChunkDataExtractor
     /// <summary>
     /// Extract a single chunk snapshot
     /// MUST be called from main thread
+    /// Tries memory first, falls back to database if available
     /// </summary>
     public ChunkSnapshot ExtractChunkSnapshot(int chunkX, int chunkZ)
+{
+    var snapshot = new ChunkSnapshot
     {
-        var snapshot = new ChunkSnapshot
-        {
-            ChunkX = chunkX,
-            ChunkZ = chunkZ,
-            IsLoaded = false
-        };
+        ChunkX = chunkX,
+        ChunkZ = chunkZ,
+        IsLoaded = false
+    };
+    
+    try
+    {
+        // Try to get map chunk from memory
+        var mapChunk = _server.WorldMap.GetMapChunk(chunkX, chunkZ);
         
-        try
+        if (!TryGetMapChunkData(mapChunk, chunkX, chunkZ, out var validMapChunk))
         {
-            // Try to get map chunk first (lighter weight)
-            var mapChunk = _server.WorldMap.GetMapChunk(chunkX, chunkZ);
-            if (mapChunk == null)
-            {
-                _sapi.Logger.VerboseDebug($"[VintageAtlas] Chunk ({chunkX},{chunkZ}) not loaded");
-                return snapshot;
-            }
-            
+            return ExtractChunkFromDatabase(chunkX, chunkZ);
+        }
+
             // Extract height map
-            snapshot.HeightMap = new int[CHUNK_SIZE * CHUNK_SIZE];
-            if (mapChunk.RainHeightMap != null)
-            {
-                for (var i = 0; i < mapChunk.RainHeightMap.Length && i < snapshot.HeightMap.Length; i++)
-                {
-                    snapshot.HeightMap[i] = mapChunk.RainHeightMap[i];
-                }
-            }
-            
-            // Now extract block data - need full chunk access
-            // We need to find which Y chunk contains the surface
-            // Most surface blocks are between Y=64-192 (chunks 2-6)
-            var surfaceChunkY = DetermineSurfaceChunkY(snapshot.HeightMap);
-            snapshot.ChunkY = surfaceChunkY;
-            
-            // Get the actual chunk with block data
-            var worldChunk = _sapi.World.BlockAccessor.GetChunk(chunkX, surfaceChunkY, chunkZ);
-            if (worldChunk == null)
-            {
-                _sapi.Logger.VerboseDebug(
-                    $"[VintageAtlas] Could not access block data for chunk ({chunkX},{surfaceChunkY},{chunkZ})");
-                return snapshot;
-            }
-            
-            // Extract block IDs
-            snapshot.BlockIds = new int[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
-            
-            // Copy block data from chunk
-            // ServerChunk has .Data array, but IWorldChunk doesn't expose it directly
-            // We need to use BlockAccessor for safety
-            var baseX = chunkX * CHUNK_SIZE;
-            var baseY = surfaceChunkY * CHUNK_SIZE;
-            var baseZ = chunkZ * CHUNK_SIZE;
-            var pos = new BlockPos(Dimensions.NormalWorld);
-            
-            for (var y = 0; y < CHUNK_SIZE; y++)
-            {
-                for (var z = 0; z < CHUNK_SIZE; z++)
-                {
-                    for (var x = 0; x < CHUNK_SIZE; x++)
-                    {
-                        pos.Set(baseX + x, baseY + y, baseZ + z);
-                        var index = y * CHUNK_SIZE * CHUNK_SIZE + z * CHUNK_SIZE + x;
-                        snapshot.BlockIds[index] = _sapi.World.BlockAccessor.GetBlockId(pos);
-                    }
-                }
-            }
-            
-            snapshot.IsLoaded = true;
-            snapshot.SnapshotTime = DateTime.UtcNow;
-            
-            // Debug: Check data integrity
-            var nonZeroBlocks = snapshot.BlockIds.Count(id => id != 0);
-            var nonZeroHeights = snapshot.HeightMap.Count(h => h != 0);
-            
-            _sapi.Logger.VerboseDebug(
-                $"[VintageAtlas] Successfully extracted chunk ({chunkX},{surfaceChunkY},{chunkZ}): {nonZeroBlocks} blocks, {nonZeroHeights} heights");
-        }
-        catch (Exception ex)
+            ExtractHeightMapData(snapshot, validMapChunk);
+        
+        // Determine surface chunk Y and get world chunk
+        var surfaceChunkY = DetermineSurfaceChunkY(snapshot.HeightMap);
+        snapshot.ChunkY = surfaceChunkY;
+        
+        var worldChunk = _sapi.World.BlockAccessor.GetChunk(chunkX, surfaceChunkY, chunkZ);
+        if (worldChunk == null)
         {
-            _sapi.Logger.Warning(
-                $"[VintageAtlas] Failed to extract chunk ({chunkX},{chunkZ}): {ex.Message}");
+            _sapi.Logger.VerboseDebug(
+                $"[VintageAtlas] Could not access block data for chunk ({chunkX},{surfaceChunkY},{chunkZ})");
+            return snapshot;
         }
         
-        return snapshot;
+        // Extract block IDs
+        ExtractBlockData(snapshot, chunkX, surfaceChunkY, chunkZ);
+        
+        snapshot.IsLoaded = true;
+        snapshot.SnapshotTime = DateTime.UtcNow;
+        
+        ValidateSnapshotData(snapshot, chunkX, surfaceChunkY, chunkZ);
     }
+    catch (Exception ex)
+    {
+        _sapi.Logger.Warning(
+            $"[VintageAtlas] Failed to extract chunk ({chunkX},{chunkZ}): {ex.Message}");
+    }
+    
+    return snapshot;
+}
+
+private bool TryGetMapChunkData(IMapChunk? mapChunk, int chunkX, int chunkZ, out IMapChunk validMapChunk)
+{
+    validMapChunk = null!;
+    
+    var hasData = mapChunk != null && mapChunk.RainHeightMap != null && 
+                  mapChunk.RainHeightMap.Any(h => h > 0);
+    
+    if (mapChunk == null || !hasData)
+    {
+        if (_dataLoader != null)
+        {
+            _sapi.Logger.VerboseDebug(
+                $"[VintageAtlas] Chunk ({chunkX},{chunkZ}) {(mapChunk == null ? "not in memory" : "empty in memory")}, trying database...");
+        }
+        else
+        {
+            _sapi.Logger.VerboseDebug(
+                $"[VintageAtlas] Chunk ({chunkX},{chunkZ}) not available (no memory/database or no data)");
+        }
+        return false;
+    }
+    
+    validMapChunk = mapChunk;
+    return true;
+}
+
+private static void ExtractHeightMapData(ChunkSnapshot snapshot, IMapChunk mapChunk)
+{
+    snapshot.HeightMap = new int[CHUNK_SIZE * CHUNK_SIZE];
+    
+    if (mapChunk.RainHeightMap == null) return;
+    
+    for (var i = 0; i < mapChunk.RainHeightMap.Length && i < snapshot.HeightMap.Length; i++)
+    {
+        snapshot.HeightMap[i] = mapChunk.RainHeightMap[i];
+    }
+}
+
+private void ExtractBlockData(ChunkSnapshot snapshot, int chunkX, int surfaceChunkY, int chunkZ)
+{
+    snapshot.BlockIds = new int[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
+    
+    var baseX = chunkX * CHUNK_SIZE;
+    var baseY = surfaceChunkY * CHUNK_SIZE;
+    var baseZ = chunkZ * CHUNK_SIZE;
+    var pos = new BlockPos(Dimensions.NormalWorld);
+    
+    for (var y = 0; y < CHUNK_SIZE; y++)
+    {
+        for (var z = 0; z < CHUNK_SIZE; z++)
+        {
+            for (var x = 0; x < CHUNK_SIZE; x++)
+            {
+                pos.Set(baseX + x, baseY + y, baseZ + z);
+                var index = y * CHUNK_SIZE * CHUNK_SIZE + z * CHUNK_SIZE + x;
+                snapshot.BlockIds[index] = _sapi.World.BlockAccessor.GetBlockId(pos);
+            }
+        }
+    }
+}
+
+private void ValidateSnapshotData(ChunkSnapshot snapshot, int chunkX, int surfaceChunkY, int chunkZ)
+{
+    var nonZeroBlocks = snapshot.BlockIds.Count(id => id != 0);
+    var nonZeroHeights = snapshot.HeightMap.Count(h => h != 0);
+    
+    _sapi.Logger.VerboseDebug(
+        $"[VintageAtlas] Successfully extracted chunk ({chunkX},{surfaceChunkY},{chunkZ}): {nonZeroBlocks} blocks, {nonZeroHeights} heights");
+}
     
     /// <summary>
     /// Determine which Y chunk level contains the surface for this area
@@ -226,6 +266,90 @@ public class ChunkDataExtractor
         }
         
         return results;
+    }
+    
+    /// <summary>
+    /// Extract chunk data directly from database when not in memory
+    /// This is slower than memory access but allows access to all chunks
+    /// </summary>
+    private ChunkSnapshot ExtractChunkFromDatabase(int chunkX, int chunkZ)
+    {
+        var snapshot = new ChunkSnapshot
+        {
+            ChunkX = chunkX,
+            ChunkZ = chunkZ,
+            IsLoaded = false
+        };
+        
+        if (_dataLoader == null)
+        {
+            return snapshot;
+        }
+        
+        try
+        {
+            // Get database connection
+            var sqliteConn = _dataLoader.SqliteThreadConn;
+            
+            try
+            {
+                // Load map chunk from database for height data
+                var pos = new ChunkPos(chunkX, 0, chunkZ);
+                var mapChunkData = _dataLoader.GetServerMapChunk(sqliteConn, pos);
+                
+                if (mapChunkData != null)
+                {
+                    // Extract height map
+                    snapshot.HeightMap = new int[CHUNK_SIZE * CHUNK_SIZE];
+                    if (mapChunkData.RainHeightMap != null)
+                    {
+                        for (var i = 0; i < mapChunkData.RainHeightMap.Length && i < snapshot.HeightMap.Length; i++)
+                        {
+                            snapshot.HeightMap[i] = mapChunkData.RainHeightMap[i];
+                        }
+                    }
+                    
+                    // Determine surface chunk Y
+                    var surfaceChunkY = DetermineSurfaceChunkY(snapshot.HeightMap);
+                    snapshot.ChunkY = surfaceChunkY;
+                    
+                    // Load actual chunk data from database
+                    pos = new ChunkPos(chunkX, surfaceChunkY, chunkZ);
+                    var chunkIndex = pos.ToChunkIndex();
+                    var serverChunk = _dataLoader.GetServerChunk(sqliteConn, chunkIndex);
+                    
+                    if (serverChunk is { Data: not null })
+                    {
+                        // Extract block IDs from chunk data
+                        snapshot.BlockIds = new int[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
+                        
+                        // ServerChunk.Data is the raw block data array
+                        for (var i = 0; i < serverChunk.Data.Length && i < snapshot.BlockIds.Length; i++)
+                        {
+                            snapshot.BlockIds[i] = serverChunk.Data[i];
+                        }
+                        
+                        snapshot.IsLoaded = true;
+                        snapshot.SnapshotTime = DateTime.UtcNow;
+                        
+                        _sapi.Logger.VerboseDebug(
+                            $"[VintageAtlas] Loaded chunk ({chunkX},{surfaceChunkY},{chunkZ}) from database");
+                    }
+                }
+            }
+            finally
+            {
+                // Always free the connection
+                sqliteConn.Free();
+            }
+        }
+        catch (Exception ex)
+        {
+            _sapi.Logger.Warning(
+                $"[VintageAtlas] Failed to load chunk ({chunkX},{chunkZ}) from database: {ex.Message}");
+        }
+        
+        return snapshot;
     }
 }
 

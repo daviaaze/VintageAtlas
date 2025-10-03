@@ -10,11 +10,61 @@ import './style.css'
 // Initialize map configuration from API before creating the app
 async function initializeApp() {
   try {
-    console.log('[VintageAtlas] Initializing map configuration from server...')
+    console.log('🚀 [VintageAtlas] Initializing map configuration from server...')
     await initializeMapConfig()
-    console.log('[VintageAtlas] Map configuration loaded successfully')
+    console.log('✅ [VintageAtlas] Map configuration loaded successfully')
   } catch (error) {
-    console.warn('[VintageAtlas] Failed to load map config, using fallback values:', error)
+    console.error('❌ [VintageAtlas] FATAL: Cannot start without server configuration!', error)
+    
+    // Show user-friendly error message
+    document.body.innerHTML = `
+      <div style="
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        font-family: system-ui, -apple-system, sans-serif;
+        background: #1a1a1a;
+        color: #fff;
+        margin: 0;
+        padding: 20px;
+        box-sizing: border-box;
+      ">
+        <div style="
+          max-width: 600px;
+          text-align: center;
+          padding: 40px;
+          background: #2a2a2a;
+          border-radius: 8px;
+          border: 2px solid #dc3545;
+        ">
+          <h1 style="color: #dc3545; margin: 0 0 20px 0;">❌ Cannot Load Map Configuration</h1>
+          <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+            The VintageAtlas frontend could not fetch required configuration from the server.
+          </p>
+          <details style="text-align: left; margin: 20px 0;">
+            <summary style="cursor: pointer; font-weight: bold; margin-bottom: 10px;">
+              Error Details
+            </summary>
+            <pre style="
+              background: #1a1a1a;
+              padding: 15px;
+              border-radius: 4px;
+              overflow-x: auto;
+              font-size: 12px;
+              color: #ff6b6b;
+            ">${error instanceof Error ? error.message : String(error)}</pre>
+          </details>
+          <p style="font-size: 14px; color: #999;">
+            <strong>Troubleshooting:</strong><br>
+            1. Ensure the VintageAtlas mod is running on the server<br>
+            2. Check that <code>/api/map-config</code> endpoint is accessible<br>
+            3. Check the browser console for more details
+          </p>
+        </div>
+      </div>
+    `;
+    return; // Stop app initialization
   }
 
   // Create Vue app
@@ -30,7 +80,7 @@ async function initializeApp() {
   app.mount('#app')
 
   // Log app initialization for debugging
-  console.log('[VintageAtlas] Application initialized with dynamic configuration')
+  console.log('✅ [VintageAtlas] Application initialized with server configuration')
 }
 
 // Start the app

@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using SkiaSharp;
 using Vintagestory.API.Server;
 using VintageAtlas.Core;
+using VintageAtlas.Models;
 
 namespace VintageAtlas.Export;
 

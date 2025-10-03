@@ -1301,7 +1301,7 @@ public class Extractor
         {
             foreach (var block in loadModConfig.Blocks)
             {
-                var colors = block.Value.Select(color => (uint)(color | 0xff000000)).ToList();
+                var colors = block.Value.Select(color => (color & 0xff000000) == 0 ? color | 0xff000000 : color).ToList();
                 var blockNow = _server.World.GetBlock(new AssetLocation(block.Key));
                 if (blockNow != null)
                 {

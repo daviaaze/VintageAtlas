@@ -1,13 +1,17 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Data.Sqlite;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
+using Vintagestory.API.Common;
 using Vintagestory.API.Server;
 using VintageAtlas.Core;
+using VintageAtlas.Export;
 
 namespace VintageAtlas.Web.API;
 
@@ -19,16 +23,18 @@ public class MapConfigController
 {
     private readonly ICoreServerAPI _sapi;
     private readonly ModConfig _config;
+    private readonly DynamicTileGenerator _tileGenerator;
     private readonly JsonSerializerSettings _jsonSettings;
     
     private MapConfigData? _cachedConfig;
     private long _lastConfigUpdate;
     private readonly object _cacheLock = new();
 
-    public MapConfigController(ICoreServerAPI sapi, ModConfig config)
+    public MapConfigController(ICoreServerAPI sapi, ModConfig config, DynamicTileGenerator tileGenerator)
     {
         _sapi = sapi;
         _config = config;
+        _tileGenerator = tileGenerator;
         
         _jsonSettings = new JsonSerializerSettings
         {
@@ -134,36 +140,69 @@ public class MapConfigController
         // Calculate resolutions for OpenLayers
         var tileResolutions = GenerateResolutions(_config.BaseZoomLevel);
         var viewResolutions = GenerateResolutions(_config.BaseZoomLevel + 3); // Extra zoom for smooth viewing
-        
+
         // Transform extent to relative coordinates if needed
+        // COORDINATE SYSTEM DESIGN:
+        // - Backend (ChunkDataExtractor): Always uses absolute world chunk coordinates
+        // - Tiles on disk: Stored with absolute chunk coordinate filenames (e.g., 1234_5678.png)
+        // - This controller: Transforms extent for frontend display based on coordinate mode
+        // - Frontend (OpenLayers): Uses transformed extent to position tiles visually
+        //
+        // Why this design:
+        // 1. Tiles are generated once and work in both coordinate modes
+        // 2. Only the DISPLAY extent changes, not the tile data itself
+        // 3. Avoids regenerating tiles when switching coordinate modes
         int[] worldExtent;
         int[] worldOrigin;
-        
+
         if (_config.AbsolutePositions)
         {
             // Use absolute coordinates as-is
-            worldExtent = new[] { extent.MinX, extent.MinZ, extent.MaxX, extent.MaxZ };
-            worldOrigin = new[] { extent.MinX, extent.MaxZ };
+            // Frontend will display world coordinates (e.g., X=512345, Z=519876)
+            worldExtent = [extent.MinX, extent.MinZ, extent.MaxX, extent.MaxZ];
+            worldOrigin = [extent.MinX, extent.MaxZ];
+
+            _sapi.Logger.Debug($"[VintageAtlas] Using ABSOLUTE coordinates: " +
+                $"extent=[{worldExtent[0]}, {worldExtent[1]}, {worldExtent[2]}, {worldExtent[3]}]");
         }
         else
         {
-            // Transform to spawn-relative coordinates
-            // Note: Frontend expects Z-axis flipped for map display
+            // Transform to spawn-relative coordinates for display
+            // This shifts the coordinate space so spawn is at (0, 0)
+            // Note: Z-axis is flipped for OpenLayers map display (North is negative Z)
             var relMinX = extent.MinX - spawn[0];
             var relMinZ = extent.MinZ - spawn[1];
             var relMaxX = extent.MaxX - spawn[0];
             var relMaxZ = extent.MaxZ - spawn[1];
-            
-            _sapi.Logger.Debug($"[VintageAtlas] Extent transformation: " +
-                $"Absolute=({extent.MinX},{extent.MinZ})-({extent.MaxX},{extent.MaxZ}), " +
-                $"Spawn=({spawn[0]},{spawn[1]}), " +
-                $"Relative=({relMinX},{relMinZ})-({relMaxX},{relMaxZ})");
-            
-            worldExtent = new[] { relMinX, -relMaxZ, relMaxX, -relMinZ };
-            worldOrigin = new[] { relMinX, -relMinZ };
-            
-            _sapi.Logger.Debug($"[VintageAtlas] Final extent: [{worldExtent[0]}, {worldExtent[1]}, {worldExtent[2]}, {worldExtent[3]}]");
+
+            _sapi.Logger.Debug($"[VintageAtlas] Transforming to SPAWN-RELATIVE coordinates: " +
+                $"Absolute extent=({extent.MinX},{extent.MinZ})-({extent.MaxX},{extent.MaxZ}), " +
+                $"Spawn position=({spawn[0]},{spawn[1]}), " +
+                $"Relative extent=({relMinX},{relMinZ})-({relMaxX},{relMaxZ})");
+
+            // Apply Z-axis flip for OpenLayers: minZ becomes -maxZ, maxZ becomes -minZ
+            worldExtent = [relMinX, -relMaxZ, relMaxX, -relMinZ];
+            worldOrigin = [relMinX, -relMinZ];
+
+            _sapi.Logger.Debug($"[VintageAtlas] Final display extent (with Z-flip): " +
+                $"[{worldExtent[0]}, {worldExtent[1]}, {worldExtent[2]}, {worldExtent[3]}], " +
+                $"origin=[{worldOrigin[0]}, {worldOrigin[1]}]");
         }
+        
+        // Calculate tile offset for coordinate transformation
+        // This allows frontend to convert display tile coords -> absolute tile coords
+        const int CHUNK_SIZE = 32;
+        var chunksPerTile = _config.TileSize / CHUNK_SIZE;
+        var spawnChunkX = spawn[0] / CHUNK_SIZE;
+        var spawnChunkZ = spawn[1] / CHUNK_SIZE;
+        var tileOffsetX = spawnChunkX / chunksPerTile;
+        var tileOffsetZ = spawnChunkZ / chunksPerTile;
+        
+        var tileOffset = _config.AbsolutePositions 
+            ? new[] { 0, 0 } 
+            : [tileOffsetX, tileOffsetZ];
+            
+        _sapi.Logger.Debug($"[VintageAtlas] Tile offset for spawn-relative mode: [{tileOffset[0]}, {tileOffset[1]}]");
         
         return new MapConfigData
         {
@@ -184,6 +223,7 @@ public class MapConfigController
             TileSize = _config.TileSize,
             TileResolutions = tileResolutions,
             ViewResolutions = viewResolutions,
+            TileOffset = tileOffset,  // Tile coordinate offset for spawn-relative mode
             
             // Map metadata
             SpawnPosition = spawn,
@@ -205,69 +245,150 @@ public class MapConfigController
 
     private WorldExtentData CalculateWorldExtent()
     {
-        // Get actual tile coverage by scanning the output directory
-        var worldDir = Path.Combine(_config.OutputDirectoryWorld, _config.BaseZoomLevel.ToString());
+        // STEP 1: Try MBTiles first (fast if tiles exist)
+        var tileExtent = _tileGenerator.GetTileExtentAsync(_config.BaseZoomLevel).GetAwaiter().GetResult();
         
-        if (!Directory.Exists(worldDir))
+        if (tileExtent != null)
         {
-            // Fallback to full world size
-            var mapSizeX = _sapi.World.BlockAccessor.MapSizeX;
-            var mapSizeZ = _sapi.World.BlockAccessor.MapSizeZ;
-            
-            return new WorldExtentData
-            {
-                MinX = -mapSizeX / 2,
-                MinZ = -mapSizeZ / 2,
-                MaxX = mapSizeX / 2,
-                MaxZ = mapSizeZ / 2
-            };
+            // Tiles exist - calculate extent from them
+            return CalculateExtentFromTiles(tileExtent);
         }
 
-        // Scan tiles to find actual extent
-        var tiles = Directory.GetFiles(worldDir, "*.png")
-            .Select(Path.GetFileNameWithoutExtension)
-            .Where(f => f != null)
-            .Select(f =>
-            {
-                var parts = f!.Split('_');
-                if (parts.Length == 2 && int.TryParse(parts[0], out var x) && int.TryParse(parts[1], out var z))
-                {
-                    return (x, z);
-                }
-                return ((int?)null, (int?)null);
-            })
-            .Where(t => t.Item1.HasValue && t.Item2.HasValue)
-            .Select(t => (x: t.Item1!.Value, z: t.Item2!.Value))
-            .ToList();
-
-        if (tiles.Count == 0)
-        {
-            // No tiles found, use default
-            return new WorldExtentData
-            {
-                MinX = -512000,
-                MinZ = -512000,
-                MaxX = 512000,
-                MaxZ = 512000
-            };
-        }
-
-        var minTileX = tiles.Min(t => t.x);
-        var maxTileX = tiles.Max(t => t.x);
-        var minTileZ = tiles.Min(t => t.z);
-        var maxTileZ = tiles.Max(t => t.z);
+        // STEP 2: No tiles yet - query savegame database for actual chunk positions
+        _sapi.Logger.Debug("[VintageAtlas] No tiles in MBTiles database, querying savegame for chunk extent...");
         
+        return CalculateExtentFromSavegame();
+    }
+
+    private WorldExtentData CalculateExtentFromTiles(Storage.TileExtent tileExtent)
+    {
         // Convert tile coordinates to world coordinates
-        var chunkSize = 32;
+        const int chunkSize = 32;
         var chunksPerTile = _config.TileSize / chunkSize;
         var worldUnitsPerTile = chunksPerTile * chunkSize;
         
+        var minX = tileExtent.MinX * worldUnitsPerTile;
+        var maxX = (tileExtent.MaxX + 1) * worldUnitsPerTile;
+        var minZ = tileExtent.MinY * worldUnitsPerTile;
+        var maxZ = (tileExtent.MaxY + 1) * worldUnitsPerTile;
+        
+        _sapi.Logger.Debug($"[VintageAtlas] Calculated extent from MBTiles database: " +
+            $"Tiles: ({tileExtent.MinX},{tileExtent.MinY})-({tileExtent.MaxX},{tileExtent.MaxY}), " +
+            $"World coords: ({minX},{minZ})-({maxX},{maxZ})");
+        
         return new WorldExtentData
         {
-            MinX = minTileX * worldUnitsPerTile,
-            MinZ = minTileZ * worldUnitsPerTile,
-            MaxX = (maxTileX + 1) * worldUnitsPerTile,
-            MaxZ = (maxTileZ + 1) * worldUnitsPerTile
+            MinX = minX,
+            MinZ = minZ,
+            MaxX = maxX,
+            MaxZ = maxZ
+        };
+    }
+
+    private WorldExtentData CalculateExtentFromSavegame()
+    {
+        try
+        {
+            // Query savegame database directly for all chunk positions
+            var chunkPositions = GetAllMapChunkPositionsFromSavegame();
+            
+            if (chunkPositions.Count == 0)
+            {
+                _sapi.Logger.Debug("[VintageAtlas] No chunks found in savegame, using spawn fallback extent");
+                return GetSpawnFallbackExtent();
+            }
+            
+            // Calculate extent from actual chunk positions
+            const int chunkSize = 32;
+            var minChunkX = chunkPositions.Min(c => c.x);
+            var maxChunkX = chunkPositions.Max(c => c.x);
+            var minChunkZ = chunkPositions.Min(c => c.z);
+            var maxChunkZ = chunkPositions.Max(c => c.z);
+            
+            var minX = minChunkX * chunkSize;
+            var maxX = (maxChunkX + 1) * chunkSize;
+            var minZ = minChunkZ * chunkSize;
+            var maxZ = (maxChunkZ + 1) * chunkSize;
+            
+            _sapi.Logger.Debug($"[VintageAtlas] Calculated extent from savegame database: " +
+                $"Chunks: ({minChunkX},{minChunkZ})-({maxChunkX},{maxChunkZ}), " +
+                $"World coords: ({minX},{minZ})-({maxX},{maxZ})");
+            
+            return new WorldExtentData
+            {
+                MinX = minX,
+                MinZ = minZ,
+                MaxX = maxX,
+                MaxZ = maxZ
+            };
+        }
+        catch (Exception ex)
+        {
+            _sapi.Logger.Error($"[VintageAtlas] Failed to query savegame database: {ex.Message}");
+            _sapi.Logger.Debug($"[VintageAtlas] Stack trace: {ex.StackTrace}");
+            return GetSpawnFallbackExtent();
+        }
+    }
+
+    private List<(int x, int z)> GetAllMapChunkPositionsFromSavegame()
+    {
+        var positions = new List<(int x, int z)>();
+        
+        // Get savegame database path
+        var savegamePath = _sapi.World.SavegameIdentifier;
+        var dataPath = _sapi.GetOrCreateDataPath("Saves");
+        var dbPath = Path.Combine(dataPath, savegamePath, "default.vcdbs");
+        
+        if (!File.Exists(dbPath))
+        {
+            _sapi.Logger.Warning($"[VintageAtlas] Savegame database not found at: {dbPath}");
+            return positions;
+        }
+        
+        _sapi.Logger.Debug($"[VintageAtlas] Querying savegame database: {dbPath}");
+        
+        var connectionString = $"Data Source={dbPath};Mode=ReadOnly";
+        
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+        
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT position FROM mapchunk";
+        
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            var position = (long)reader["position"];
+            
+            // Decode position using Vintage Story's chunk index format
+            // From ChunkPos.FromChunkIndex_saveGamev2
+            var mapSizeX = _sapi.World.BlockAccessor.MapSizeX / 32;
+            var mapSizeZ = _sapi.World.BlockAccessor.MapSizeZ / 32;
+            
+            var chunkX = (int)(position % mapSizeX);
+            var chunkZ = (int)((position / mapSizeX) % mapSizeZ);
+            
+            positions.Add((chunkX, chunkZ));
+        }
+        
+        _sapi.Logger.Debug($"[VintageAtlas] Found {positions.Count} chunks in savegame database");
+        
+        return positions;
+    }
+
+    private WorldExtentData GetSpawnFallbackExtent()
+    {
+        var spawn = GetSpawnPosition();
+        const int fallbackRadius = 10000; // 10km radius around spawn
+        
+        _sapi.Logger.Debug($"[VintageAtlas] Using spawn fallback extent: ±{fallbackRadius} blocks around spawn ({spawn[0]}, {spawn[1]})");
+        
+        return new WorldExtentData
+        {
+            MinX = spawn[0] - fallbackRadius,
+            MinZ = spawn[1] - fallbackRadius,
+            MaxX = spawn[0] + fallbackRadius,
+            MaxZ = spawn[1] + fallbackRadius
         };
     }
 
@@ -278,12 +399,12 @@ public class MapConfigController
         
         if (_config.AbsolutePositions)
         {
-            return new[] { spawn[0], spawn[1] };
+            return [spawn[0], spawn[1]];
         }
         else
         {
             // In relative coordinates, spawn is at [0, 0]
-            return new[] { 0, 0 };
+            return [0, 0];
         }
     }
 
@@ -299,7 +420,7 @@ public class MapConfigController
         var spawnX = spawnPos?.X ?? _sapi.World.BlockAccessor.MapSizeX / 2;
         var spawnZ = spawnPos?.Z ?? _sapi.World.BlockAccessor.MapSizeZ / 2;
         
-        return new[] { spawnX, spawnZ };
+        return [spawnX, spawnZ];
     }
 
     private double[] GenerateResolutions(int levels)
@@ -381,17 +502,17 @@ public class MapConfigController
 
 public class MapConfigData
 {
-    public int[] WorldExtent { get; set; } = Array.Empty<int>();
-    public int[] WorldOrigin { get; set; } = Array.Empty<int>();
-    public int[] DefaultCenter { get; set; } = Array.Empty<int>();
+    public int[] WorldExtent { get; set; } = [];
+    public int[] WorldOrigin { get; set; } = [];
+    public int[] DefaultCenter { get; set; } = [];
     public int DefaultZoom { get; set; }
     public int MinZoom { get; set; }
     public int MaxZoom { get; set; }
     public int BaseZoomLevel { get; set; }
     public int TileSize { get; set; }
-    public double[] TileResolutions { get; set; } = Array.Empty<double>();
-    public double[] ViewResolutions { get; set; } = Array.Empty<double>();
-    public int[] SpawnPosition { get; set; } = Array.Empty<int>();
+    public double[] TileResolutions { get; set; } = [];
+    public double[] ViewResolutions { get; set; } = [];
+    public int[] SpawnPosition { get; set; } = [];
     public int MapSizeX { get; set; }
     public int MapSizeZ { get; set; }
     public int MapSizeY { get; set; }
@@ -399,6 +520,13 @@ public class MapConfigData
     public string? ServerName { get; set; }
     public string? WorldName { get; set; }
     public bool AbsolutePositions { get; set; }
+    
+    /// <summary>
+    /// Tile coordinate offset for spawn-relative mode.
+    /// Frontend adds this to display tile coords to get absolute tile coords.
+    /// [tileOffsetX, tileOffsetZ] in tile coordinate space.
+    /// </summary>
+    public int[] TileOffset { get; set; } = [];
 }
 
 public class WorldExtentData

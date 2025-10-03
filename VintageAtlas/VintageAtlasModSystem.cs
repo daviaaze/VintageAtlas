@@ -29,6 +29,10 @@ public class VintageAtlasModSystem : ModSystem
     private MapExporter? _mapExporter;
     private DataCollector? _dataCollector;
     private HistoricalTracker? _historicalTracker;
+    private ChunkChangeTracker? _chunkChangeTracker;
+    private DynamicTileGenerator? _tileGenerator;
+    private TileGenerationState? _tileState;
+    private BackgroundTileService? _backgroundTileService;
     
     // Web components
     private WebServer? _webServer;
@@ -91,11 +95,6 @@ public class VintageAtlasModSystem : ModSystem
         _sapi.Logger.Notification("[VintageAtlas] Initialization complete");
     }
 
-    private ChunkChangeTracker? _chunkChangeTracker;
-    private DynamicTileGenerator? _tileGenerator;
-    private TileGenerationState? _tileState;
-    private BackgroundTileService? _backgroundTileService;
-
     private void SetupLiveServer()
     {
         if (_sapi == null || _config == null || _mapExporter == null) return;
@@ -105,8 +104,8 @@ public class VintageAtlasModSystem : ModSystem
             _sapi.Logger.Notification("[VintageAtlas] Setting up live web server...");
             
             // Initialize output directories for proper path resolution
-            _config.OutputDirectoryWorld = System.IO.Path.Combine(_config.OutputDirectory, "data", "world");
-            _config.OutputDirectoryGeojson = System.IO.Path.Combine(_config.OutputDirectory, "data", "geojson");
+            _config.OutputDirectoryWorld = Path.Combine(_config.OutputDirectory, "data", "world");
+            _config.OutputDirectoryGeojson = Path.Combine(_config.OutputDirectory, "data", "geojson");
             
             // Initialize data collector
             _dataCollector = new DataCollector(_sapi);
@@ -114,8 +113,12 @@ public class VintageAtlasModSystem : ModSystem
             // Initialize chunk change tracker for dynamic updates
             _chunkChangeTracker = new ChunkChangeTracker(_sapi);
             
+            // Initialize block color cache for tile generation
+            var colorCache = new BlockColorCache(_sapi, _config);
+            colorCache.Initialize(); // Load block color mappings
+            
             // Initialize dynamic tile generator
-            _tileGenerator = new DynamicTileGenerator(_sapi, _config);
+            _tileGenerator = new DynamicTileGenerator(_sapi, _config, colorCache);
             
             // Initialize tile generation state database
             _tileState = new TileGenerationState(_sapi, _config.OutputDirectory);
@@ -158,7 +161,7 @@ public class VintageAtlasModSystem : ModSystem
             var configController = new ConfigController(_sapi, _config, _mapExporter);
             var historicalController = new HistoricalController(_sapi, _historicalTracker);
             var geoJsonController = new GeoJsonController(_sapi, _config);
-            var mapConfigController = new MapConfigController(_sapi, _config);
+            var mapConfigController = new MapConfigController(_sapi, _config, _tileGenerator);
             var tileController = new TileController(_sapi, _config, _tileGenerator);
             
             var router = new RequestRouter(
@@ -235,7 +238,7 @@ public class VintageAtlasModSystem : ModSystem
         _mapExporter.StartExport();
     }
 
-    private void OnPlayerDeath(IServerPlayer byPlayer, DamageSource damageSource)
+    private void OnPlayerDeath(IServerPlayer byPlayer, DamageSource? damageSource)
     {
         if (_historicalTracker == null) return;
         
@@ -261,14 +264,12 @@ public class VintageAtlasModSystem : ModSystem
         _sapi?.Logger.Notification("[VintageAtlas] Shutdown complete");
     }
 
-    private void OnClientData(IServerPlayer fromplayer, ExportData exportData)
+    private void OnClientData(IServerPlayer sourcePlayer, ExportData exportData)
     {
-        if (fromplayer.HasPrivilege("root") && _sapi != null)
-        {
-            _sapi.StoreModConfig(exportData, "blockColorMapping.json");
-            _sapi.Logger.Notification($"[VintageAtlas] Received block color data from {fromplayer.PlayerName}");
-            _mapExporter?.StartExport();
-        }
+        if (!sourcePlayer.HasPrivilege("root") || _sapi == null) return;
+        _sapi.StoreModConfig(exportData, "blockColorMapping.json");
+        _sapi.Logger.Notification($"[VintageAtlas] Received block color data from {sourcePlayer.PlayerName}");
+        _mapExporter?.StartExport();
     }
 
     private ModConfig LoadConfig()

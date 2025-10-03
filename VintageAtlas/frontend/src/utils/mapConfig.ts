@@ -7,38 +7,69 @@ let dynamicConfig: MapConfigData | null = null;
 /**
  * Initialize map configuration from API
  * This should be called before creating the map
+ * @throws Error if config cannot be loaded
  */
 export async function initializeMapConfig(): Promise<void> {
   try {
     dynamicConfig = await fetchMapConfig();
-    console.log('Map configuration loaded from server:', dynamicConfig);
+    console.log('✅ [MapConfig] Configuration loaded from server:', dynamicConfig);
+    console.log('   Tile offset:', dynamicConfig?.tileOffset);
+    console.log('   World extent:', dynamicConfig?.worldExtent);
+    console.log('   Absolute positions:', dynamicConfig?.absolutePositions);
   } catch (error) {
-    console.error('Failed to load map config, using fallback:', error);
+    console.error('❌ [MapConfig] Failed to load map config from server:', error);
+    throw new Error(`Cannot initialize map without server configuration: ${error}`);
   }
 }
 
 /**
- * Get configuration value with fallback to defaults
+ * Get configuration value - throws if not available
+ * NO FALLBACKS - server must provide all required config
  */
-function getConfig<K extends keyof MapConfigData>(
-  key: K,
-  fallback: MapConfigData[K]
-): MapConfigData[K] {
-  return dynamicConfig?.[key] ?? fallback;
+function getConfig<K extends keyof MapConfigData>(key: K): MapConfigData[K] {
+  if (!dynamicConfig) {
+    throw new Error(`❌ Map config not initialized! Attempted to access: ${String(key)}`);
+  }
+  
+  const value = dynamicConfig[key];
+  if (value === undefined || value === null) {
+    throw new Error(`❌ Required config key '${String(key)}' is missing from server configuration. Server sent: ${JSON.stringify(Object.keys(dynamicConfig))}`);
+  }
+  
+  return value;
+}
+
+/**
+ * Check if config is loaded
+ */
+export function isConfigLoaded(): boolean {
+  return dynamicConfig !== null;
 }
 
 /**
  * Get if using absolute position coordinates
  */
 export const isAbsolutePositions = (): boolean => 
-  getConfig('absolutePositions', false);
+  getConfig('absolutePositions');
 
 /**
  * Get spawn position
  */
 export const getSpawnPosition = (): [number, number] => {
-  const spawn = getConfig('spawnPosition', [0, 0]);
+  const spawn = getConfig('spawnPosition');
   return [spawn[0], spawn[1]];
+};
+
+/**
+ * Get tile coordinate offset for spawn-relative mode
+ * This offset must be added to display tile coords to get absolute tile coords
+ */
+export const getTileOffset = (): [number, number] => {
+  const offset = getConfig('tileOffset');
+  if (!offset || offset.length < 2) {
+    throw new Error('❌ Invalid tileOffset from server: must be [x, z] array');
+  }
+  return [offset[0], offset[1]];
 };
 
 /**
@@ -46,49 +77,48 @@ export const getSpawnPosition = (): [number, number] => {
  * These values are now fetched from the API (already transformed by backend)
  */
 export const worldExtent = (): number[] => {
-  const extent = getConfig('worldExtent', [-512000, -512000, 512000, 512000]);
+  const extent = getConfig('worldExtent');
   
-  // Validate extent
+  // Validate extent structure
   if (!extent || extent.length !== 4 || !extent.every(n => isFinite(n))) {
-    console.warn('Invalid extent, using fallback');
-    return [-512000, -512000, 512000, 512000];
+    throw new Error(`❌ Invalid extent from server: ${JSON.stringify(extent)}. Must be [minX, minZ, maxX, maxZ] with finite numbers.`);
   }
   
-  // Backend already handles coordinate transformation based on absolutePositions
+  console.log('   World extent validated:', extent);
   return extent;
 };
 
 export const worldOrigin = (): number[] => {
-  const origin = getConfig('worldOrigin', [-512000, 512000]);
+  const origin = getConfig('worldOrigin');
   
-  // Validate origin
+  // Validate origin structure
   if (!origin || origin.length !== 2 || !origin.every(n => isFinite(n))) {
-    console.warn('Invalid origin, using fallback');
-    return [-512000, 512000];
+    throw new Error(`❌ Invalid origin from server: ${JSON.stringify(origin)}. Must be [x, z] with finite numbers.`);
   }
   
-  // Backend already handles coordinate transformation based on absolutePositions
+  console.log('   World origin validated:', origin);
   return origin;
 };
 
 // Tile grid resolutions - must match the actual tile zoom levels (1-9)
 export const tileResolutions = (): number[] => 
-  getConfig('tileResolutions', [512, 256, 128, 64, 32, 16, 8, 4, 2, 1]);
+  getConfig('tileResolutions');
 
 // View resolutions - can have more detail for smooth zooming
 export const worldResolutions = (): number[] => 
-  getConfig('viewResolutions', [256, 128, 64, 32, 16, 8, 4, 2, 1, 0.5, 0.25, 0.125]);
+  getConfig('viewResolutions');
 
 /**
  * Tile grid for the world map
  * This is a function now since it depends on dynamic config
  */
 export const createWorldTileGrid = (): TileGrid => {
+  const tileSize = getConfig('tileSize');
   return new TileGrid({
     extent: worldExtent(),
     origin: worldOrigin(),
     resolutions: tileResolutions(),
-    tileSize: [getConfig('tileSize', 256), getConfig('tileSize', 256)]
+    tileSize: [tileSize, tileSize]
   });
 };
 
@@ -96,7 +126,7 @@ export const createWorldTileGrid = (): TileGrid => {
  * Default map center - fetched from server or based on actual tile coverage
  */
 export const defaultCenter = (): [number, number] => {
-  const center = getConfig('defaultCenter', [0, -5000]);
+  const center = getConfig('defaultCenter');
   return [center[0], center[1]];
 };
 
@@ -104,36 +134,42 @@ export const defaultCenter = (): [number, number] => {
  * Default map zoom level
  */
 export const defaultZoom = (): number => 
-  getConfig('defaultZoom', 7);
+  getConfig('defaultZoom');
 
 /**
  * Map zoom constraints
  */
 export const minZoom = (): number => 
-  getConfig('minZoom', 0);
+  getConfig('minZoom');
 
 export const maxZoom = (): number => 
-  getConfig('maxZoom', 9);
+  getConfig('maxZoom');
 
 /**
  * Format coordinates for display to user
- * @param x X coordinate
- * @param z Z coordinate (note: already includes flip if in relative mode)
+ * @param x X coordinate from map (already transformed by backend)
+ * @param z Z coordinate from map (already transformed and flipped by backend)
  * @returns Formatted string suitable for display
+ *
+ * COORDINATE SYSTEM:
+ * - Backend sends worldExtent already transformed based on AbsolutePositions setting
+ * - In absolute mode: coordinates are actual world coordinates
+ * - In relative mode: coordinates are spawn-relative with Z-axis flipped (North is negative)
  */
 export const formatCoordinates = (x: number, z: number): string => {
   // Handle invalid coordinates
   if (!isFinite(x) || !isFinite(z)) {
     return 'Loading...';
   }
-  
+
   if (isAbsolutePositions()) {
-    // Show absolute coordinates
+    // Show absolute world coordinates
     return `${Math.round(x)}, ${Math.round(z)}`;
   } else {
-    // Show relative coordinates with directional indicators
+    // Show spawn-relative coordinates with directional indicators
+    // Backend already transformed: spawn is at (0, 0) and Z is flipped
     const ew = x >= 0 ? 'E' : 'W';
-    const ns = z <= 0 ? 'N' : 'S'; // Note: Z is flipped in relative mode
+    const ns = z <= 0 ? 'N' : 'S'; // Z is negative = North, positive = South
     return `${Math.abs(Math.round(x))}${ew}, ${Math.abs(Math.round(z))}${ns} from spawn`;
   }
 };

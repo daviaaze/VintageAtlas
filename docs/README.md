@@ -28,11 +28,11 @@ Welcome to the VintageAtlas documentation! This directory contains comprehensive
 
 #### Developer Guides
 - [Vintage Story Modding Constraints](guides/vintagestory-modding-constraints.md) - API constraints, threading, and best practices
+- [Testing Guide](guides/testing-guide.md) - Comprehensive testing guide for VintageAtlas
 
 #### Development
 - [Setup Guide](development/setup.md) - Development environment setup
 - [Building from Source](development/building.md) - Build instructions
-- [Testing Guide](development/testing.md) - Testing procedures
 - [Contributing](../CONTRIBUTING.md) - How to contribute
 
 ### Archive
@@ -93,7 +93,7 @@ Start here:
 **Development:**
 - Setting up → [Setup Guide](development/setup.md)
 - Building → [Building Guide](development/building.md)
-- Testing → [Testing Guide](development/testing.md)
+- Testing → [Testing Guide](guides/testing-guide.md)
 - Contributing → [Contributing](../CONTRIBUTING.md)
 
 ### By File Type
@@ -181,18 +181,19 @@ When creating or updating documentation:
 | API Reference | ✅ Complete | 2025-10-02 |
 | Implementation Guides | ✅ Complete | 2025-10-02 |
 | Development Setup | ✅ Complete | 2025-10-02 |
-| Testing Guide | ⚠️ Partial | 2025-10-02 |
+| Testing Guide | ✅ Complete | 2025-10-03 |
 | Deployment Guide | 📋 Planned | - |
 
 ## 🔄 Recent Updates
 
+- **2025-10-03**: Added comprehensive testing guide and test infrastructure
 - **2025-10-02**: Consolidated and organized all documentation
 - **2025-10-02**: Added comprehensive .cursorrules
 - **2025-10-02**: Created structured docs/ directory
 
 ---
 
-**Last Updated:** 2025-10-02  
+**Last Updated:** 2025-10-03  
 **Version:** 1.0.0  
 **Maintainer:** daviaaze
 

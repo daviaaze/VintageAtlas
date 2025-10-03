@@ -68,13 +68,16 @@ import LayerGroup from 'ol/layer/Group';
 // Map configuration
 import { 
   createWorldTileGrid, 
-  worldExtent, 
-  worldResolutions, 
+  worldExtent,
+  worldOrigin,
+  worldResolutions,
+  tileResolutions,
   defaultCenter, 
   defaultZoom, 
   minZoom, 
   maxZoom,
-  initializeMapConfig
+  initializeMapConfig,
+  getTileOffset
 } from '@/utils/mapConfig';
 
 // Optimized layer factory
@@ -153,6 +156,16 @@ onMounted(async () => {
   // Initialize map configuration from API
   await initializeMapConfig();
   
+  // Log loaded configuration
+  console.log('[MapContainer] Map config loaded:', {
+    worldExtent: worldExtent(),
+    worldOrigin: worldOrigin(),
+    tileOffset: getTileOffset(),
+    defaultCenter: defaultCenter(),
+    defaultZoom: defaultZoom(),
+    tileResolutions: tileResolutions()
+  });
+  
 // Create tile layer for terrain using dynamic tile API
       // Note: Tile directories are 1-9, but OpenLayers zoom is 0-9, so we add 1
       terrainLayer = new TileLayer({
@@ -162,11 +175,36 @@ onMounted(async () => {
           tileUrlFunction: (tileCoord) => {
             if (!tileCoord) return '';
             const z = tileCoord[0] + 1; // Adjust zoom: OL zoom 0->directory 1, etc.
-            const x = tileCoord[1];
-            const y = tileCoord[2];
-            // OpenLayers Y axis is inverted from our tile Z axis
-            // Tile naming uses positive Z coordinates (south), so we need to flip Y
-            return `/tiles/${z}/${x}_${-y}.png`; // Dynamic tiles from API
+            const displayX = tileCoord[1];
+            const displayY = tileCoord[2];
+            
+            // Apply tile offset to convert display coords -> absolute coords
+            // In spawn-relative mode, offset shifts display tiles to absolute storage tiles
+            const [offsetX, offsetZ] = getTileOffset();
+            const absoluteX = displayX + offsetX;
+            
+            // OpenLayers Y is inverted from our Z axis, and we apply offset after inversion
+            // displayZ = -displayY, then absoluteZ = displayZ + offsetZ
+            const absoluteZ = -displayY + offsetZ;
+            
+            const url = `/tiles/${z}/${absoluteX}_${absoluteZ}.png`;
+            console.log(`[MapContainer] Requesting tile: OL(${tileCoord[0]},${displayX},${displayY}) -> URL: ${url} (offset=[${offsetX},${offsetZ}])`);
+            
+            return url; // Dynamic tiles from API
+          },
+          tileLoadFunction: (imageTile, src) => {
+            const img = imageTile.getImage() as HTMLImageElement;
+            
+            img.onload = () => {
+              console.log(`✅ [TileLoad] Successfully loaded: ${src}`);
+            };
+            
+            img.onerror = (error) => {
+              console.error(`❌ [TileLoad] Failed to load tile: ${src}`, error);
+              console.error(`   Check Network tab for HTTP status code`);
+            };
+            
+            img.src = src;
           },
         }),
         visible: mapStore.layerVisibility.terrain,

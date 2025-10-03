@@ -36,10 +36,14 @@ public class TileController
     {
         try
         {
+            // Log the incoming request
+            _sapi.Logger.Debug($"[VintageAtlas] Tile request: {path}");
+            
             // Parse tile coordinates from path: /tiles/{zoom}/{x}_{z}.png
             var match = TilePathRegex.Match(path);
             if (!match.Success)
             {
+                _sapi.Logger.Warning($"[VintageAtlas] Invalid tile path format: {path}");
                 await ServeError(context, "Invalid tile path format", 400);
                 return;
             }
@@ -48,9 +52,12 @@ public class TileController
             var tileX = int.Parse(match.Groups[2].Value);
             var tileZ = int.Parse(match.Groups[3].Value);
             
+            _sapi.Logger.Debug($"[VintageAtlas] Parsed tile request: zoom={zoom}, x={tileX}, z={tileZ}");
+            
             // Validate zoom level
             if (zoom < 1 || zoom > _config.BaseZoomLevel)
             {
+                _sapi.Logger.Warning($"[VintageAtlas] Invalid zoom level {zoom}, must be between 1 and {_config.BaseZoomLevel}");
                 await ServeError(context, $"Invalid zoom level. Must be between 1 and {_config.BaseZoomLevel}", 400);
                 return;
             }
@@ -64,6 +71,7 @@ public class TileController
             // Handle different result types
             if (result.NotModified)
             {
+                _sapi.Logger.Debug($"[VintageAtlas] Tile not modified (304): zoom={zoom}, x={tileX}, z={tileZ}");
                 context.Response.StatusCode = 304; // Not Modified
                 context.Response.Headers.Add("ETag", result.ETag ?? "");
                 context.Response.Headers.Add("Cache-Control", "public, max-age=3600");
@@ -73,12 +81,14 @@ public class TileController
 
             if (result.NotFound)
             {
+                _sapi.Logger.Warning($"[VintageAtlas] Tile not found (404): zoom={zoom}, x={tileX}, z={tileZ}");
                 await ServeError(context, "Tile not found", 404);
                 return;
             }
 
             if (result.Data == null)
             {
+                _sapi.Logger.Error($"[VintageAtlas] Failed to generate tile: zoom={zoom}, x={tileX}, z={tileZ}");
                 await ServeError(context, "Failed to generate tile", 500);
                 return;
             }
