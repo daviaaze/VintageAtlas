@@ -332,9 +332,9 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
         var startChunkX = tileX * chunksPerTile;
         var startChunkZ = tileZ * chunksPerTile;
         
-        for (int cx = 0; cx < chunksPerTile; cx++)
+        for (var cx = 0; cx < chunksPerTile; cx++)
         {
-            for (int cz = 0; cz < chunksPerTile; cz++)
+            for (var cz = 0; cz < chunksPerTile; cz++)
             {
                 chunks.Add(new Vec2i(startChunkX + cx, startChunkZ + cz));
             }
@@ -384,9 +384,9 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
     {
         var tiles = new List<TileCoordinate>();
         
-        for (int x = minX; x <= maxX; x++)
+        for (var x = minX; x <= maxX; x++)
         {
-            for (int z = minZ; z <= maxZ; z++)
+            for (var z = minZ; z <= maxZ; z++)
             {
                 tiles.Add(new TileCoordinate { Zoom = zoom, X = x, Z = z });
             }

@@ -15,23 +15,23 @@ public class BlurTool
         {
             fixed (byte* pixels = map)
             {
-                int w = xEnd - xStart;
-                int h = yEnd - yStart;
+                var w = xEnd - xStart;
+                var h = yEnd - yStart;
 
-                int halfRange = range / 2;
-                int index = yStart * w;
-                byte[] newColors = new byte[w];
+                var halfRange = range / 2;
+                var index = yStart * w;
+                var newColors = new byte[w];
 
-                for (int y = yStart; y < yEnd; y++)
+                for (var y = yStart; y < yEnd; y++)
                 {
-                    int hits = 0;
-                    int r = 0;
-                    for (int x = xStart - halfRange; x < xEnd; x++)
+                    var hits = 0;
+                    var r = 0;
+                    for (var x = xStart - halfRange; x < xEnd; x++)
                     {
-                        int oldPixel = x - halfRange - 1;
+                        var oldPixel = x - halfRange - 1;
                         if (oldPixel >= xStart)
                         {
-                            byte col = pixels[index + oldPixel];
+                            var col = pixels[index + oldPixel];
                             if (col != 0)
                             {
                                 r -= col;
@@ -39,10 +39,10 @@ public class BlurTool
                             hits--;
                         }
 
-                        int newPixel = x + halfRange;
+                        var newPixel = x + halfRange;
                         if (newPixel < xEnd)
                         {
-                            byte col = pixels[index + newPixel];
+                            var col = pixels[index + newPixel];
                             if (col != 0)
                             {
                                 r += col;
@@ -52,12 +52,12 @@ public class BlurTool
 
                         if (x >= xStart)
                         {
-                            byte color = (byte)(r / hits);
+                            var color = (byte)(r / hits);
                             newColors[x] = color;
                         }
                     }
 
-                    for (int x = xStart; x < xEnd; x++)
+                    for (var x = xStart; x < xEnd; x++)
                     {
                         pixels[index + x] = newColors[x];
                     }
@@ -71,26 +71,26 @@ public class BlurTool
         {
             fixed (byte* pixels = map)
             {
-                int w = xEnd - xStart;
-                int h = yEnd - yStart;
+                var w = xEnd - xStart;
+                var h = yEnd - yStart;
 
-                int halfRange = range / 2;
+                var halfRange = range / 2;
 
-                byte[] newColors = new byte[h];
-                int oldPixelOffset = -(halfRange + 1) * w;
-                int newPixelOffset = halfRange * w;
+                var newColors = new byte[h];
+                var oldPixelOffset = -(halfRange + 1) * w;
+                var newPixelOffset = halfRange * w;
 
-                for (int x = xStart; x < xEnd; x++)
+                for (var x = xStart; x < xEnd; x++)
                 {
-                    int hits = 0;
-                    int r = 0;
-                    int index = yStart * w - halfRange * w + x;
-                    for (int y = yStart - halfRange; y < yEnd; y++)
+                    var hits = 0;
+                    var r = 0;
+                    var index = yStart * w - halfRange * w + x;
+                    for (var y = yStart - halfRange; y < yEnd; y++)
                     {
-                        int oldPixel = y - halfRange - 1;
+                        var oldPixel = y - halfRange - 1;
                         if (oldPixel >= yStart)
                         {
-                            byte col = pixels[index + oldPixelOffset];
+                            var col = pixels[index + oldPixelOffset];
                             if (col != 0)
                             {
                                 r -= col;
@@ -98,10 +98,10 @@ public class BlurTool
                             hits--;
                         }
 
-                        int newPixel = y + halfRange;
+                        var newPixel = y + halfRange;
                         if (newPixel < yEnd)
                         {
-                            byte col = pixels[index + newPixelOffset];
+                            var col = pixels[index + newPixelOffset];
                             if (col != 0)
                             {
                                 r += col;
@@ -111,14 +111,14 @@ public class BlurTool
 
                         if (y >= yStart)
                         {
-                            byte color = (byte)(r / hits);
+                            var color = (byte)(r / hits);
                             newColors[y] = color;
                         }
 
                         index += w;
                     }
 
-                    for (int y = yStart; y < yEnd; y++)
+                    for (var y = yStart; y < yEnd; y++)
                     {
                         pixels[y * w + x] = newColors[y];
                     }

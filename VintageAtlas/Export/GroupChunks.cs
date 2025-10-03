@@ -129,7 +129,7 @@ public class GroupChunks
 
     public ChunkVersionFeature GetShape(GroupedPosition gpositions)
     {
-        List<ChunkPosition> positions = gpositions.Positions;
+        var positions = gpositions.Positions;
         
         var pointAll = new HashSet<Point>();
         foreach (var p in positions)
@@ -171,9 +171,9 @@ public class GroupChunks
     
     public void GenerateGradient(List<GroupedPosition> groupedPositions)
     {
-        Vector3 startColor = new Vector3(255,106,0);
-        Vector3 endColor = new Vector3(0,78,255);
-        List<string> gradientColors = new List<string>();
+        var startColor = new Vector3(255,106,0);
+        var endColor = new Vector3(0,78,255);
+        var gradientColors = new List<string>();
 
         var versions = groupedPositions.Select(g=>g.Version).Distinct().Select(s => ProperVersion.SemVer.Parse(s)).OrderDescending().ToList();
         var num = versions.Count - 1;

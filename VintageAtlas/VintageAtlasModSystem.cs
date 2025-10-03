@@ -104,6 +104,10 @@ public class VintageAtlasModSystem : ModSystem
         {
             _sapi.Logger.Notification("[VintageAtlas] Setting up live web server...");
             
+            // Initialize output directories for proper path resolution
+            _config.OutputDirectoryWorld = System.IO.Path.Combine(_config.OutputDirectory, "data", "world");
+            _config.OutputDirectoryGeojson = System.IO.Path.Combine(_config.OutputDirectory, "data", "geojson");
+            
             // Initialize data collector
             _dataCollector = new DataCollector(_sapi);
             
@@ -279,7 +283,6 @@ public class VintageAtlasModSystem : ModSystem
 
             // Use ModData directory for all VintageAtlas data
             var modDataPath = Path.Combine(GamePaths.DataPath, "ModData", "VintageAtlas");
-            
             config = new ModConfig
             {
                 Mode = ImageMode.MedievalStyleWithHillShading,
@@ -291,7 +294,7 @@ public class VintageAtlasModSystem : ModSystem
             _sapi.Logger.Notification($"[VintageAtlas] Data will be stored in: {modDataPath}");
         }
 
-        return config;
+        return config ?? throw new InvalidOperationException("Config initialization failed");
     }
 
     public override void Dispose()

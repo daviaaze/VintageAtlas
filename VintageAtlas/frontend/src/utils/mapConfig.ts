@@ -42,80 +42,33 @@ export const getSpawnPosition = (): [number, number] => {
 };
 
 /**
- * Transform world extent based on coordinate mode
- * If using relative coordinates, transforms absolute extent to spawn-relative
+ * Configuration for the Vintage Story world map
+ * These values are now fetched from the API (already transformed by backend)
  */
-function transformWorldExtent(extent: number[]): number[] {
+export const worldExtent = (): number[] => {
+  const extent = getConfig('worldExtent', [-512000, -512000, 512000, 512000]);
+  
   // Validate extent
   if (!extent || extent.length !== 4 || !extent.every(n => isFinite(n))) {
     console.warn('Invalid extent, using fallback');
     return [-512000, -512000, 512000, 512000];
   }
   
-  if (isAbsolutePositions()) {
-    // Use absolute coordinates as-is
-    return extent;
-  } else {
-    // Transform to spawn-relative coordinates
-    const [spawnX, spawnZ] = getSpawnPosition();
-    
-    // Validate spawn position
-    if (!isFinite(spawnX) || !isFinite(spawnZ)) {
-      console.warn('Invalid spawn position, using extent as-is');
-      return extent;
-    }
-    
-    return [
-      extent[0] - spawnX,       // minX relative
-      -(extent[1] - spawnZ),    // minZ relative (Z-axis flipped)
-      extent[2] - spawnX,       // maxX relative
-      -(extent[3] - spawnZ)     // maxZ relative (Z-axis flipped)
-    ];
-  }
-}
+  // Backend already handles coordinate transformation based on absolutePositions
+  return extent;
+};
 
-/**
- * Transform world origin based on coordinate mode
- */
-function transformWorldOrigin(origin: number[]): number[] {
+export const worldOrigin = (): number[] => {
+  const origin = getConfig('worldOrigin', [-512000, 512000]);
+  
   // Validate origin
   if (!origin || origin.length !== 2 || !origin.every(n => isFinite(n))) {
     console.warn('Invalid origin, using fallback');
     return [-512000, 512000];
   }
   
-  if (isAbsolutePositions()) {
-    // Use absolute coordinates as-is
-    return origin;
-  } else {
-    // Transform to spawn-relative coordinates
-    const [spawnX, spawnZ] = getSpawnPosition();
-    
-    // Validate spawn position
-    if (!isFinite(spawnX) || !isFinite(spawnZ)) {
-      console.warn('Invalid spawn position, using origin as-is');
-      return origin;
-    }
-    
-    return [
-      origin[0] - spawnX,       // X relative
-      -(origin[1] - spawnZ)     // Z relative (Z-axis flipped)
-    ];
-  }
-}
-
-/**
- * Configuration for the Vintage Story world map
- * These values are now fetched from the API but have sensible defaults
- */
-export const worldExtent = (): number[] => {
-  const extent = getConfig('worldExtent', [-512000, -512000, 512000, 512000]);
-  return transformWorldExtent(extent);
-};
-
-export const worldOrigin = (): number[] => {
-  const origin = getConfig('worldOrigin', [-512000, 512000]);
-  return transformWorldOrigin(origin);
+  // Backend already handles coordinate transformation based on absolutePositions
+  return origin;
 };
 
 // Tile grid resolutions - must match the actual tile zoom levels (1-9)

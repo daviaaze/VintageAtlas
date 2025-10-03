@@ -1,186 +1,134 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 using SkiaSharp;
-using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 using Vintagestory.Server;
 using Vintagestory.ServerMods;
 using VintageAtlas.Core;
-using Vintagestory.API.Common;
+using VintageAtlas.Models;
+using VintageAtlas.Storage;
 
 namespace VintageAtlas.Export;
 
 /// <summary>
-/// Generates map tiles dynamically on-demand or for specific chunks
-/// Enables incremental updates instead of full map regeneration
-/// 
-/// THREADING CONSTRAINTS (vintagestory-modding-constraints.md):
-/// - Chunk access MUST be on main thread
-/// - Extract data on main thread, render on background thread
-/// - Cannot cache chunk references
+/// Alternative implementation using MBTiles database storage instead of file system
+/// This demonstrates how to use SQLite-based tile storage
 /// </summary>
-public class DynamicTileGenerator(ICoreServerAPI sapi, ModConfig config)
+public class DynamicTileGenerator : IDisposable
 {
-    private readonly ChunkDataExtractor _extractor = new(sapi, config);
+    private readonly ICoreServerAPI _sapi;
+    private readonly ModConfig _config;
+    private readonly ServerMain _server;
+    private readonly MBTilesStorage _storage;
+    private readonly ChunkDataExtractor _extractor;
 
-    // Cache tile metadata for ETags and conditional requests
-    private readonly ConcurrentDictionary<string, TileMetadata> _tileCache = new();
-
+    // In-memory cache for frequently accessed tiles
+    private readonly ConcurrentDictionary<string, CachedTile> _memoryCache = new();
+    
     private const int CHUNK_SIZE = 32;
+    private const int MAX_CACHE_SIZE = 100; // Keep 100 most recent tiles in memory
+
+    public DynamicTileGenerator(ICoreServerAPI sapi, ModConfig config)
+    {
+        _sapi = sapi;
+        _config = config;
+        _server = (ServerMain)sapi.World;
+        _extractor = new ChunkDataExtractor(sapi, config);
+        
+        // Initialize MBTiles storage
+        var dbPath = System.IO.Path.Combine(config.OutputDirectory, "tiles.mbtiles");
+        _storage = new MBTilesStorage(dbPath);
+        
+        _sapi.Logger.Notification($"[VintageAtlas] Using MBTiles storage: {dbPath}");
+    }
 
     /// <summary>
-    /// Generate or update a specific tile based on zoom level and coordinates
+    /// Generate or retrieve a tile
     /// </summary>
     public async Task<TileResult> GenerateTileAsync(int zoom, int tileX, int tileZ, string? ifNoneMatch = null)
     {
         var tileKey = $"{zoom}_{tileX}_{tileZ}";
         
-        // Check cache first
-        if (_tileCache.TryGetValue(tileKey, out var metadata))
+        // Check memory cache first
+        if (_memoryCache.TryGetValue(tileKey, out var cached))
         {
-            // Check if client has cached version
-            if (ifNoneMatch == metadata.ETag)
+            if (ifNoneMatch == cached.ETag)
             {
                 return new TileResult 
                 { 
                     NotModified = true, 
-                    ETag = metadata.ETag 
+                    ETag = cached.ETag 
                 };
             }
-            
-            // Check if file exists and is current
-            var tilePath = GetTilePath(zoom, tileX, tileZ);
-            if (File.Exists(tilePath) && File.GetLastWriteTimeUtc(tilePath) == metadata.LastModified)
-            {
-                return new TileResult
-                {
-                    Data = await File.ReadAllBytesAsync(tilePath),
-                    ETag = metadata.ETag,
-                    LastModified = metadata.LastModified,
-                    ContentType = "image/png"
-                };
-            }
-        }
-
-        // Generate tile
-        var result = await GenerateTileInternalAsync(zoom, tileX, tileZ);
-        
-        // Update cache
-        if (result is { Data: not null, ETag: not null })
-        {
-            _tileCache[tileKey] = new TileMetadata
-            {
-                ETag = result.ETag,
-                LastModified = result.LastModified,
-                Size = result.Data.Length
-            };
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// Regenerate tiles for specific chunks that have been modified
-    /// </summary>
-    public async Task RegenerateTilesForChunksAsync(List<Vec2i> modifiedChunks)
-    {
-        sapi.Logger.Notification($"[VintageAtlas] Regenerating tiles for {modifiedChunks.Count} modified chunks");
-
-        var affectedTiles = CalculateAffectedTiles(modifiedChunks);
-        
-        var tasks = new List<Task>();
-        foreach (var (zoom, tiles) in affectedTiles)
-        {
-            foreach (var (tileX, tileZ) in tiles)
-            {
-                tasks.Add(Task.Run(async () =>
-                {
-                    try
-                    {
-                        await GenerateTileInternalAsync(zoom, tileX, tileZ);
-                        sapi.Logger.Debug($"[VintageAtlas] Regenerated tile: zoom={zoom}, x={tileX}, z={tileZ}");
-                    }
-                    catch (Exception ex)
-                    {
-                        sapi.Logger.Error($"[VintageAtlas] Failed to regenerate tile {zoom}/{tileX}_{tileZ}: {ex.Message}");
-                    }
-                }));
-                
-                // Limit concurrent operations
-                if (tasks.Count >= (config.MaxDegreeOfParallelism == -1 ? Environment.ProcessorCount : config.MaxDegreeOfParallelism))
-                {
-                    await Task.WhenAny(tasks);
-                    tasks.RemoveAll(t => t.IsCompleted);
-                }
-            }
-        }
-
-        await Task.WhenAll(tasks);
-        
-        sapi.Logger.Notification($"[VintageAtlas] Completed tile regeneration for {modifiedChunks.Count} chunks");
-    }
-
-    private async Task<TileResult> GenerateTileInternalAsync(int zoom, int tileX, int tileZ)
-    {
-        var tilePath = GetTilePath(zoom, tileX, tileZ);
-        
-        // Check if tile already exists
-        if (File.Exists(tilePath))
-        {
-            var data = await File.ReadAllBytesAsync(tilePath);
-            var lastModified = File.GetLastWriteTimeUtc(tilePath);
-            var etag = GenerateETag(data, lastModified);
-            
-            sapi.Logger.VerboseDebug($"[VintageAtlas] Serving cached tile: {zoom}/{tileX}_{tileZ}");
             
             return new TileResult
             {
-                Data = data,
+                Data = cached.Data,
+                ETag = cached.ETag,
+                LastModified = cached.LastModified,
+                ContentType = "image/png"
+            };
+        }
+
+        // Check database
+        var tileData = await _storage.GetTileAsync(zoom, tileX, tileZ);
+        
+        if (tileData != null)
+        {
+            // Found in database, cache in memory
+            var lastModified = DateTime.UtcNow; // Could be stored separately
+            var etag = GenerateETag(tileData, lastModified);
+            
+            CacheInMemory(tileKey, tileData, etag, lastModified);
+            
+            _sapi.Logger.VerboseDebug($"[VintageAtlas] Serving cached tile from DB: {zoom}/{tileX}_{tileZ}");
+            
+            return new TileResult
+            {
+                Data = tileData,
                 ETag = etag,
                 LastModified = lastModified,
                 ContentType = "image/png"
             };
         }
 
-        // Tile doesn't exist - try to generate it on-demand from world data
-        sapi.Logger.Debug($"[VintageAtlas] Generating missing tile on-demand: {zoom}/{tileX}_{tileZ}");
+        // Generate new tile
+        _sapi.Logger.Debug($"[VintageAtlas] Generating new tile: {zoom}/{tileX}_{tileZ}");
         
         try
         {
-            byte[]? tileData = null;
+            byte[]? newTileData = null;
             
             // Only generate base zoom level from world data
-            // Other zoom levels require the export command (too complex for on-demand)
-            if (zoom == config.BaseZoomLevel)
+            if (zoom == _config.BaseZoomLevel)
             {
-                tileData = await GenerateTileFromWorldDataAsync(zoom, tileX, tileZ);
+                newTileData = await GenerateTileFromWorldDataAsync(zoom, tileX, tileZ);
             }
             
-            // Fallback to placeholder if generation failed or not base zoom
-            if (tileData == null)
+            // Fallback to placeholder
+            if (newTileData == null)
             {
-                sapi.Logger.VerboseDebug($"[VintageAtlas] Using placeholder for zoom {zoom} (only base zoom {config.BaseZoomLevel} generated from world data)");
-                tileData = await GeneratePlaceholderTileAsync(zoom, tileX, tileZ);
+                newTileData = await GeneratePlaceholderTileAsync(zoom, tileX, tileZ);
             }
             
-            if (tileData != null)
+            if (newTileData != null)
             {
-                // Save the generated tile to disk
-                Directory.CreateDirectory(Path.GetDirectoryName(tilePath) ?? "");
-                await File.WriteAllBytesAsync(tilePath, tileData);
+                // Store in database
+                await _storage.PutTileAsync(zoom, tileX, tileZ, newTileData);
                 
                 var lastModified = DateTime.UtcNow;
-                var etag = GenerateETag(tileData, lastModified);
+                var etag = GenerateETag(newTileData, lastModified);
                 
-                sapi.Logger.Debug($"[VintageAtlas] Generated and cached new tile: {zoom}/{tileX}_{tileZ}");
+                // Cache in memory
+                CacheInMemory(tileKey, newTileData, etag, lastModified);
+                
+                _sapi.Logger.Debug($"[VintageAtlas] Generated and stored tile: {zoom}/{tileX}_{tileZ}");
                 
                 return new TileResult
                 {
-                    Data = tileData,
+                    Data = newTileData,
                     ETag = etag,
                     LastModified = lastModified,
                     ContentType = "image/png"
@@ -189,56 +137,116 @@ public class DynamicTileGenerator(ICoreServerAPI sapi, ModConfig config)
         }
         catch (Exception ex)
         {
-            sapi.Logger.Error($"[VintageAtlas] Failed to generate tile {zoom}/{tileX}_{tileZ}: {ex.Message}");
-            sapi.Logger.Error(ex.StackTrace ?? "");
+            _sapi.Logger.Error($"[VintageAtlas] Failed to generate tile {zoom}/{tileX}_{tileZ}: {ex.Message}");
         }
 
-        // If generation failed, return not found
         return new TileResult { NotFound = true };
     }
-    
+
     /// <summary>
-    /// Generate a tile from actual world chunk data
-    /// Only works for base zoom level - other zoom levels need full export
-    /// 
-    /// FOLLOWS VS CONSTRAINT: Extract on main thread, render on background
+    /// Invalidate a specific tile (forces regeneration on next request)
     /// </summary>
+    public async Task InvalidateTileAsync(int zoom, int tileX, int tileZ)
+    {
+        var tileKey = $"{zoom}_{tileX}_{tileZ}";
+        
+        // Remove from memory cache
+        _memoryCache.TryRemove(tileKey, out _);
+        
+        // Remove from database
+        await _storage.DeleteTileAsync(zoom, tileX, tileZ);
+    }
+
+    /// <summary>
+    /// Get storage statistics
+    /// </summary>
+    public async Task<StorageStats> GetStatsAsync()
+    {
+        var stats = new StorageStats
+        {
+            DatabaseSizeBytes = _storage.GetDatabaseSize(),
+            MemoryCachedTiles = _memoryCache.Count,
+            TotalTiles = await _storage.GetTileCountAsync()
+        };
+
+        // Count per zoom level
+        for (var z = 1; z <= _config.BaseZoomLevel; z++)
+        {
+            stats.TilesPerZoom[z] = await _storage.GetTileCountAsync(z);
+        }
+
+        return stats;
+    }
+
+    private void CacheInMemory(string key, byte[] data, string etag, DateTime lastModified)
+    {
+        // Implement simple LRU cache by removing oldest entries
+        if (_memoryCache.Count >= MAX_CACHE_SIZE)
+        {
+            // Find and remove oldest entry
+            var oldest = DateTime.MaxValue;
+            string? oldestKey = null;
+            
+            foreach (var kvp in _memoryCache)
+            {
+                if (kvp.Value.LastModified < oldest)
+                {
+                    oldest = kvp.Value.LastModified;
+                    oldestKey = kvp.Key;
+                }
+            }
+            
+            if (oldestKey != null)
+            {
+                _memoryCache.TryRemove(oldestKey, out _);
+            }
+        }
+
+        _memoryCache[key] = new CachedTile
+        {
+            Data = data,
+            ETag = etag,
+            LastModified = lastModified
+        };
+    }
+
     private async Task<byte[]?> GenerateTileFromWorldDataAsync(int zoom, int tileX, int tileZ)
     {
         try
         {
-            // STEP 1: Extract chunk data on MAIN THREAD
-            // This is required by Vintage Story API constraints
-            TileChunkData? tileData = null;
+            // STEP 1: Extract chunk data on MAIN THREAD using TaskCompletionSource
+            var tcs = new TaskCompletionSource<TileChunkData?>();
             
-            await sapi.Event.EnqueueMainThreadTask(() =>
+            _sapi.Event.EnqueueMainThreadTask(() =>
             {
-                tileData = _extractor.ExtractTileData(zoom, tileX, tileZ);
-                return true;
-            }, $"extract-tile-{zoom}-{tileX}-{tileZ}");
+                try
+                {
+                    var data = _extractor.ExtractTileData(zoom, tileX, tileZ);
+                    tcs.SetResult(data);
+                }
+                catch (Exception ex)
+                {
+                    tcs.SetException(ex);
+                }
+            }, $"extract-tile-mbtiles-{zoom}-{tileX}-{tileZ}");
+            
+            var tileData = await tcs.Task;
             
             if (tileData == null || tileData.Chunks.Count == 0)
             {
-                sapi.Logger.VerboseDebug($"[VintageAtlas] No chunks available for tile {zoom}/{tileX}_{tileZ}");
                 return null;
             }
             
             // STEP 2: Render tile on BACKGROUND THREAD
-            // Heavy computation can now happen off main thread
             return await Task.Run(() => RenderTileFromSnapshot(tileData));
         }
         catch (Exception ex)
         {
-            sapi.Logger.Error($"[VintageAtlas] Failed to generate tile from world data: {ex.Message}");
-            sapi.Logger.Error(ex.StackTrace ?? "");
+            _sapi.Logger.Error($"[VintageAtlas] Failed to generate tile from world data: {ex.Message}");
             return null;
         }
     }
     
-    /// <summary>
-    /// Render a tile from extracted chunk snapshots
-    /// Can run on background thread since it uses snapshots, not live chunks
-    /// </summary>
     private byte[]? RenderTileFromSnapshot(TileChunkData tileData)
     {
         try
@@ -246,16 +254,12 @@ public class DynamicTileGenerator(ICoreServerAPI sapi, ModConfig config)
             var tileSize = tileData.TileSize;
             var chunksPerTile = tileData.ChunksPerTileEdge;
             
-            // Create bitmap for this tile
             using var bitmap = new SKBitmap(tileSize, tileSize);
             using var canvas = new SKCanvas(bitmap);
             
-            // Fill with ocean blue as base (for areas without chunks)
-            canvas.Clear(new SKColor(41, 128, 185));
+            canvas.Clear(new SKColor(41, 128, 185)); // Ocean blue
             
             var chunksRendered = 0;
-            
-            // Render each chunk onto the tile
             var startChunkX = tileData.TileX * chunksPerTile;
             var startChunkZ = tileData.TileZ * chunksPerTile;
             
@@ -278,41 +282,28 @@ public class DynamicTileGenerator(ICoreServerAPI sapi, ModConfig config)
             
             if (chunksRendered == 0)
             {
-                return null; // No chunks rendered
+                return null;
             }
             
-            sapi.Logger.VerboseDebug(
-                $"[VintageAtlas] Rendered {chunksRendered}/{chunksPerTile * chunksPerTile} chunks for tile z{tileData.Zoom} t({tileData.TileX},{tileData.TileZ})");
-            
-            // Encode to PNG
             using var image = SKImage.FromBitmap(bitmap);
             using var data = image.Encode(SKEncodedImageFormat.Png, 100);
             return data.ToArray();
         }
         catch (Exception ex)
         {
-            sapi.Logger.Error($"[VintageAtlas] Failed to render tile from snapshot: {ex.Message}");
+            _sapi.Logger.Error($"[VintageAtlas] Failed to render tile from snapshot: {ex.Message}");
             return null;
         }
     }
-    
+
     /// <summary>
     /// Render a chunk snapshot onto the tile canvas
-    /// Uses extracted snapshot data, so can run safely on background thread
-    /// 
-    /// TODO: This is currently a simplified heightmap renderer
-    /// Phase 2-5 will add: color mapping, render modes, hill shading, medieval style
+    /// TODO: Update this file to use new ChunkSnapshot pattern like main DynamicTileGenerator
     /// </summary>
     private void RenderChunkSnapshotToTile(SKCanvas canvas, ChunkSnapshot snapshot, int offsetX, int offsetZ)
     {
         try
         {
-            // For now, render using heightmap (grayscale)
-            // TODO Phase 2: Add block color mapping
-            // TODO Phase 3: Add render modes
-            // TODO Phase 4: Add hill shading
-            // TODO Phase 5: Add medieval style with water edges
-            
             var heightMap = snapshot.HeightMap;
             if (heightMap.Length == 0) return;
             
@@ -325,12 +316,13 @@ public class DynamicTileGenerator(ICoreServerAPI sapi, ModConfig config)
                     var heightIndex = z * CHUNK_SIZE + x;
                     if (heightIndex >= heightMap.Length) continue;
                     
-                    // Get height and convert to grayscale color
                     var height = heightMap[heightIndex];
-                    var normalizedHeight = Math.Clamp(height / 255.0f, 0, 1);
+                    if (height == 0) continue; // Skip uninitialized areas
+                    
+                    // Normalize height to 0-1 based on typical surface range (64-192)
+                    var normalizedHeight = Math.Clamp((height - 64.0f) / 128.0f, 0, 1);
                     var gray = (byte)(normalizedHeight * 255);
                     
-                    // Create a grayscale color based on height
                     paint.Color = new SKColor(gray, gray, gray);
                     canvas.DrawPoint(offsetX + x, offsetZ + z, paint);
                 }
@@ -338,126 +330,80 @@ public class DynamicTileGenerator(ICoreServerAPI sapi, ModConfig config)
         }
         catch (Exception ex)
         {
-            sapi.Logger.Error($"[VintageAtlas] Failed to render chunk snapshot: {ex.Message}");
+            _sapi.Logger.Error($"[VintageAtlas] Failed to render chunk snapshot: {ex.Message}");
         }
     }
-    
-    /// <summary>
-    /// Generate a placeholder tile for missing areas or unsupported zoom levels
-    /// </summary>
+
     private async Task<byte[]?> GeneratePlaceholderTileAsync(int zoom, int tileX, int tileZ)
     {
         return await Task.Run(() =>
         {
             try
             {
-                // Create a simple placeholder tile (ocean blue color)
-                var tileSize = config.TileSize;
+                var tileSize = _config.TileSize;
                 using var bitmap = new SKBitmap(tileSize, tileSize);
                 using var canvas = new SKCanvas(bitmap);
                 
-                // Fill with ocean blue
-                var oceanBlue = new SKColor(41, 128, 185);
-                canvas.Clear(oceanBlue);
+                canvas.Clear(new SKColor(41, 128, 185));
                 
-                // Add grid lines for debugging
-                using var gridPaint = new SKPaint();
-                gridPaint.Color = new SKColor(52, 152, 219);
-                gridPaint.StrokeWidth = 1;
-                gridPaint.Style = SKPaintStyle.Stroke;
+                using var gridPaint = new SKPaint
+                {
+                    Color = new SKColor(52, 152, 219),
+                    StrokeWidth = 1,
+                    Style = SKPaintStyle.Stroke
+                };
 
-                // Draw grid
                 for (var i = 0; i < tileSize; i += 32)
                 {
                     canvas.DrawLine(i, 0, i, tileSize, gridPaint);
                     canvas.DrawLine(0, i, tileSize, i, gridPaint);
                 }
                 
-                // Add coordinates text
-                using var textPaint = new SKPaint();
-                textPaint.Color = SKColors.White;
-                textPaint.IsAntialias = true;
+                using var textPaint = new SKPaint
+                {
+                    Color = SKColors.White,
+                    IsAntialias = true
+                };
 
-                using var font = new SKFont();
-                font.Size = 12;
-
+                using var font = new SKFont { Size = 12 };
                 var text = $"z{zoom} x{tileX} z{tileZ}";
                 canvas.DrawText(text, 10, 20, SKTextAlign.Left, font, textPaint);
                 
-                // Encode to PNG
                 using var image = SKImage.FromBitmap(bitmap);
                 using var data = image.Encode(SKEncodedImageFormat.Png, 100);
                 return data.ToArray();
             }
             catch (Exception ex)
             {
-                sapi.Logger.Error($"[VintageAtlas] Failed to generate placeholder tile: {ex.Message}");
+                _sapi.Logger.Error($"[VintageAtlas] Failed to generate placeholder: {ex.Message}");
                 return null;
             }
         });
     }
 
-    private Dictionary<int, HashSet<(int tileX, int tileZ)>> CalculateAffectedTiles(List<Vec2i> modifiedChunks)
-    {
-        var affectedTiles = new Dictionary<int, HashSet<(int, int)>>();
-        
-        var tileSize = config.TileSize;
-        var chunksPerTile = tileSize / CHUNK_SIZE; // 256 / 32 = 8 chunks per tile
-        
-        // Calculate for base zoom level
-        for (var zoom = config.BaseZoomLevel; zoom >= 1; zoom--)
-        {
-            affectedTiles[zoom] = [];
-            
-            var zoomDivisor = (int)Math.Pow(2, config.BaseZoomLevel - zoom);
-            
-            foreach (var chunk in modifiedChunks)
-            {
-                // Calculate which tile this chunk belongs to at this zoom level
-                var tileX = chunk.X / chunksPerTile / zoomDivisor;
-                var tileZ = chunk.Y / chunksPerTile / zoomDivisor;
-                
-                affectedTiles[zoom].Add((tileX, tileZ));
-            }
-        }
-
-        return affectedTiles;
-    }
-
-    private string GetTilePath(int zoom, int tileX, int tileZ)
-    {
-        var zoomDir = Path.Combine(config.OutputDirectoryWorld, zoom.ToString());
-        return Path.Combine(zoomDir, $"{tileX}_{tileZ}.png");
-    }
-
     private static string GenerateETag(byte[] data, DateTime lastModified)
     {
-        // Simple ETag based on size and timestamp
-        var hash = $"{data.Length}-{lastModified.Ticks}";
-        return $"\"{hash}\"";
+        return $"\"{data.Length}-{lastModified.Ticks}\"";
+    }
+
+    public void Dispose()
+    {
+        _storage?.Dispose();
     }
 }
 
-/// <summary>
-/// Result of tile generation
-/// </summary>
-public class TileResult
+public class CachedTile
 {
-    public byte[]? Data { get; set; }
-    public string? ETag { get; set; }
-    public DateTime LastModified { get; set; }
-    public string? ContentType { get; set; }
-    public bool NotModified { get; set; }
-    public bool NotFound { get; set; }
-}
-
-/// <summary>
-/// Metadata for caching tiles
-/// </summary>
-public class TileMetadata
-{
+    public byte[] Data { get; set; } = Array.Empty<byte>();
     public string ETag { get; set; } = "";
     public DateTime LastModified { get; set; }
-    public long Size { get; set; }
+}
+
+public class StorageStats
+{
+    public long DatabaseSizeBytes { get; set; }
+    public int MemoryCachedTiles { get; set; }
+    public long TotalTiles { get; set; }
+    public Dictionary<int, long> TilesPerZoom { get; set; } = new();
 }
 

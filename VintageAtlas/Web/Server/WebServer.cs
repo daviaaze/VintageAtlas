@@ -47,7 +47,7 @@ public class WebServer : IDisposable
 
             // Start HTTP listener - use + prefix for all-interface binding (like ServerstatusQuery)
             _httpListener = new HttpListener();
-            string uriPrefix = $"http://+:{port}/";
+            var uriPrefix = $"http://+:{port}/";
             _httpListener.Prefixes.Add(uriPrefix);
             _httpListener.Start();
             
@@ -99,7 +99,7 @@ public class WebServer : IDisposable
         {
             try
             {
-                HttpListenerContext context = await _httpListener.GetContextAsync();
+                var context = await _httpListener.GetContextAsync();
                 
                 // Request throttling - prevent DoS attacks
                 if (_requestSemaphore != null && await _requestSemaphore.WaitAsync(0))

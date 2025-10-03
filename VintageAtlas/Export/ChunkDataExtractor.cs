@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
+using System.Linq;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 using Vintagestory.Server;
-using Vintagestory.ServerMods;
 using VintageAtlas.Core;
+using Vintagestory.API.Config;
 
 namespace VintageAtlas.Export;
 
@@ -50,11 +50,27 @@ public class ChunkDataExtractor
         };
         
         // Calculate starting chunk coordinates for this tile
-        var startChunkX = tileX * chunksPerTile;
-        var startChunkZ = tileZ * chunksPerTile;
+        // If using relative positioning, offset by spawn position
+        var chunkOffsetX = 0;
+        var chunkOffsetZ = 0;
+        
+        if (!_config.AbsolutePositions && _sapi.World.DefaultSpawnPosition != null)
+        {
+            // Convert spawn position to chunk coordinates
+            var spawnChunkX = _sapi.World.DefaultSpawnPosition.AsBlockPos.X / CHUNK_SIZE;
+            var spawnChunkZ = _sapi.World.DefaultSpawnPosition.AsBlockPos.Z / CHUNK_SIZE;
+            chunkOffsetX = spawnChunkX;
+            chunkOffsetZ = spawnChunkZ;
+            
+            _sapi.Logger.Debug(
+                $"[VintageAtlas] Using spawn-relative coordinates: spawn chunk=({spawnChunkX},{spawnChunkZ})");
+        }
+        
+        var startChunkX = tileX * chunksPerTile + chunkOffsetX;
+        var startChunkZ = tileZ * chunksPerTile + chunkOffsetZ;
         
         _sapi.Logger.VerboseDebug(
-            $"[VintageAtlas] Extracting tile data: z{zoom} t({tileX},{tileZ}) chunks({startChunkX},{startChunkZ})-({startChunkX + chunksPerTile - 1},{startChunkZ + chunksPerTile - 1})");
+            $"[VintageAtlas] Extracting tile z{zoom} t({tileX},{tileZ}) → chunks({startChunkX},{startChunkZ})-({startChunkX + chunksPerTile - 1},{startChunkZ + chunksPerTile - 1}) [offset=({chunkOffsetX},{chunkOffsetZ})]");
         
         // Extract all chunks that make up this tile
         for (var offsetX = 0; offsetX < chunksPerTile; offsetX++)
@@ -73,8 +89,14 @@ public class ChunkDataExtractor
             }
         }
         
-        _sapi.Logger.VerboseDebug(
-            $"[VintageAtlas] Extracted {tileData.Chunks.Count}/{chunksPerTile * chunksPerTile} chunks for tile z{zoom} t({tileX},{tileZ})");
+        var loadedCount = tileData.Chunks.Count(c => c.Value.IsLoaded);
+        _sapi.Logger.Debug(
+            $"[VintageAtlas] Extracted {tileData.Chunks.Count}/{chunksPerTile * chunksPerTile} chunks for tile z{zoom} t({tileX},{tileZ}), {loadedCount} loaded");
+        
+        if (loadedCount == 0)
+        {
+            _sapi.Logger.Warning($"[VintageAtlas] No chunks successfully loaded for tile z{zoom} t({tileX},{tileZ})");
+        }
         
         return tileData;
     }
@@ -106,7 +128,7 @@ public class ChunkDataExtractor
             snapshot.HeightMap = new int[CHUNK_SIZE * CHUNK_SIZE];
             if (mapChunk.RainHeightMap != null)
             {
-                for (int i = 0; i < mapChunk.RainHeightMap.Length && i < snapshot.HeightMap.Length; i++)
+                for (var i = 0; i < mapChunk.RainHeightMap.Length && i < snapshot.HeightMap.Length; i++)
                 {
                     snapshot.HeightMap[i] = mapChunk.RainHeightMap[i];
                 }
@@ -136,16 +158,16 @@ public class ChunkDataExtractor
             var baseX = chunkX * CHUNK_SIZE;
             var baseY = surfaceChunkY * CHUNK_SIZE;
             var baseZ = chunkZ * CHUNK_SIZE;
-            var pos = new BlockPos();
+            var pos = new BlockPos(Dimensions.NormalWorld);
             
-            for (int y = 0; y < CHUNK_SIZE; y++)
+            for (var y = 0; y < CHUNK_SIZE; y++)
             {
-                for (int z = 0; z < CHUNK_SIZE; z++)
+                for (var z = 0; z < CHUNK_SIZE; z++)
                 {
-                    for (int x = 0; x < CHUNK_SIZE; x++)
+                    for (var x = 0; x < CHUNK_SIZE; x++)
                     {
                         pos.Set(baseX + x, baseY + y, baseZ + z);
-                        int index = y * CHUNK_SIZE * CHUNK_SIZE + z * CHUNK_SIZE + x;
+                        var index = y * CHUNK_SIZE * CHUNK_SIZE + z * CHUNK_SIZE + x;
                         snapshot.BlockIds[index] = _sapi.World.BlockAccessor.GetBlockId(pos);
                     }
                 }
@@ -154,8 +176,12 @@ public class ChunkDataExtractor
             snapshot.IsLoaded = true;
             snapshot.SnapshotTime = DateTime.UtcNow;
             
+            // Debug: Check data integrity
+            var nonZeroBlocks = snapshot.BlockIds.Count(id => id != 0);
+            var nonZeroHeights = snapshot.HeightMap.Count(h => h != 0);
+            
             _sapi.Logger.VerboseDebug(
-                $"[VintageAtlas] Successfully extracted chunk ({chunkX},{surfaceChunkY},{chunkZ})");
+                $"[VintageAtlas] Successfully extracted chunk ({chunkX},{surfaceChunkY},{chunkZ}): {nonZeroBlocks} blocks, {nonZeroHeights} heights");
         }
         catch (Exception ex)
         {
@@ -178,8 +204,8 @@ public class ChunkDataExtractor
         var validHeights = heightMap.Where(h => h > 0).ToArray();
         if (validHeights.Length == 0) return 4;
         
-        int avgHeight = (int)validHeights.Average();
-        int chunkY = avgHeight / CHUNK_SIZE;
+        var avgHeight = (int)validHeights.Average();
+        var chunkY = avgHeight / CHUNK_SIZE;
         
         // Clamp to reasonable values
         // Most worlds have surface between Y=64 (chunk 2) and Y=192 (chunk 6)

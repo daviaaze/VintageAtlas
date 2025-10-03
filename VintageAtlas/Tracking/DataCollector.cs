@@ -109,16 +109,16 @@ public class DataCollector : IDataCollector
             }
 
             // ServerstatusQuery approach: use DayOfMonth and Month directly
-            int daysPerMonth = Math.Max(1, calendar.DaysPerMonth);
-            int daysPerYear = Math.Max(daysPerMonth, calendar.DaysPerYear);
+            var daysPerMonth = Math.Max(1, calendar.DaysPerMonth);
+            var daysPerYear = Math.Max(daysPerMonth, calendar.DaysPerYear);
             
-            int dayOfYear = calendar.DayOfYear;
+            var dayOfYear = calendar.DayOfYear;
             if (dayOfYear < 0) dayOfYear = 0;
             if (dayOfYear >= daysPerYear) dayOfYear = daysPerYear - 1;
             
-            int day = dayOfYear % daysPerMonth + 1;
-            int fullHour = calendar.FullHourOfDay;
-            int minute = (int)Math.Floor((calendar.HourOfDay - fullHour) * 60.0 + 0.0000001);
+            var day = dayOfYear % daysPerMonth + 1;
+            var fullHour = calendar.FullHourOfDay;
+            var minute = (int)Math.Floor((calendar.HourOfDay - fullHour) * 60.0 + 0.0000001);
             
             if (minute < 0) minute = 0;
             if (minute > 59) minute = 59;
@@ -137,6 +137,17 @@ public class DataCollector : IDataCollector
         {
             try
             {
+                // Check if world is ready (can be null during early startup)
+                if (_sapi.World?.BlockAccessor == null)
+                {
+                    return new WeatherInfo
+                    {
+                        Temperature = 20,
+                        Rainfall = 0,
+                        WindSpeed = 0
+                    };
+                }
+                
                 BlockPos pos;
                 if (_sapi.World.DefaultSpawnPosition != null)
                 {
@@ -264,8 +275,8 @@ public class DataCollector : IDataCollector
             }
 
             var animals = new List<AnimalData>();
-            int totalEntities = 0;
-            int processedAgents = 0;
+            var totalEntities = 0;
+            var processedAgents = 0;
 
             try
             {
@@ -287,8 +298,8 @@ public class DataCollector : IDataCollector
                         processedAgents++;
 
                         // Use ServerstatusQuery approach: check Code first, then GetName()
-                        string? typeCode = entity.Code?.ToString();
-                        string name = entity.GetName() ?? typeCode ?? "unknown";
+                        var typeCode = entity.Code?.ToString();
+                        var name = entity.GetName() ?? typeCode ?? "unknown";
 
                         // Get health using ITreeAttribute
                         var healthTree = (entity.WatchedAttributes as TreeAttribute)?.GetTreeAttribute("health");
@@ -303,9 +314,9 @@ public class DataCollector : IDataCollector
                         }
 
                         // Use ServerPos like ServerstatusQuery
-                        int x = entity.ServerPos != null ? (int)entity.ServerPos.X : 0;
-                        int y = entity.ServerPos != null ? (int)entity.ServerPos.Y : _sapi.World.SeaLevel;
-                        int z = entity.ServerPos != null ? (int)entity.ServerPos.Z : 0;
+                        var x = entity.ServerPos != null ? (int)entity.ServerPos.X : 0;
+                        var y = entity.ServerPos != null ? (int)entity.ServerPos.Y : _sapi.World.SeaLevel;
+                        var z = entity.ServerPos != null ? (int)entity.ServerPos.Z : 0;
 
                         // Get climate data
                         double? temperature = null;
@@ -367,14 +378,14 @@ public class DataCollector : IDataCollector
         private static float? FiniteOrNull(float? f)
         {
             if (!f.HasValue) return null;
-            float value = f.Value;
+            var value = f.Value;
             return float.IsNaN(value) || float.IsInfinity(value) ? null : value;
         }
 
         private static double? FiniteOrNull(double? d)
         {
             if (!d.HasValue) return null;
-            double value = d.Value;
+            var value = d.Value;
             return double.IsNaN(value) || double.IsInfinity(value) ? null : value;
         }
 
@@ -388,7 +399,7 @@ public class DataCollector : IDataCollector
                 if (windVec == null) return 0;
 
                 // Calculate magnitude
-                double speed = Math.Sqrt(windVec.X * windVec.X + windVec.Y * windVec.Y + windVec.Z * windVec.Z);
+                var speed = Math.Sqrt(windVec.X * windVec.X + windVec.Y * windVec.Y + windVec.Z * windVec.Z);
                 return FiniteOrNull(speed) ?? 0;
             }
             catch
@@ -407,8 +418,8 @@ public class DataCollector : IDataCollector
                 if (windVec == null) return 0;
 
                 // Calculate magnitude and convert to percentage
-                double speed = Math.Sqrt(windVec.X * windVec.X + windVec.Y * windVec.Y + windVec.Z * windVec.Z);
-                int percent = (int)Math.Round(speed * 100.0);
+                var speed = Math.Sqrt(windVec.X * windVec.X + windVec.Y * windVec.Y + windVec.Z * windVec.Z);
+                var percent = (int)Math.Round(speed * 100.0);
                 
                 return FiniteOrNull(percent) ?? 0;
             }

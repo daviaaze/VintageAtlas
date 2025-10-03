@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace VintageAtlas.Export;
 
@@ -67,7 +68,7 @@ public class ChunkSnapshot
             throw new ArgumentOutOfRangeException(nameof(localX), "Coordinates must be 0-31");
         }
         
-        int index = localY * 32 * 32 + localZ * 32 + localX;
+        var index = localY * 32 * 32 + localZ * 32 + localX;
         return BlockIds[index];
     }
     
@@ -81,7 +82,7 @@ public class ChunkSnapshot
             throw new ArgumentOutOfRangeException(nameof(localX), "Coordinates must be 0-31");
         }
         
-        int index = localZ * 32 + localX;
+        var index = localZ * 32 + localX;
         return HeightMap[index];
     }
 }
@@ -133,7 +134,7 @@ public class TileChunkData
     /// </summary>
     public ChunkSnapshot? GetChunk(int chunkX, int chunkZ, int chunkY = 0)
     {
-        string key = $"{chunkX}_{chunkZ}_{chunkY}";
+        var key = $"{chunkX}_{chunkZ}_{chunkY}";
         return Chunks.TryGetValue(key, out var chunk) ? chunk : null;
     }
     
@@ -142,7 +143,7 @@ public class TileChunkData
     /// </summary>
     public void AddChunk(ChunkSnapshot snapshot)
     {
-        string key = $"{snapshot.ChunkX}_{snapshot.ChunkZ}_{snapshot.ChunkY}";
+        var key = $"{snapshot.ChunkX}_{snapshot.ChunkZ}_{snapshot.ChunkY}";
         Chunks[key] = snapshot;
     }
 }

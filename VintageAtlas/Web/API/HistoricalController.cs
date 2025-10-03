@@ -218,19 +218,19 @@ public class HistoricalController
                     queryParams.EntityType = value;
                     break;
                 case "hours":
-                    if (int.TryParse(value, out int hours))
+                    if (int.TryParse(value, out var hours))
                         queryParams.Hours = hours;
                     break;
                 case "from":
-                    if (long.TryParse(value, out long from))
+                    if (long.TryParse(value, out var from))
                         queryParams.FromTimestamp = from;
                     break;
                 case "to":
-                    if (long.TryParse(value, out long to))
+                    if (long.TryParse(value, out var to))
                         queryParams.ToTimestamp = to;
                     break;
                 case "gridsize":
-                    if (int.TryParse(value, out int gridSize))
+                    if (int.TryParse(value, out var gridSize))
                         queryParams.GridSize = gridSize;
                     break;
             }

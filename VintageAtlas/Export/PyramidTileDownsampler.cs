@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using SkiaSharp;
 using Vintagestory.API.Server;
@@ -102,12 +104,12 @@ public class PyramidTileDownsampler
         // High-quality downsampling paint
         using var paint = new SKPaint
         {
-            FilterQuality = SKFilterQuality.High, // Bicubic interpolation
+            // Use modern sampling options instead of deprecated FilterQuality
             IsAntialias = true
         };
 
         // Process each of the 4 source tiles
-        for (int i = 0; i < 4; i++)
+        for (var i = 0; i < 4; i++)
         {
             try
             {
@@ -162,7 +164,7 @@ public class PyramidTileDownsampler
         };
 
         // Generate each zoom level from the previous one
-        for (int zoom = baseZoom - 1; zoom >= minZoom; zoom--)
+        for (var zoom = baseZoom - 1; zoom >= minZoom; zoom--)
         {
             var tileX = baseTileX / (1 << (baseZoom - zoom));
             var tileZ = baseTileZ / (1 << (baseZoom - zoom));
@@ -195,7 +197,7 @@ public class PyramidTileDownsampler
         var startTime = DateTime.UtcNow;
 
         // Process each zoom level from base-1 down to 1
-        for (int zoom = _config.BaseZoomLevel - 1; zoom >= 1; zoom--)
+        for (var zoom = _config.BaseZoomLevel - 1; zoom >= 1; zoom--)
         {
             var zoomGenerated = 0;
             
@@ -220,8 +222,8 @@ public class PyramidTileDownsampler
                 var parts = name.Split('_');
                 
                 if (parts.Length == 2 && 
-                    int.TryParse(parts[0], out int sourceX) && 
-                    int.TryParse(parts[1], out int sourceZ))
+                    int.TryParse(parts[0], out var sourceX) && 
+                    int.TryParse(parts[1], out var sourceZ))
                 {
                     var targetX = sourceX / 2;
                     var targetZ = sourceZ / 2;

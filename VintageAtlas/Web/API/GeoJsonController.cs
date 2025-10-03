@@ -221,6 +221,12 @@ public class GeoJsonController
 
     private async Task<SingGeoJson> GetSignsGeoJsonAsync()
     {
+        // Check if world is ready (can be null during early startup)
+        if (_sapi.World?.BlockAccessor == null)
+        {
+            return new SingGeoJson(); // Return empty result
+        }
+        
         var now = _sapi.World.ElapsedMilliseconds;
         
         lock (_cacheLock)
@@ -340,6 +346,12 @@ public class GeoJsonController
 
     private async Task<TranslocatorGeoJson> GetTranslocatorsGeoJsonAsync()
     {
+        // Check if world is ready (can be null during early startup)
+        if (_sapi.World?.BlockAccessor == null)
+        {
+            return new TranslocatorGeoJson(); // Return empty result
+        }
+        
         var now = _sapi.World.ElapsedMilliseconds;
         
         lock (_cacheLock)
@@ -468,9 +480,9 @@ public class GeoJsonController
         var centerChunkX = worldX / 32;
         var centerChunkZ = worldZ / 32;
         
-        for (int x = centerChunkX - SCAN_RADIUS_CHUNKS; x <= centerChunkX + SCAN_RADIUS_CHUNKS; x++)
+        for (var x = centerChunkX - SCAN_RADIUS_CHUNKS; x <= centerChunkX + SCAN_RADIUS_CHUNKS; x++)
         {
-            for (int z = centerChunkZ - SCAN_RADIUS_CHUNKS; z <= centerChunkZ + SCAN_RADIUS_CHUNKS; z++)
+            for (var z = centerChunkZ - SCAN_RADIUS_CHUNKS; z <= centerChunkZ + SCAN_RADIUS_CHUNKS; z++)
             {
                 chunks.Add(new Vec2i(x, z));
             }
@@ -485,17 +497,17 @@ public class GeoJsonController
         try
         {
             // Scan all Y levels for this X/Z chunk column
-            int chunkSize = 32;
-            int mapSizeY = _sapi.World.BlockAccessor.MapSizeY;
+            var chunkSize = 32;
+            var mapSizeY = _sapi.World.BlockAccessor.MapSizeY;
             
-            for (int chunkY = 0; chunkY < mapSizeY / chunkSize; chunkY++)
+            for (var chunkY = 0; chunkY < mapSizeY / chunkSize; chunkY++)
             {
                 // Iterate through blocks in the chunk
-                for (int x = 0; x < chunkSize; x++)
+                for (var x = 0; x < chunkSize; x++)
                 {
-                    for (int y = 0; y < chunkSize; y++)
+                    for (var y = 0; y < chunkSize; y++)
                     {
-                        for (int z = 0; z < chunkSize; z++)
+                        for (var z = 0; z < chunkSize; z++)
                         {
                             var worldPos = new BlockPos(
                                 chunkPos.X * chunkSize + x,
@@ -546,17 +558,17 @@ public class GeoJsonController
         try
         {
             // Scan all Y levels for this X/Z chunk column
-            int chunkSize = 32;
-            int mapSizeY = _sapi.World.BlockAccessor.MapSizeY;
+            var chunkSize = 32;
+            var mapSizeY = _sapi.World.BlockAccessor.MapSizeY;
             
-            for (int chunkY = 0; chunkY < mapSizeY / chunkSize; chunkY++)
+            for (var chunkY = 0; chunkY < mapSizeY / chunkSize; chunkY++)
             {
                 // Iterate through blocks in the chunk
-                for (int x = 0; x < chunkSize; x++)
+                for (var x = 0; x < chunkSize; x++)
                 {
-                    for (int y = 0; y < chunkSize; y++)
+                    for (var y = 0; y < chunkSize; y++)
                     {
-                        for (int z = 0; z < chunkSize; z++)
+                        for (var z = 0; z < chunkSize; z++)
                         {
                             var worldPos = new BlockPos(
                                 chunkPos.X * chunkSize + x,
@@ -638,7 +650,7 @@ public class GeoJsonController
     {
         var features = new List<SignPostFeature>();
         
-        for (int i = 0; i < signPostEntity.textByCardinalDirection.Length; i++)
+        for (var i = 0; i < signPostEntity.textByCardinalDirection.Length; i++)
         {
             var text = signPostEntity.textByCardinalDirection[i];
             if (!string.IsNullOrWhiteSpace(text))

@@ -164,7 +164,9 @@ onMounted(async () => {
             const z = tileCoord[0] + 1; // Adjust zoom: OL zoom 0->directory 1, etc.
             const x = tileCoord[1];
             const y = tileCoord[2];
-            return `/tiles/${z}/${x}_${-y-1}.png`; // Dynamic tiles from API
+            // OpenLayers Y axis is inverted from our tile Z axis
+            // Tile naming uses positive Z coordinates (south), so we need to flip Y
+            return `/tiles/${z}/${x}_${-y}.png`; // Dynamic tiles from API
           },
         }),
         visible: mapStore.layerVisibility.terrain,

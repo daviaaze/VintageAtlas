@@ -96,6 +96,12 @@ public class MapConfigController
 
     private MapConfigData GetMapConfig()
     {
+        // Check if world is ready (can be null during early startup)
+        if (_sapi.World?.BlockAccessor == null)
+        {
+            throw new InvalidOperationException("World not yet initialized");
+        }
+        
         var now = _sapi.World.ElapsedMilliseconds;
         
         lock (_cacheLock)
@@ -123,16 +129,47 @@ public class MapConfigController
         var extent = CalculateWorldExtent();
         var center = CalculateDefaultCenter();
         var tileStats = CalculateTileStatistics();
+        var spawn = GetSpawnPosition();
         
         // Calculate resolutions for OpenLayers
         var tileResolutions = GenerateResolutions(_config.BaseZoomLevel);
         var viewResolutions = GenerateResolutions(_config.BaseZoomLevel + 3); // Extra zoom for smooth viewing
         
+        // Transform extent to relative coordinates if needed
+        int[] worldExtent;
+        int[] worldOrigin;
+        
+        if (_config.AbsolutePositions)
+        {
+            // Use absolute coordinates as-is
+            worldExtent = new[] { extent.MinX, extent.MinZ, extent.MaxX, extent.MaxZ };
+            worldOrigin = new[] { extent.MinX, extent.MaxZ };
+        }
+        else
+        {
+            // Transform to spawn-relative coordinates
+            // Note: Frontend expects Z-axis flipped for map display
+            var relMinX = extent.MinX - spawn[0];
+            var relMinZ = extent.MinZ - spawn[1];
+            var relMaxX = extent.MaxX - spawn[0];
+            var relMaxZ = extent.MaxZ - spawn[1];
+            
+            _sapi.Logger.Debug($"[VintageAtlas] Extent transformation: " +
+                $"Absolute=({extent.MinX},{extent.MinZ})-({extent.MaxX},{extent.MaxZ}), " +
+                $"Spawn=({spawn[0]},{spawn[1]}), " +
+                $"Relative=({relMinX},{relMinZ})-({relMaxX},{relMaxZ})");
+            
+            worldExtent = new[] { relMinX, -relMaxZ, relMaxX, -relMinZ };
+            worldOrigin = new[] { relMinX, -relMinZ };
+            
+            _sapi.Logger.Debug($"[VintageAtlas] Final extent: [{worldExtent[0]}, {worldExtent[1]}, {worldExtent[2]}, {worldExtent[3]}]");
+        }
+        
         return new MapConfigData
         {
-            // World bounds
-            WorldExtent = new[] { extent.MinX, extent.MinZ, extent.MaxX, extent.MaxZ },
-            WorldOrigin = new[] { extent.MinX, extent.MaxZ },
+            // World bounds (transformed based on coordinate mode)
+            WorldExtent = worldExtent,
+            WorldOrigin = worldOrigin,
             
             // Default view
             DefaultCenter = center,
@@ -149,7 +186,7 @@ public class MapConfigController
             ViewResolutions = viewResolutions,
             
             // Map metadata
-            SpawnPosition = GetSpawnPosition(),
+            SpawnPosition = spawn,
             MapSizeX = _sapi.World.BlockAccessor.MapSizeX,
             MapSizeZ = _sapi.World.BlockAccessor.MapSizeZ,
             MapSizeY = _sapi.World.BlockAccessor.MapSizeY,
@@ -268,7 +305,7 @@ public class MapConfigController
     private double[] GenerateResolutions(int levels)
     {
         var resolutions = new double[levels];
-        for (int i = 0; i < levels; i++)
+        for (var i = 0; i < levels; i++)
         {
             resolutions[i] = Math.Pow(2, levels - i - 1);
         }
@@ -282,7 +319,7 @@ public class MapConfigController
             ZoomLevels = new System.Collections.Generic.Dictionary<int, ZoomLevelStats>()
         };
 
-        for (int zoom = 1; zoom <= _config.BaseZoomLevel; zoom++)
+        for (var zoom = 1; zoom <= _config.BaseZoomLevel; zoom++)
         {
             var zoomDir = Path.Combine(_config.OutputDirectoryWorld, zoom.ToString());
             

@@ -291,7 +291,7 @@ public class TileGenerationState : IDisposable
                     WHERE (chunk_x, chunk_z) IN ({chunkParams})
                 ";
                 
-                for (int i = 0; i < chunks.Count; i++)
+                for (var i = 0; i < chunks.Count; i++)
                 {
                     cmd.Parameters.AddWithValue($"@cx{i}", chunks[i].X);
                     cmd.Parameters.AddWithValue($"@cz{i}", chunks[i].Y);

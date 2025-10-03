@@ -189,7 +189,7 @@ namespace VintageAtlas.Tracking
                     VALUES (@ts, @uid, @name, @x, @y, @z, @health, @maxHealth, @hunger, @maxHunger, @temp, @bodyTemp)
                 ";
 
-                int recorded = 0;
+                var recorded = 0;
                 foreach (var player in sapi.World.AllOnlinePlayers)
                 {
                     if (player?.Entity == null) continue;
