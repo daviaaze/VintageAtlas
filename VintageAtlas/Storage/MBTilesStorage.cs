@@ -1,5 +1,4 @@
 using System;
-using System.Data;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -32,12 +31,47 @@ public class MbTilesStorage : IDisposable
 
         // Use connection string instead of shared connection for thread safety
         // Enable WAL mode for better concurrent write performance
-        // Set busy timeout to 30 seconds to wait for locks instead of failing immediately
-        _connectionString = $"Data Source={dbPath};Mode=ReadWriteCreate;Cache=Shared;Pooling=True;BusyTimeout=30000";
+        // Note: Busy timeout is set via PRAGMA in InitializeDatabase
+        _connectionString = $"Data Source={dbPath};Mode=ReadWriteCreate;Cache=Shared;Pooling=True";
         
         InitializeDatabase();
     }
 
+    /// <summary>
+    /// Helper to create and open a connection with proper PRAGMA settings
+    /// </summary>
+    private SqliteConnection CreateConnection()
+    {
+        var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+        
+        // Set busy timeout to 30 seconds (30000ms) to wait for locks
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "PRAGMA busy_timeout=30000;";
+        cmd.ExecuteNonQuery();
+        
+        return connection;
+    }
+
+    private async Task EnsureInitializedAsync()
+    {
+        if (_initialized) return;
+        
+        await _initLock.WaitAsync();
+        try
+        {
+            if (_initialized) return;
+            
+            // Initialize database synchronously (one-time setup)
+            InitializeDatabaseInternal();
+            _initialized = true;
+        }
+        finally
+        {
+            _initLock.Release();
+        }
+    }
+    
     private void InitializeDatabase()
     {
         if (_initialized) return;
@@ -47,9 +81,20 @@ public class MbTilesStorage : IDisposable
         {
             if (_initialized) return;
             
-            using var connection = new SqliteConnection(_connectionString);
-            connection.Open();
+            InitializeDatabaseInternal();
+            _initialized = true;
+        }
+        finally
+        {
+            _initLock.Release();
+        }
+    }
+    
+    private void InitializeDatabaseInternal()
+    {
+        // Actual initialization logic (called by both sync and async methods)
             
+            using var connection = CreateConnection();
             using var cmd = connection.CreateCommand();
             
             // Enable WAL mode for better concurrent access
@@ -83,13 +128,6 @@ public class MbTilesStorage : IDisposable
             SetMetadataInternal(connection, "version", "1.0");
             SetMetadataInternal(connection, "description", "Vintage Story World Map");
             SetMetadataInternal(connection, "format", "png");
-            
-            _initialized = true;
-        }
-        finally
-        {
-            _initLock.Release();
-        }
     }
 
     /// <summary>
@@ -102,8 +140,10 @@ public class MbTilesStorage : IDisposable
         // Standard TMS conversion doesn't apply here - we store coordinates as-is.
         // The MBTiles spec allows this for custom coordinate systems.
         
-        await using var connection = new SqliteConnection(_connectionString);
-        await connection.OpenAsync();
+        await EnsureInitializedAsync(); // CRITICAL: Initialize DB before first write
+        
+        await using var connection = CreateConnection();
+        await Task.CompletedTask; // Already opened in CreateConnection()
         
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = @"
@@ -125,8 +165,8 @@ public class MbTilesStorage : IDisposable
     public async Task<byte[]?> GetTileAsync(int zoom, int x, int y)
     {
         // Use absolute tile coordinates (no TMS conversion needed)
-        await using var connection = new SqliteConnection(_connectionString);
-        await connection.OpenAsync();
+        await using var connection = CreateConnection();
+        await Task.CompletedTask; // Already opened in CreateConnection()
         
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = @"
@@ -148,8 +188,8 @@ public class MbTilesStorage : IDisposable
     public async Task<bool> TileExistsAsync(int zoom, int x, int y)
     {
         // Use absolute tile coordinates (no TMS conversion needed)
-        await using var connection = new SqliteConnection(_connectionString);
-        await connection.OpenAsync();
+        await using var connection = CreateConnection();
+        await Task.CompletedTask; // Already opened in CreateConnection()
         
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = @"
@@ -171,8 +211,8 @@ public class MbTilesStorage : IDisposable
     public async Task DeleteTileAsync(int zoom, int x, int y)
     {
         // Use absolute tile coordinates (no TMS conversion needed)
-        await using var connection = new SqliteConnection(_connectionString);
-        await connection.OpenAsync();
+        await using var connection = CreateConnection();
+        await Task.CompletedTask; // Already opened in CreateConnection()
         
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = @"
@@ -192,8 +232,8 @@ public class MbTilesStorage : IDisposable
     /// </summary>
     public async Task<long> GetTileCountAsync(int? zoom = null)
     {
-        await using var connection = new SqliteConnection(_connectionString);
-        await connection.OpenAsync();
+        await using var connection = CreateConnection();
+        await Task.CompletedTask; // Already opened in CreateConnection()
         
         await using var cmd = connection.CreateCommand();
         
@@ -272,8 +312,8 @@ public class MbTilesStorage : IDisposable
     /// </summary>
     public async Task VacuumAsync()
     {
-        await using var connection = new SqliteConnection(_connectionString);
-        await connection.OpenAsync();
+        await using var connection = CreateConnection();
+        await Task.CompletedTask; // Already opened in CreateConnection()
         
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = "VACUUM";
@@ -303,9 +343,48 @@ public class MbTilesStorage : IDisposable
         return File.Exists(_dbPath) ? new FileInfo(_dbPath).Length : 0;
     }
 
+    /// <summary>
+    /// Manually checkpoint the WAL to commit all pending writes to the main database file.
+    /// Call this after batch operations (e.g., full export) to ensure data is persisted.
+    /// </summary>
+    public void CheckpointWAL()
+    {
+        try
+        {
+            using var connection = CreateConnection();
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";
+            var result = cmd.ExecuteNonQuery();
+            // Result: 0 = success, busy = database locked
+        }
+        catch (Exception)
+        {
+            // Ignore checkpoint errors (might be locked)
+        }
+    }
+
+    /// <summary>
+    /// Checkpoint the WAL and dispose resources.
+    /// This ensures all data is written to the main database file.
+    /// </summary>
     public void Dispose()
     {
-        _initLock?.Dispose();
+        try
+        {
+            // Checkpoint WAL to ensure all data is committed to main DB
+            using var connection = CreateConnection();
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";
+            cmd.ExecuteNonQuery();
+        }
+        catch (Exception)
+        {
+            // Ignore errors during dispose
+        }
+        finally
+        {
+            _initLock?.Dispose();
+        }
     }
 }
 

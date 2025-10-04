@@ -444,7 +444,7 @@
             vintageStory
             icu
 
-            sqlite3
+            sqlite
             
             # Development Tools
             omnisharp-roslyn # C# language server for LSP

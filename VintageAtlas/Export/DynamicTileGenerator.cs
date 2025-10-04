@@ -14,7 +14,7 @@ namespace VintageAtlas.Export;
 /// Alternative implementation using MBTiles database storage instead of file system
 /// This demonstrates how to use SQLite-based tile storage
 /// </summary>
-public class DynamicTileGenerator : IDisposable
+public class DynamicTileGenerator : ITileGenerator, IDisposable
 {
     private readonly ICoreServerAPI _sapi;
     private readonly ModConfig _config;
@@ -29,21 +29,28 @@ public class DynamicTileGenerator : IDisposable
     private const int CHUNK_SIZE = 32;
     private const int MAX_CACHE_SIZE = 100; // Keep 100 most recent tiles in memory
 
-    public DynamicTileGenerator(ICoreServerAPI sapi, ModConfig config, BlockColorCache colorCache)
+    public DynamicTileGenerator(ICoreServerAPI sapi, ModConfig config, BlockColorCache colorCache, MbTilesStorage storage)
     {
         _sapi = sapi;
         _config = config;
         _extractor = new ChunkDataExtractor(sapi, config);
         _colorCache = colorCache;
-
-        // Initialize MBTiles storage
-        var dbPath = System.IO.Path.Combine(config.OutputDirectory, "tiles.mbtiles");
-        _storage = new MbTilesStorage(dbPath);
+        _storage = storage; // Use shared storage
 
         // Initialize downsampler for lower zoom levels
         _downsampler = new PyramidTileDownsampler(sapi, config, this);
 
-        _sapi.Logger.Notification($"[VintageAtlas] Using MBTiles storage: {dbPath}");
+        _sapi.Logger.Notification("[VintageAtlas] DynamicTileGenerator initialized with shared storage");
+    }
+
+    /// <summary>
+    /// Get tile data for ITileGenerator interface (used by PyramidTileDownsampler).
+    /// Returns raw tile bytes or null if not found.
+    /// </summary>
+    public async Task<byte[]?> GetTileDataAsync(int zoom, int tileX, int tileZ)
+    {
+        var result = await GenerateTileAsync(zoom, tileX, tileZ, null);
+        return result.NotFound ? null : result.Data;
     }
 
     /// <summary>

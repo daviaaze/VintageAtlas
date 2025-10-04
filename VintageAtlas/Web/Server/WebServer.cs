@@ -9,7 +9,7 @@ using VintageAtlas.Core;
 namespace VintageAtlas.Web.Server;
 
 /// <summary>
-/// Manages the HTTP server lifecycle and request handling
+/// Manages the HTTP server lifecycle and request handling with production-optimized concurrency
 /// </summary>
 public class WebServer : IDisposable
 {
@@ -17,7 +17,12 @@ public class WebServer : IDisposable
     private readonly ModConfig _config;
     private readonly RequestRouter _router;
     private HttpListener? _httpListener;
-    private SemaphoreSlim? _requestSemaphore;
+    
+    // Separate semaphores for different request types
+    private SemaphoreSlim? _apiRequestSemaphore;     // Limited for API calls
+    private SemaphoreSlim? _tileRequestSemaphore;    // Higher limit for tiles
+    private SemaphoreSlim? _staticRequestSemaphore;  // Higher limit for static files
+    
     private bool _isRunning;
 
     public WebServer(ICoreServerAPI sapi, ModConfig config, RequestRouter router)
@@ -28,7 +33,7 @@ public class WebServer : IDisposable
     }
 
     /// <summary>
-    /// Start the HTTP server
+    /// Start the HTTP server with production-optimized settings
     /// </summary>
     public void Start()
     {
@@ -38,12 +43,29 @@ public class WebServer : IDisposable
         {
             var port = _config.LiveServerPort ?? _sapi.Server.Config.Port + 1;
             
-            _sapi.Logger.Notification($"[VintageAtlas] Starting web server on port {port}");
+            _sapi.Logger.Notification($"[VintageAtlas] Starting production web server on port {port}");
             
-            // Initialize request throttling semaphore
-            var maxRequests = _config.MaxConcurrentRequests ?? 50;
-            _requestSemaphore = new SemaphoreSlim(maxRequests, maxRequests);
-            _sapi.Logger.Notification($"[VintageAtlas] Request throttling enabled: max {maxRequests} concurrent requests");
+            // PRODUCTION OPTIMIZATION: Increase ServicePointManager limits for high-volume requests
+            // This affects client connections FROM this server (not incoming connections)
+            ServicePointManager.DefaultConnectionLimit = 1000;
+            ServicePointManager.MaxServicePointIdleTime = 10000; // 10 seconds idle timeout
+            ServicePointManager.Expect100Continue = false; // Disable 100-continue handshake
+            ServicePointManager.UseNagleAlgorithm = false; // Disable Nagle's algorithm for lower latency
+            _sapi.Logger.Notification($"[VintageAtlas] ServicePointManager optimized for high-volume serving");
+            
+            // Initialize separate throttling semaphores for different request types
+            var maxApiRequests = _config.MaxConcurrentRequests ?? 50;
+            var maxTileRequests = _config.MaxConcurrentTileRequests ?? 500;  // Much higher for tiles
+            var maxStaticRequests = _config.MaxConcurrentStaticRequests ?? 200;
+            
+            _apiRequestSemaphore = new SemaphoreSlim(maxApiRequests, maxApiRequests);
+            _tileRequestSemaphore = new SemaphoreSlim(maxTileRequests, maxTileRequests);
+            _staticRequestSemaphore = new SemaphoreSlim(maxStaticRequests, maxStaticRequests);
+            
+            _sapi.Logger.Notification($"[VintageAtlas] Request throttling configured:");
+            _sapi.Logger.Notification($"  - API requests: {maxApiRequests} concurrent");
+            _sapi.Logger.Notification($"  - Tile requests: {maxTileRequests} concurrent");
+            _sapi.Logger.Notification($"  - Static files: {maxStaticRequests} concurrent");
 
             // Start HTTP listener - use + prefix for all-interface binding (like ServerstatusQuery)
             _httpListener = new HttpListener();
@@ -101,8 +123,13 @@ public class WebServer : IDisposable
             {
                 var context = await _httpListener.GetContextAsync();
                 
-                // Request throttling - prevent DoS attacks
-                if (_requestSemaphore != null && await _requestSemaphore.WaitAsync(0))
+                // Determine request type and apply appropriate throttling
+                var path = context.Request.Url?.AbsolutePath ?? "/";
+                var requestType = ClassifyRequest(path);
+                var semaphore = GetSemaphoreForRequestType(requestType);
+                
+                // Request throttling with type-specific limits
+                if (semaphore != null && await semaphore.WaitAsync(0))
                 {
                     // Slot acquired - process request
                     _ = Task.Run(async () =>
@@ -114,14 +141,14 @@ public class WebServer : IDisposable
                         finally
                         {
                             // Always release the slot
-                            _requestSemaphore?.Release();
+                            semaphore?.Release();
                         }
                     });
                 }
                 else
                 {
-                    // Server too busy - reject with 503 Service Unavailable
-                    await RejectRequest(context);
+                    // Server too busy for this request type
+                    await RejectRequest(context, requestType);
                 }
             }
             catch (Exception ex)
@@ -132,6 +159,28 @@ public class WebServer : IDisposable
                 }
             }
         }
+    }
+
+    private RequestType ClassifyRequest(string path)
+    {
+        if (path.StartsWith("/api/"))
+            return RequestType.Api;
+        
+        if (path.StartsWith("/tiles/") || path.Contains(".png"))
+            return RequestType.Tile;
+        
+        return RequestType.Static;
+    }
+
+    private SemaphoreSlim? GetSemaphoreForRequestType(RequestType type)
+    {
+        return type switch
+        {
+            RequestType.Api => _apiRequestSemaphore,
+            RequestType.Tile => _tileRequestSemaphore,
+            RequestType.Static => _staticRequestSemaphore,
+            _ => _apiRequestSemaphore
+        };
     }
 
     private async Task ProcessRequestAsync(HttpListenerContext context)
@@ -165,29 +214,35 @@ public class WebServer : IDisposable
                 context.Response.StatusCode = 500;
                 context.Response.Close();
             }
-            catch { }
+            catch
+            {
+                // Ignore - client likely disconnected
+            }
         }
     }
 
-    private async Task RejectRequest(HttpListenerContext context)
+    private async Task RejectRequest(HttpListenerContext context, RequestType requestType)
     {
         try
         {
             context.Response.StatusCode = 503;
-            context.Response.Headers.Add("Retry-After", "5");
+            context.Response.Headers.Add("Retry-After", "2"); // Shorter retry for tiles
             
             if (_config.EnableCORS)
             {
                 context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
             }
             
-            var errorMsg = Encoding.UTF8.GetBytes("{\"error\":\"Server too busy, please retry later\"}");
+            var errorMsg = requestType == RequestType.Tile 
+                ? Encoding.UTF8.GetBytes("{\"error\":\"Tile server at capacity\"}")
+                : Encoding.UTF8.GetBytes("{\"error\":\"Server too busy, please retry later\"}");
+                
             context.Response.ContentType = "application/json";
             context.Response.ContentLength64 = errorMsg.Length;
             await context.Response.OutputStream.WriteAsync(errorMsg, 0, errorMsg.Length);
             context.Response.Close();
             
-            _sapi?.Logger.Debug("[VintageAtlas] Request rejected - server at capacity");
+            _sapi?.Logger.Debug($"[VintageAtlas] {requestType} request rejected - server at capacity");
         }
         catch
         {
@@ -198,8 +253,19 @@ public class WebServer : IDisposable
     public void Dispose()
     {
         Stop();
-        _requestSemaphore?.Dispose();
+        _apiRequestSemaphore?.Dispose();
+        _tileRequestSemaphore?.Dispose();
+        _staticRequestSemaphore?.Dispose();
         _httpListener?.Close();
     }
 }
 
+/// <summary>
+/// Request type classification for throttling
+/// </summary>
+internal enum RequestType
+{
+    Api,
+    Tile,
+    Static
+}

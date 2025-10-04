@@ -64,6 +64,7 @@ import { Point } from 'ol/geom';
 import Feature from 'ol/Feature';
 import { defaults as defaultControls } from 'ol/control';
 import LayerGroup from 'ol/layer/Group';
+import { Projection } from 'ol/proj';
 
 // Map configuration
 import { 
@@ -166,58 +167,87 @@ onMounted(async () => {
     tileResolutions: tileResolutions()
   });
   
-// Create tile layer for terrain using dynamic tile API
-      // Note: Tile directories are 1-9, but OpenLayers zoom is 0-9, so we add 1
+  // Create custom projection for block coordinates FIRST
+  // Our coordinates are in block units, not meters, so we need a simple projection
+  const extent = worldExtent();
+  const projection = new Projection({
+    code: 'VINTAGESTORY',
+    units: 'pixels',
+    extent: extent,
+    global: false
+  });
+  
+  // Create tile layer for terrain using dynamic tile API
+      // Zoom levels: 0 (world view) to BaseZoomLevel (max detail)
+      // Direct mapping: OpenLayers zoom N -> Backend zoom N
       terrainLayer = new TileLayer({
         source: new XYZ({
+          projection: projection,  // Use our custom projection
           tileGrid: createWorldTileGrid(),
           wrapX: false,
           tileUrlFunction: (tileCoord) => {
             if (!tileCoord) return '';
-            const z = tileCoord[0] + 1; // Adjust zoom: OL zoom 0->directory 1, etc.
+            
+            // ═══════════════════════════════════════════════════════════════
+            // TILE COORDINATE TRANSFORMATION (SIMPLIFIED)
+            // ═══════════════════════════════════════════════════════════════
+            // OpenLayers provides: [zoom, tileX, tileY]
+            // Backend expects: /tiles/{zoom}/{tileX}_{tileZ}.png
+            // 
+            // Backend flips Z-axis: extent = [minX, -maxZ, maxX, -minZ]
+            // So OpenLayers Y increases northward (opposite of game Z)
+            // We need to flip Y back to get game Z coordinates for tile requests
+            // 
+            // Key transformations:
+            // 1. Zoom: Direct mapping (OL zoom 0 = backend zoom 0)
+            // 2. Tile offset scaling: Offset is defined at maxZoom, must be 
+            //    scaled down for lower zoom levels
+            // 3. Flip Y to get Z, then add scaled offset to get absolute tile coords
+            // ═══════════════════════════════════════════════════════════════
+            
+            const z = tileCoord[0]; // Zoom level
             const displayX = tileCoord[1];
             const displayY = tileCoord[2];
             
-            // Apply tile offset to convert display coords -> absolute coords
-            // In spawn-relative mode, offset shifts display tiles to absolute storage tiles
-            const [offsetX, offsetZ] = getTileOffset();
-            const absoluteX = displayX + offsetX;
+            // Get base tile offset from server config (defined at maxZoom)
+            const [baseOffsetX, baseOffsetZ] = getTileOffset();
+            const maxZ = maxZoom();
             
-            // OpenLayers Y is inverted from our Z axis, and we apply offset after inversion
-            // displayZ = -displayY, then absoluteZ = displayZ + offsetZ
-            const absoluteZ = -displayY + offsetZ;
+            // Scale offset based on current zoom level
+            const zoomScale = Math.pow(2, maxZ - z);
+            const scaledOffsetX = Math.floor(baseOffsetX / zoomScale);
+            const scaledOffsetZ = Math.floor(baseOffsetZ / zoomScale);
+            
+            // Transform to absolute tile coordinates
+            // CRITICAL: Invert Y because backend flipped Z-axis for north-up display
+            const absoluteX = displayX + scaledOffsetX;
+            const absoluteZ = -displayY + scaledOffsetZ;
             
             const url = `/tiles/${z}/${absoluteX}_${absoluteZ}.png`;
-            console.log(`[MapContainer] Requesting tile: OL(${tileCoord[0]},${displayX},${displayY}) -> URL: ${url} (offset=[${offsetX},${offsetZ}])`);
             
-            return url; // Dynamic tiles from API
-          },
-          tileLoadFunction: (imageTile, src) => {
-            const img = imageTile.getImage() as HTMLImageElement;
+            // Debug logging
+            if (tileCoord[0] <= 3) {
+              console.log(`[Tile] zoom=${z}, display(${displayX},${displayY}), ` +
+                `scaledOffset(${scaledOffsetX},${scaledOffsetZ}) -> ${url}`);
+            }
             
-            img.onload = () => {
-              console.log(`✅ [TileLoad] Successfully loaded: ${src}`);
-            };
-            
-            img.onerror = (error) => {
-              console.error(`❌ [TileLoad] Failed to load tile: ${src}`, error);
-              console.error(`   Check Network tab for HTTP status code`);
-            };
-            
-            img.src = src;
+            return url;
           },
         }),
         visible: mapStore.layerVisibility.terrain,
       });
   
   // Use optimized layer factory (VectorImageLayer for better performance)
-  chunkLayer = createChunkLayer(false);
-  tradersLayer = createTraderLayer(mapStore.layerVisibility.traders);
-  translocatorsLayer = createTranslocatorLayer(mapStore.layerVisibility.translocators);
-  signsLayer = createSignsLayer(mapStore.layerVisibility.signs);
+  // Pass the custom projection to all layers so they use the same coordinate system
+  chunkLayer = createChunkLayer(false, projection);
+  tradersLayer = createTraderLayer(mapStore.layerVisibility.traders, projection);
+  translocatorsLayer = createTranslocatorLayer(mapStore.layerVisibility.translocators, projection);
+  signsLayer = createSignsLayer(mapStore.layerVisibility.signs, projection);
   
   // Create vector source for players (live data)
-  const playersSource = new VectorSource();
+  const playersSource = new VectorSource({
+    wrapX: false
+  });
   playersLayer = playersSource;
   
   // Create players layer manually (not from GeoJSON file)
@@ -262,7 +292,7 @@ onMounted(async () => {
     ],
   });
   
-  // Create map
+  // Create map (projection already created above for tile layer)
   mapInstance.value = new Map({
     target: mapRef.value,
     layers: [layerGroup],
@@ -271,10 +301,10 @@ onMounted(async () => {
       zoom: props.zoom || defaultZoom(),
       minZoom: minZoom(),
       maxZoom: maxZoom(),
-      extent: worldExtent(),
+      extent: extent,
       constrainResolution: true,
       resolutions: worldResolutions(),
-      projection: 'EPSG:3857',
+      projection: projection,
     }),
     controls: defaultControls({
       zoom: false,

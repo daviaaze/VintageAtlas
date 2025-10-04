@@ -23,14 +23,14 @@ public class MapConfigController
 {
     private readonly ICoreServerAPI _sapi;
     private readonly ModConfig _config;
-    private readonly DynamicTileGenerator _tileGenerator;
+    private readonly ITileGenerator _tileGenerator;
     private readonly JsonSerializerSettings _jsonSettings;
     
     private MapConfigData? _cachedConfig;
     private long _lastConfigUpdate;
     private readonly object _cacheLock = new();
 
-    public MapConfigController(ICoreServerAPI sapi, ModConfig config, DynamicTileGenerator tileGenerator)
+    public MapConfigController(ICoreServerAPI sapi, ModConfig config, ITileGenerator tileGenerator)
     {
         _sapi = sapi;
         _config = config;
@@ -169,7 +169,7 @@ public class MapConfigController
         {
             // Transform to spawn-relative coordinates for display
             // This shifts the coordinate space so spawn is at (0, 0)
-            // Note: Z-axis is flipped for OpenLayers map display (North is negative Z)
+            // NO Z-flip here - that happens in the frontend tile URL function
             var relMinX = extent.MinX - spawn[0];
             var relMinZ = extent.MinZ - spawn[1];
             var relMaxX = extent.MaxX - spawn[0];
@@ -180,29 +180,50 @@ public class MapConfigController
                 $"Spawn position=({spawn[0]},{spawn[1]}), " +
                 $"Relative extent=({relMinX},{relMinZ})-({relMaxX},{relMaxZ})");
 
-            // Apply Z-axis flip for OpenLayers: minZ becomes -maxZ, maxZ becomes -minZ
+            // CRITICAL: Flip Z-axis for north-up map!
+            // In Vintage Story: Z increases southward (north=negative, south=positive)
+            // For north-up display: We want north at top, so flip Z to -Z
+            // OpenLayers extent: [minX, minY, maxX, maxY] where Y increases upward
+            // So: minY = -maxZ (south), maxY = -minZ (north)
             worldExtent = [relMinX, -relMaxZ, relMaxX, -relMinZ];
+            
+            // Origin at TOP-LEFT corner (northwest) for OpenLayers
+            // Top-left = [minX, maxY] = [minX, -minZ]
             worldOrigin = [relMinX, -relMinZ];
 
-            _sapi.Logger.Debug($"[VintageAtlas] Final display extent (with Z-flip): " +
+            _sapi.Logger.Debug($"[VintageAtlas] Final display extent (spawn-relative, no flip): " +
                 $"[{worldExtent[0]}, {worldExtent[1]}, {worldExtent[2]}, {worldExtent[3]}], " +
-                $"origin=[{worldOrigin[0]}, {worldOrigin[1]}]");
+                $"origin=[{worldOrigin[0]}, {worldOrigin[1]}] (spawn-centered)");
         }
         
         // Calculate tile offset for coordinate transformation
-        // This allows frontend to convert display tile coords -> absolute tile coords
-        const int CHUNK_SIZE = 32;
-        var chunksPerTile = _config.TileSize / CHUNK_SIZE;
-        var spawnChunkX = spawn[0] / CHUNK_SIZE;
-        var spawnChunkZ = spawn[1] / CHUNK_SIZE;
-        var tileOffsetX = spawnChunkX / chunksPerTile;
-        var tileOffsetZ = spawnChunkZ / chunksPerTile;
+        // CRITICAL: Tile offset must map OpenLayers tile (0,0) to the absolute tile at the ORIGIN
+        // Origin is at worldOrigin in block coordinates
+        int[] tileOffset;
         
-        var tileOffset = _config.AbsolutePositions 
-            ? new[] { 0, 0 } 
-            : [tileOffsetX, tileOffsetZ];
+        if (_config.AbsolutePositions)
+        {
+            tileOffset = [0, 0];
+        }
+        else
+        {
+            // Origin is at [relMinX, -relMinZ] in FLIPPED spawn-relative coords
+            // Convert back to absolute GAME coords (un-flip Z), then to tile coords
+            var originAbsoluteX = worldOrigin[0] + spawn[0];   // relMinX + spawnX
+            var originAbsoluteZ = -worldOrigin[1] + spawn[1];  // UN-FLIP: -(-relMinZ) + spawnZ = relMinZ + spawnZ
             
-        _sapi.Logger.Debug($"[VintageAtlas] Tile offset for spawn-relative mode: [{tileOffset[0]}, {tileOffset[1]}]");
+            // Tile coordinates (floor division for proper handling of negative coords)
+            var originTileX = (int)Math.Floor((double)originAbsoluteX / _config.TileSize);
+            var originTileZ = (int)Math.Floor((double)originAbsoluteZ / _config.TileSize);
+            
+            tileOffset = [originTileX, originTileZ];
+            
+            _sapi.Logger.Debug($"[VintageAtlas] Tile offset calculation: " +
+                $"origin blocks=({originAbsoluteX},{originAbsoluteZ}), " +
+                $"origin tiles=({originTileX},{originTileZ})");
+        }
+            
+        _sapi.Logger.Debug($"[VintageAtlas] Tile offset for coordinate mapping: [{tileOffset[0]}, {tileOffset[1]}]");
         
         return new MapConfigData
         {
@@ -246,16 +267,18 @@ public class MapConfigController
     private WorldExtentData CalculateWorldExtent()
     {
         // STEP 1: Try MBTiles first (fast if tiles exist)
+        _sapi.Logger.Debug($"[VintageAtlas] MapConfig: Querying tile extent for zoom {_config.BaseZoomLevel}...");
         var tileExtent = _tileGenerator.GetTileExtentAsync(_config.BaseZoomLevel).GetAwaiter().GetResult();
         
         if (tileExtent != null)
         {
             // Tiles exist - calculate extent from them
+            _sapi.Logger.Debug($"[VintageAtlas] MapConfig: Found tile extent: ({tileExtent.MinX},{tileExtent.MinY})-({tileExtent.MaxX},{tileExtent.MaxY})");
             return CalculateExtentFromTiles(tileExtent);
         }
 
         // STEP 2: No tiles yet - query savegame database for actual chunk positions
-        _sapi.Logger.Debug("[VintageAtlas] No tiles in MBTiles database, querying savegame for chunk extent...");
+        _sapi.Logger.Warning("[VintageAtlas] MapConfig: No tiles in MBTiles database, querying savegame for chunk extent...");
         
         return CalculateExtentFromSavegame();
     }
@@ -423,12 +446,17 @@ public class MapConfigController
         return [spawnX, spawnZ];
     }
 
-    private double[] GenerateResolutions(int levels)
+    private double[] GenerateResolutions(int maxZoom)
     {
-        var resolutions = new double[levels];
-        for (var i = 0; i < levels; i++)
+        // Generate resolutions for zooms 0 through maxZoom (inclusive)
+        // Need maxZoom + 1 elements for all zoom levels
+        var resolutions = new double[maxZoom + 1];
+        for (var i = 0; i <= maxZoom; i++)
         {
-            resolutions[i] = Math.Pow(2, levels - i - 1);
+            // Resolution = blocks per pixel at this zoom level
+            // Zoom 0 (far out): 2^maxZoom blocks/pixel (e.g., 512 at maxZoom=9)
+            // Zoom maxZoom (zoomed in): 2^0 = 1 block/pixel
+            resolutions[i] = Math.Pow(2, maxZoom - i);
         }
         return resolutions;
     }

@@ -17,12 +17,12 @@ public class PyramidTileDownsampler
 {
     private readonly ICoreServerAPI _sapi;
     private readonly ModConfig _config;
-    private readonly DynamicTileGenerator _generator;
+    private readonly ITileGenerator _generator;
 
     public PyramidTileDownsampler(
         ICoreServerAPI sapi, 
         ModConfig config, 
-        DynamicTileGenerator generator)
+        ITileGenerator generator)
     {
         _sapi = sapi;
         _config = config;
@@ -52,25 +52,37 @@ public class PyramidTileDownsampler
             var sourceZ = tileZ * 2;
 
             // Fetch all 4 source tiles concurrently
-            var sourceTileTasks = new Task<TileResult>[]
+            var sourceTileTasks = new Task<byte[]?>[]
             {
-                _generator.GenerateTileAsync(higherZoom, sourceX, sourceZ),         // Top-left
-                _generator.GenerateTileAsync(higherZoom, sourceX + 1, sourceZ),     // Top-right
-                _generator.GenerateTileAsync(higherZoom, sourceX, sourceZ + 1),     // Bottom-left
-                _generator.GenerateTileAsync(higherZoom, sourceX + 1, sourceZ + 1), // Bottom-right
+                _generator.GetTileDataAsync(higherZoom, sourceX, sourceZ),         // Top-left
+                _generator.GetTileDataAsync(higherZoom, sourceX + 1, sourceZ),     // Top-right
+                _generator.GetTileDataAsync(higherZoom, sourceX, sourceZ + 1),     // Bottom-left
+                _generator.GetTileDataAsync(higherZoom, sourceX + 1, sourceZ + 1), // Bottom-right
             };
 
             var sourceTiles = await Task.WhenAll(sourceTileTasks);
 
-            // Check if we successfully got all 4 tiles
-            if (sourceTiles.Any(t => t.Data == null || t.NotFound))
+            // ═══════════════════════════════════════════════════════════════
+            // FORGIVING DOWNSAMPLING (matches old Extractor.cs behavior)
+            // Create downsampled tile even if some source tiles are missing
+            // Missing tiles will appear as transparent/empty areas
+            // ═══════════════════════════════════════════════════════════════
+            
+            var missingCount = sourceTiles.Count(t => t == null);
+            if (missingCount == 4)
             {
-                _sapi.Logger.Warning($"[VintageAtlas] Could not get all source tiles for downsampling {zoom}/{tileX}_{tileZ}");
+                // ALL 4 tiles missing - skip this entirely
+                _sapi.Logger.Debug($"[VintageAtlas] All source tiles missing for {zoom}/{tileX}_{tileZ}, skipping");
                 return null;
             }
+            
+            if (missingCount > 0)
+            {
+                _sapi.Logger.Debug($"[VintageAtlas] Downsampling with {4 - missingCount}/4 tiles available for {zoom}/{tileX}_{tileZ}");
+            }
 
-            // Downsample the 4 tiles into 1 tile
-            var downsampled = DownsampleTiles(sourceTiles.Select(t => t.Data!).ToArray());
+            // Downsample with whatever tiles we have (null tiles will be skipped)
+            var downsampled = DownsampleTiles(sourceTiles);
 
             _sapi.Logger.VerboseDebug($"[VintageAtlas] Successfully downsampled tile {zoom}/{tileX}_{tileZ}");
 
@@ -84,23 +96,28 @@ public class PyramidTileDownsampler
     }
 
     /// <summary>
-    /// Combine 4 tiles into 1 by downsampling with high-quality filtering
+    /// Combine up to 4 tiles into 1 by downsampling with high-quality filtering.
+    /// Missing tiles (null) are skipped, resulting in transparent areas.
+    /// This matches the old Extractor.cs behavior for edge tiles.
     /// Layout: [0] [1]  →  [output]
     ///         [2] [3]
     /// </summary>
-    private byte[] DownsampleTiles(byte[][] sourceTiles)
+    private byte[] DownsampleTiles(byte[]?[] sourceTiles)
     {
         if (sourceTiles.Length != 4)
         {
-            throw new ArgumentException("Expected 4 source tiles for downsampling", nameof(sourceTiles));
+            throw new ArgumentException("Expected 4 source tile slots for downsampling", nameof(sourceTiles));
         }
 
         var tileSize = _config.TileSize;
         var halfSize = tileSize / 2;
 
-        // Create output bitmap
+        // Create output bitmap (starts transparent)
         using var outputBitmap = new SKBitmap(tileSize, tileSize);
         using var canvas = new SKCanvas(outputBitmap);
+        
+        // Clear to transparent (matches old Extractor.cs: outputImage.Erase(SKColor.Empty))
+        canvas.Clear(SKColor.Empty);
 
         // High-quality downsampling paint
         using var paint = new SKPaint
@@ -109,12 +126,19 @@ public class PyramidTileDownsampler
             IsAntialias = true
         };
 
-        // Process each of the 4 source tiles
+        // Process each of the 4 source tile slots
         for (var i = 0; i < 4; i++)
         {
+            // Skip null tiles (missing at edges)
+            if (sourceTiles[i] == null)
+            {
+                _sapi.Logger.VerboseDebug($"[VintageAtlas] Source tile {i} is null, leaving area transparent");
+                continue;
+            }
+            
             try
             {
-                using var sourceBitmap = SKBitmap.Decode(sourceTiles[i]);
+                using var sourceBitmap = SKBitmap.Decode(sourceTiles[i]!);
                 
                 if (sourceBitmap == null)
                 {

@@ -3,31 +3,50 @@ using System.Threading.Tasks;
 using Vintagestory.API.Server;
 using Vintagestory.Server;
 using VintageAtlas.Core;
+using VintageAtlas.Storage;
+using VintageAtlas.Web.API;
 
 namespace VintageAtlas.Export;
 
 /// <summary>
-/// Manages map export operations
+/// Manages map export operations using the unified tile generation system.
+/// Exports map tiles directly to MBTiles database without intermediate PNG files.
 /// </summary>
-public class MapExporter(ICoreServerAPI sapi, ModConfig config) : IMapExporter
+public class MapExporter : IMapExporter
 {
-    private readonly ServerMain _server = (ServerMain)sapi.World;
-    private Extractor? _extractor;
+    private readonly ICoreServerAPI _sapi;
+    private readonly ModConfig _config;
+    private readonly UnifiedTileGenerator _tileGenerator;
+    private readonly MapConfigController? _mapConfigController;
+    private readonly ServerMain _server;
 
     public bool IsRunning { get; private set; }
+    
+    public MapExporter(
+        ICoreServerAPI sapi,
+        ModConfig config,
+        UnifiedTileGenerator tileGenerator,
+        MapConfigController? mapConfigController = null)
+    {
+        _sapi = sapi;
+        _config = config;
+        _tileGenerator = tileGenerator;
+        _mapConfigController = mapConfigController;
+        _server = (ServerMain)_sapi.World;
+    }
 
     public void StartExport()
     {
         if (IsRunning)
         {
-            sapi.Logger.Warning("[VintageAtlas] Export already running, skipping request");
+            _sapi.Logger.Warning("[VintageAtlas] Export already running, skipping request");
             return;
         }
 
-        Task.Run(ExecuteExport);
+        Task.Run(async () => await ExecuteExportAsync());
     }
 
-    private void ExecuteExport()
+    private async Task ExecuteExportAsync()
     {
         if (IsRunning) return;
         
@@ -36,15 +55,15 @@ public class MapExporter(ICoreServerAPI sapi, ModConfig config) : IMapExporter
 
         try
         {
-            sapi.Logger.Notification("[VintageAtlas] Starting map export...");
+            _sapi.Logger.Notification("[VintageAtlas] Starting map export...");
 
-            if (config.SaveMode)
+            if (_config.SaveMode)
             {
-                oldPassword = sapi.Server.Config.Password;
-                sapi.Server.Config.Password = Random.Shared.Next().ToString();
+                oldPassword = _sapi.Server.Config.Password;
+                _sapi.Server.Config.Password = Random.Shared.Next().ToString();
                 
                 // Disconnect all players safely
-                var players = sapi.World.AllOnlinePlayers;
+                var players = _sapi.World.AllOnlinePlayers;
                 foreach (var player1 in players)
                 {
                     try
@@ -52,13 +71,13 @@ public class MapExporter(ICoreServerAPI sapi, ModConfig config) : IMapExporter
                         var player = (IServerPlayer)player1;
                         if (player?.Entity != null)
                         {
-                            sapi.Logger.Debug($"[VintageAtlas] Disconnecting player {player.PlayerName} for export");
+                            _sapi.Logger.Debug($"[VintageAtlas] Disconnecting player {player.PlayerName} for export");
                             player.Disconnect("Exporting the map now");
                         }
                     }
                     catch (Exception ex)
                     {
-                        sapi.Logger.Warning($"[VintageAtlas] Failed to disconnect player during export: {ex.Message}");
+                        _sapi.Logger.Warning($"[VintageAtlas] Failed to disconnect player during export: {ex.Message}");
                     }
                 }
                 
@@ -67,36 +86,49 @@ public class MapExporter(ICoreServerAPI sapi, ModConfig config) : IMapExporter
                 _server.Suspend(true, 1000);
             }
 
-            // Initialize output directories for generated data only
-            // HTML is served directly from mod bundle, so we only store data here
-            config.OutputDirectoryWorld = System.IO.Path.Combine(config.OutputDirectory, "data", "world");
-            config.OutputDirectoryGeojson = System.IO.Path.Combine(config.OutputDirectory, "data", "geojson");
+            // Initialize output directories for GeoJSON data
+            // Tiles are generated directly to MBTiles database (no intermediate files)
+            _config.OutputDirectoryGeojson = System.IO.Path.Combine(_config.OutputDirectory, "data", "geojson");
             
-            _extractor = new Extractor(_server, config, sapi.Logger);
-            _extractor.Run();
-
-            sapi.Logger.Notification("[VintageAtlas] Map export completed successfully");
+            _sapi.Logger.Notification("[VintageAtlas] ═══════════════════════════════════════════════");
+            _sapi.Logger.Notification("[VintageAtlas] Starting UNIFIED tile generation system");
+            _sapi.Logger.Notification("[VintageAtlas] Direct export to MBTiles (no intermediate PNGs)");
+            _sapi.Logger.Notification("[VintageAtlas] ═══════════════════════════════════════════════");
+            
+            // Create data source for reading from savegame database
+            using var dataSource = new SavegameDataSource(_server, _config, _sapi.Logger);
+            
+            // Generate tiles directly to MBTiles storage
+            await _tileGenerator.ExportFullMapAsync(dataSource);
+            
+            // CRITICAL: Invalidate map config cache so frontend gets updated extent
+            _mapConfigController?.InvalidateCache();
+            _sapi.Logger.Debug("[VintageAtlas] Map config cache invalidated after export");
+            
+            _sapi.Logger.Notification("[VintageAtlas] ═══════════════════════════════════════════════");
+            _sapi.Logger.Notification("[VintageAtlas] Map export completed successfully!");
+            _sapi.Logger.Notification("[VintageAtlas] Tiles stored in MBTiles database");
+            _sapi.Logger.Notification("[VintageAtlas] ═══════════════════════════════════════════════");
         }
         catch (Exception e)
         {
-            sapi.Logger.Error($"[VintageAtlas] Map export failed: {e.Message}");
-            sapi.Logger.Error(e.StackTrace ?? "");
+            _sapi.Logger.Error($"[VintageAtlas] Map export failed: {e.Message}");
+            _sapi.Logger.Error(e.StackTrace ?? "");
         }
         finally
         {
-            if (config.SaveMode)
+            if (_config.SaveMode)
             {
                 _server.Suspend(false);
-                sapi.Server.Config.Password = oldPassword;
+                _sapi.Server.Config.Password = oldPassword;
             }
 
-            if (config.StopOnDone)
+            if (_config.StopOnDone)
             {
                 _server.Stop("Map export complete");
             }
 
             IsRunning = false;
-            _extractor = null;
         }
     }
 

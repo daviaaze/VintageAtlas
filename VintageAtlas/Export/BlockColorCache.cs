@@ -75,9 +75,25 @@ public class BlockColorCache
         var variationCount = _blockColorVariations.Count;
         var lakeCount = _blockIsLake.Count(b => b);
 
+        // Count blocks per palette color for Mode 4 debugging
+        var paletteDistribution = new Dictionary<byte, int>();
+        for (var i = 0; i < _blockToColorIndex.Length; i++)
+        {
+            var colorIndex = _blockToColorIndex[i];
+            if (!paletteDistribution.ContainsKey(colorIndex))
+                paletteDistribution[colorIndex] = 0;
+            paletteDistribution[colorIndex]++;
+        }
+        
         _sapi.Logger.Notification($"[VintageAtlas] Block color cache initialized: " +
             $"{variationCount} blocks with color variations, " +
             $"{lakeCount} water/lake blocks identified");
+        _sapi.Logger.Notification($"[VintageAtlas] Palette distribution (Mode 4): {paletteDistribution.Count} distinct palette colors used");
+        foreach (var kvp in paletteDistribution.OrderByDescending(x => x.Value).Take(10))
+        {
+            var colorName = MapColors.ColorsByCode.GetKeyAtIndex(kvp.Key);
+            _sapi.Logger.Notification($"[VintageAtlas]   {colorName}: {kvp.Value} blocks");
+        }
     }
 
     /// <summary>
@@ -100,6 +116,13 @@ public class BlockColorCache
         if (blockId < 0 || blockId >= _blockToColorIndex.Length)
             return MapColors.ColorsByCode["land"]; // Default fallback
 
+        // Try to use the first color from variations (most detailed)
+        if (_blockColorVariations.TryGetValue(blockId, out var variations) && variations.Count > 0)
+        {
+            return variations[0];
+        }
+
+        // Fallback to palette
         var colorIndex = _blockToColorIndex[blockId];
         return _colorPalette[colorIndex];
     }
@@ -131,7 +154,14 @@ public class BlockColorCache
             _colorPalette[i] = MapColors.ColorsByCode.GetValueAtIndex(i);
         }
 
-        _sapi.Logger.Debug($"[VintageAtlas] Loaded {_colorPalette.Length} colors into palette");
+        _sapi.Logger.Notification($"[VintageAtlas] Loaded {_colorPalette.Length} colors into palette (Mode 4 will use these)");
+        
+        // Log the first few colors for debugging
+        for (var i = 0; i < Math.Min(12, _colorPalette.Length); i++)
+        {
+            var colorName = MapColors.ColorsByCode.GetKeyAtIndex(i);
+            _sapi.Logger.Notification($"[VintageAtlas]   Palette[{i}] = {colorName}: 0x{_colorPalette[i]:X8}");
+        }
     }
 
     private ExportData? LoadCustomColorMappings()
@@ -168,8 +198,19 @@ public class BlockColorCache
 
             try
             {
-                // Set base color index from material
-                var colorCode = MapColors.GetDefaultMapColorCode(block.BlockMaterial);
+                // Get color code from block attributes (much more detailed than material type)
+                // This matches the old Extractor.cs behavior for rich color variation
+                var colorCode = "land"; // Default fallback
+                if (block.Attributes != null)
+                {
+                    colorCode = block.Attributes["mapColorCode"].AsString() ??
+                                MapColors.GetDefaultMapColorCode(block.BlockMaterial);
+                }
+                else
+                {
+                    colorCode = MapColors.GetDefaultMapColorCode(block.BlockMaterial);
+                }
+                
                 var colorIndex = (byte)MapColors.ColorsByCode.IndexOfKey(colorCode);
                 _blockToColorIndex[block.Id] = colorIndex;
 
@@ -262,10 +303,12 @@ public class BlockColorCache
         if (blockId < 0 || blockId >= _blockToColorIndex.Length)
             return MapColors.ColorsByCode["land"];
 
+        // Mode 4 ALWAYS uses the basic palette (like old Extractor.cs)
+        // This gives ~12 distinct colors based on block material/type
         var colorIndex = _blockToColorIndex[blockId];
         var baseColor = _colorPalette[colorIndex];
 
-        // If this is a water edge, darken the color
+        // If this is a water edge, use darker water edge color
         if (isWaterEdge && !IsLake(blockId))
         {
             return MapColors.ColorsByCode["wateredge"];
@@ -284,9 +327,26 @@ public class BlockColorCache
 
         if (variations == null || variations.Count == 0)
         {
-            return GetBaseColor(blockId);
+            // Fallback to palette-based color
+            var fallback = GetBaseColor(blockId);
+            
+            // DEBUG: Log fallback for common surface blocks
+            if (blockId < 10 || blockId == 6961 || blockId == 3949 || blockId == 2617)
+            {
+                _sapi.Logger.Warning($"[VintageAtlas] Block {blockId} has NO variations, using palette fallback: 0x{fallback:X8}");
+            }
+            
+            return fallback;
         }
 
-        return variations[random.Next(variations.Count)];
+        var selectedColor = variations[random.Next(variations.Count)];
+        
+        // DEBUG: Log successful variation for common surface blocks
+        if (blockId < 10 || blockId == 6961 || blockId == 3949 || blockId == 2617)
+        {
+            // _sapi.Logger.Notification($"[VintageAtlas] Block {blockId} using detailed color variation: 0x{selectedColor:X8} ({variations.Count} available)");
+        }
+        
+        return selectedColor;
     }
 }

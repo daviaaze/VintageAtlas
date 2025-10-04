@@ -1,21 +1,27 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
+using System.Threading.Tasks;
 using Vintagestory.API.Server;
 using VintageAtlas.Core;
 
 namespace VintageAtlas.Web.Server;
 
 /// <summary>
-/// Serves static files (HTML, CSS, JS, images) from the web root
+/// Serves static files (HTML, CSS, JS, images) with async I/O and ETag caching
 /// </summary>
 public class StaticFileServer
 {
     private readonly ICoreServerAPI _sapi;
     private readonly string _webRoot;
     private readonly string _basePath;
+    
+    // ETag cache for static files (file path -> ETag)
+    private readonly ConcurrentDictionary<string, string> _etagCache = new();
     
     private static readonly Dictionary<string, string> MimeTypes = new()
     {
@@ -46,9 +52,9 @@ public class StaticFileServer
     }
 
     /// <summary>
-    /// Try to serve a static file from the web root
+    /// Try to serve a static file from the web root with async I/O and ETag support
     /// </summary>
-    public bool TryServeFile(HttpListenerContext context, string requestPath)
+    public async Task<bool> TryServeFileAsync(HttpListenerContext context, string requestPath)
     {
         try
         {
@@ -70,19 +76,51 @@ public class StaticFileServer
             var extension = Path.GetExtension(filePath).ToLowerInvariant();
             var mimeType = MimeTypes.ContainsKey(extension) ? MimeTypes[extension] : "application/octet-stream";
 
+            // Get or compute ETag for this file
+            var fileInfo = new FileInfo(filePath);
+            var etag = GetOrComputeETag(filePath, fileInfo);
+            
+            // Check If-None-Match header for conditional requests
+            var ifNoneMatch = context.Request.Headers["If-None-Match"];
+            if (!string.IsNullOrEmpty(ifNoneMatch) && ifNoneMatch == etag)
+            {
+                // Client has current version - return 304 Not Modified
+                context.Response.StatusCode = 304;
+                context.Response.Headers.Add("ETag", etag);
+                context.Response.Close();
+                return true;
+            }
+
+            // Read file asynchronously
+            byte[] buffer;
+            using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true))
+            {
+                buffer = new byte[fs.Length];
+                await fs.ReadAsync(buffer, 0, buffer.Length);
+            }
+            
+            // Inject base path into HTML files for nginx sub-path support
+            if (extension == ".html")
+            {
+                var html = Encoding.UTF8.GetString(buffer);
+                html = html.Replace("__BASE_PATH__", _basePath);
+                buffer = Encoding.UTF8.GetBytes(html);
+            }
+
             context.Response.ContentType = mimeType;
             context.Response.StatusCode = 200;
+            context.Response.ContentLength64 = buffer.Length;
+            context.Response.Headers.Add("ETag", etag);
+            context.Response.Headers.Add("Last-Modified", fileInfo.LastWriteTimeUtc.ToString("R"));
 
             // Cache control strategy:
-            // - HTML/JS/JSON: No cache (always fresh for updates)
+            // - HTML/JS/JSON: No cache (always fresh for updates) but with ETag
             // - Map data: 5 minute cache (updates on export)
             // - Static assets (CSS/fonts/images): 1 hour cache (rarely change)
             if (extension == ".html" || extension == ".js" || extension == ".json")
             {
-                // Never cache - always fetch fresh for updates
-                context.Response.Headers.Add("Cache-Control", "no-cache, no-store, must-revalidate");
-                context.Response.Headers.Add("Pragma", "no-cache");
-                context.Response.Headers.Add("Expires", "0");
+                // Use ETag validation instead of no-cache for better performance
+                context.Response.Headers.Add("Cache-Control", "no-cache, must-revalidate");
             }
             else if (safePath.Contains("/data/"))
             {
@@ -92,21 +130,10 @@ public class StaticFileServer
             else
             {
                 // Longer cache for static assets that rarely change
-                context.Response.Headers.Add("Cache-Control", "public, max-age=3600");  // 1 hour
+                context.Response.Headers.Add("Cache-Control", "public, max-age=3600, immutable");  // 1 hour
             }
 
-            var buffer = File.ReadAllBytes(filePath);
-            
-            // Inject base path into HTML files for nginx sub-path support
-            if (extension == ".html")
-            {
-                var html = Encoding.UTF8.GetString(buffer);
-                html = html.Replace("__BASE_PATH__", _basePath);
-                buffer = Encoding.UTF8.GetBytes(html);
-            }
-            
-            context.Response.ContentLength64 = buffer.Length;
-            context.Response.OutputStream.Write(buffer, 0, buffer.Length);
+            await context.Response.OutputStream.WriteAsync(buffer, 0, buffer.Length);
             
             return true;
         }
@@ -115,6 +142,33 @@ public class StaticFileServer
             _sapi.Logger.Error($"[VintageAtlas] Error serving static file {requestPath}: {ex.Message}");
             return false;
         }
+    }
+    
+    /// <summary>
+    /// Synchronous wrapper for backward compatibility
+    /// </summary>
+    public bool TryServeFile(HttpListenerContext context, string requestPath)
+    {
+        return TryServeFileAsync(context, requestPath).GetAwaiter().GetResult();
+    }
+    
+    /// <summary>
+    /// Get or compute ETag for a file (based on last modified time and size)
+    /// </summary>
+    private string GetOrComputeETag(string filePath, FileInfo fileInfo)
+    {
+        var cacheKey = filePath;
+        var expectedETag = $"\"{fileInfo.LastWriteTimeUtc.Ticks:X}-{fileInfo.Length:X}\"";
+        
+        // Check cache
+        if (_etagCache.TryGetValue(cacheKey, out var cachedETag) && cachedETag == expectedETag)
+        {
+            return cachedETag;
+        }
+        
+        // Update cache
+        _etagCache[cacheKey] = expectedETag;
+        return expectedETag;
     }
 
     /// <summary>

@@ -10,6 +10,7 @@ using Vintagestory.Server;
 using VintageAtlas.Commands;
 using VintageAtlas.Core;
 using VintageAtlas.Export;
+using VintageAtlas.Storage;
 using VintageAtlas.Tracking;
 using VintageAtlas.Web.API;
 using VintageAtlas.Web.Server;
@@ -29,10 +30,13 @@ public class VintageAtlasModSystem : ModSystem
     private MapExporter? _mapExporter;
     private DataCollector? _dataCollector;
     private HistoricalTracker? _historicalTracker;
-    private ChunkChangeTracker? _chunkChangeTracker;
-    private DynamicTileGenerator? _tileGenerator;
+    private Web.API.MapConfigController? _mapConfigController;
+    // private ChunkChangeTracker? _chunkChangeTracker; // DISABLED for testing
+    private ITileGenerator? _tileGenerator;
     private TileGenerationState? _tileState;
-    private BackgroundTileService? _backgroundTileService;
+    // private BackgroundTileService? _backgroundTileService; // DISABLED for testing
+    private MbTilesStorage? _storage;
+    private BlockColorCache? _colorCache;
     
     // Web components
     private WebServer? _webServer;
@@ -50,6 +54,11 @@ public class VintageAtlasModSystem : ModSystem
     {
         _sapi = api;
         _config = LoadConfig();
+        
+        // DEBUG: Log the actual Mode value loaded
+        _sapi.Logger.Notification($"[VintageAtlas] ════════ CONFIG LOADED ════════");
+        _sapi.Logger.Notification($"[VintageAtlas] Mode = {_config.Mode} ({(int)_config.Mode})");
+        _sapi.Logger.Notification($"[VintageAtlas] ════════════════════════════════");
         
         // Validate configuration
         var validationErrors = ConfigValidator.Validate(_config);
@@ -69,8 +78,26 @@ public class VintageAtlasModSystem : ModSystem
         
         _sapi.Logger.Notification("[VintageAtlas] Initializing...");
         
-        // Initialize map exporter
-        _mapExporter = new MapExporter(_sapi, _config);
+        // Initialize tile storage (shared by all tile generators)
+        var dbPath = Path.Combine(_config.OutputDirectory, "data", "tiles.mbtiles");
+        _storage = new MbTilesStorage(dbPath);
+        _sapi.Logger.Debug($"[VintageAtlas] Tile storage initialized: {dbPath}");
+        
+        // Initialize block color cache (needed for tile rendering)
+        _colorCache = new BlockColorCache(_sapi, _config);
+        _colorCache.Initialize();
+        _sapi.Logger.Debug("[VintageAtlas] Block color cache initialized");
+        
+        // Initialize unified tile generator for full exports
+        var unifiedGenerator = new UnifiedTileGenerator(_sapi, _config, _colorCache, _storage);
+        _sapi.Logger.Debug("[VintageAtlas] Unified tile generator initialized");
+        
+        // Initialize map config controller (needed by exporter for cache invalidation)
+        _mapConfigController = new Web.API.MapConfigController(_sapi, _config, unifiedGenerator);
+        _sapi.Logger.Debug("[VintageAtlas] Map config controller initialized");
+        
+        // Initialize map exporter with unified generator and map config controller
+        _mapExporter = new MapExporter(_sapi, _config, unifiedGenerator, _mapConfigController);
         
         // Register commands
         ExportCommand.Register(_sapi, _mapExporter);
@@ -110,41 +137,77 @@ public class VintageAtlasModSystem : ModSystem
             // Initialize data collector
             _dataCollector = new DataCollector(_sapi);
             
-            // Initialize chunk change tracker for dynamic updates
-            _chunkChangeTracker = new ChunkChangeTracker(_sapi);
+            // Initialize chunk change tracker for dynamic updates (DISABLED for testing)
+            // _chunkChangeTracker = new ChunkChangeTracker(_sapi);
             
-            // Initialize block color cache for tile generation
-            var colorCache = new BlockColorCache(_sapi, _config);
-            colorCache.Initialize(); // Load block color mappings
-            
-            // Initialize dynamic tile generator
-            _tileGenerator = new DynamicTileGenerator(_sapi, _config, colorCache);
-            
-            // Initialize tile generation state database
-            _tileState = new TileGenerationState(_sapi, _config.OutputDirectory);
-            
-            // Initialize background tile generation service
-            _backgroundTileService = new BackgroundTileService(
-                _sapi, 
-                _config, 
-                _tileState, 
-                _tileGenerator, 
-                _chunkChangeTracker
-            );
-            
-            // IMPROVED: Register as async server system (proper Vintage Story API integration)
-            _sapi.Server.AddServerThread("tile_service", _backgroundTileService);
-            _sapi.Logger.Debug("[VintageAtlas] Background tile service registered as async system");
-            
-            _backgroundTileService.Start();
-            
-            // Initialize historical tracker if enabled
+            // Initialize historical tracker if enabled (before game tick listener)
             if (_config.EnableHistoricalTracking)
             {
                 _historicalTracker = new HistoricalTracker(_sapi);
                 _historicalTracker.Initialize();
                 _sapi.Event.PlayerDeath += OnPlayerDeath;
             }
+            
+            // CRITICAL: Register game tick listener to update caches ON MAIN THREAD
+            // This prevents HTTP threads from accessing game state directly
+            _sapi.Event.RegisterGameTickListener(dt => 
+            {
+                // Update data cache (called on main thread - THREAD SAFE)
+                _dataCollector.UpdateCache(dt);
+                
+                // Update historical tracker if enabled
+                if (_config.EnableHistoricalTracking && _historicalTracker != null)
+                {
+                    _historicalTracker.OnGameTick(dt);
+                }
+            }, 1000); // Call every second (1000ms)
+            
+            _sapi.Logger.Notification("[VintageAtlas] Main thread cache updates registered (HTTP threads isolated from game state)");
+            
+            // Reuse color cache initialized in StartServerSide
+            if (_colorCache == null)
+            {
+                _colorCache = new BlockColorCache(_sapi, _config);
+                _colorCache.Initialize();
+            }
+            
+            // Initialize unified tile generator for live serving (shares storage with exporter)
+            // This is the SAME generator used for full exports - no more code duplication!
+            if (_storage == null)
+            {
+                var dbPath = Path.Combine(_config.OutputDirectory, "data", "tiles.mbtiles");
+                _storage = new MbTilesStorage(dbPath);
+            }
+            
+            // IMPORTANT: Use UnifiedTileGenerator for both export AND live generation
+            // This ensures hill shading and all rendering modes work for on-demand tiles too!
+            _tileGenerator = new UnifiedTileGenerator(_sapi, _config, _colorCache, _storage);
+            
+            // Initialize tile generation state database
+            _tileState = new TileGenerationState(_sapi, _config.OutputDirectory);
+            
+            // ═══════════════════════════════════════════════════════════════
+            // BACKGROUND TILE SERVICE DISABLED FOR TESTING
+            // This prevents automatic tile generation on chunk updates
+            // Tiles are ONLY generated during /atlas export
+            // ═══════════════════════════════════════════════════════════════
+            
+            // // Initialize background tile generation service
+            // _backgroundTileService = new BackgroundTileService(
+            //     _sapi, 
+            //     _config, 
+            //     _tileState, 
+            //     _tileGenerator, 
+            //     _chunkChangeTracker
+            // );
+            
+            // // IMPROVED: Register as async server system (proper Vintage Story API integration)
+            // _sapi.Server.AddServerThread("tile_service", _backgroundTileService);
+            // _sapi.Logger.Debug("[VintageAtlas] Background tile service registered as async system");
+            
+            // _backgroundTileService.Start();
+            
+            _sapi.Logger.Notification("[VintageAtlas] ⚠️  Background tile generation DISABLED - tiles only generated via /atlas export");
             
             // Setup web root directory
             var webRoot = FindWebRoot();
@@ -161,7 +224,8 @@ public class VintageAtlasModSystem : ModSystem
             var configController = new ConfigController(_sapi, _config, _mapExporter);
             var historicalController = new HistoricalController(_sapi, _historicalTracker);
             var geoJsonController = new GeoJsonController(_sapi, _config);
-            var mapConfigController = new MapConfigController(_sapi, _config, _tileGenerator);
+            // Use the existing mapConfigController instance (created earlier)
+            var mapConfigController = _mapConfigController ?? new MapConfigController(_sapi, _config, _tileGenerator);
             var tileController = new TileController(_sapi, _config, _tileGenerator);
             
             var router = new RequestRouter(
@@ -218,14 +282,9 @@ public class VintageAtlasModSystem : ModSystem
     {
         if (_config == null || _sapi == null) return;
         
-        // Update historical tracker if enabled
-        if (_config.EnableHistoricalTracking && _historicalTracker != null)
-        {
-            _historicalTracker.OnGameTick(dt);
-        }
-        
-        // Note: Tile regeneration is now handled by BackgroundTileService
-        // It runs in a separate thread and doesn't block the game thread
+        // Note: Data collection is now handled by RegisterGameTickListener in SetupLiveServer()
+        // Note: Historical tracking is also handled by RegisterGameTickListener in SetupLiveServer()
+        // Note: Tile regeneration is handled by BackgroundTileService in a separate thread
         
         // Auto-export full map data if enabled and interval has passed (optional full regeneration)
         if (!_config.AutoExportMap || !_config.EnableLiveServer || _mapExporter == null) return;
@@ -255,11 +314,11 @@ public class VintageAtlasModSystem : ModSystem
     {
         _sapi?.Logger.Notification("[VintageAtlas] Shutting down...");
         
-        _backgroundTileService?.Stop();
+        // _backgroundTileService?.Stop();
         _tileState?.Dispose();
         _webServer?.Dispose();
         _historicalTracker?.Dispose();
-        _chunkChangeTracker?.Dispose();
+        // _chunkChangeTracker?.Dispose();
         
         _sapi?.Logger.Notification("[VintageAtlas] Shutdown complete");
     }
@@ -300,11 +359,13 @@ public class VintageAtlasModSystem : ModSystem
 
     public override void Dispose()
     {
-        _backgroundTileService?.Dispose();
+        // _backgroundTileService?.Dispose();
         _tileState?.Dispose();
+        _tileGenerator?.Dispose();
+        _storage?.Dispose();
         _webServer?.Dispose();
         _historicalTracker?.Dispose();
-        _chunkChangeTracker?.Dispose();
+        // _chunkChangeTracker?.Dispose();
         base.Dispose();
     }
 }

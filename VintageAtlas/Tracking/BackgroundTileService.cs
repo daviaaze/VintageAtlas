@@ -22,7 +22,7 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
     private readonly ICoreServerAPI _sapi;
     private readonly ModConfig _config;
     private readonly TileGenerationState _state;
-    private readonly DynamicTileGenerator _tileGenerator;
+    private readonly ITileGenerator _tileGenerator;
     private readonly ChunkChangeTracker _chunkTracker;
     
     private Thread? _workerThread;
@@ -48,7 +48,7 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
         ICoreServerAPI sapi, 
         ModConfig config,
         TileGenerationState state,
-        DynamicTileGenerator tileGenerator,
+        ITileGenerator tileGenerator,
         ChunkChangeTracker chunkTracker)
     {
         _sapi = sapi;
@@ -279,12 +279,12 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
             _sapi.Logger.VerboseDebug($"[VintageAtlas] Generating tile {tile.Zoom}/{tile.X}_{tile.Z}");
             
             // Generate the tile asynchronously (but wait for it in this background thread)
-            var task = _tileGenerator.GenerateTileAsync(tile.Zoom, tile.X, tile.Z);
+            var task = _tileGenerator.GetTileDataAsync(tile.Zoom, tile.X, tile.Z);
             task.Wait(_cancellationToken!.Token);
             
             var result = task.Result;
             
-            if (result.NotFound)
+            if (result == null)
             {
                 _state.RecordTileError(tile.Zoom, tile.X, tile.Z, "No data available");
                 _sapi.Logger.Debug($"[VintageAtlas] No data for tile {tile.Zoom}/{tile.X}_{tile.Z}");
@@ -301,7 +301,7 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
                 tile.Z, 
                 sw.ElapsedMilliseconds, 
                 chunks.Count,
-                result.Data?.Length ?? 0
+                result?.Length ?? 0
             );
             
             // Map chunks to tile for future invalidation

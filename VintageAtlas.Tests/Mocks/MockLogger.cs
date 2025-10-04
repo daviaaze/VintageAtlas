@@ -130,7 +130,7 @@ namespace VintageAtlas.Tests.Mocks
 
         public void Log(EnumLogType logType, string message)
         {
-            throw new NotImplementedException();
+            Log(logType, message, Array.Empty<object>());
         }
 
         public void LogException(EnumLogType logType, Exception e)

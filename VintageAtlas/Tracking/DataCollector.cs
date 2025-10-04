@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using Vintagestory.API.Common;
-using Vintagestory.API.Common.Entities;
 using Vintagestory.API.Datastructures;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
@@ -12,6 +11,7 @@ namespace VintageAtlas.Tracking;
 
 /// <summary>
 /// Collects live game data for API responses (based on ServerstatusQuery patterns)
+/// THREAD-SAFE: UpdateCache() called from game tick, CollectData() called from HTTP threads
 /// </summary>
 public class DataCollector : IDataCollector
 {
@@ -22,61 +22,98 @@ public class DataCollector : IDataCollector
         private DateTime _animalsCacheUntil = DateTime.MinValue;
         private const int AnimalsCacheSeconds = 3;
         private const int AnimalsMax = 200;
+        private const int AnimalTrackingRadius = 64; // Only scan 64 blocks around players
         
-        // Full data caching for thread safety and performance
-        private ServerStatusData? _fullDataCache;
-        private long _fullDataCacheExpiry;
-        private const int CACHE_DURATION_MS = 1000; // 1 second cache
-        private readonly object _cacheLock = new object();
+        // Pre-computed data cache (updated on game tick, read by HTTP threads)
+        private ServerStatusData? _cachedData;
+        private volatile bool _dataReady;
+        private long _lastUpdate;
+        private const int CACHE_UPDATE_INTERVAL_MS = 1000; // Update every 1 second
+        private readonly object _cacheLock = new();
 
         public DataCollector(ICoreServerAPI sapi)
         {
             _sapi = sapi;
         }
 
-        public ServerStatusData CollectData()
+        /// <summary>
+        /// CALLED FROM GAME TICK (MAIN THREAD) - Updates cache safely
+        /// This is the ONLY method that accesses game state
+        /// </summary>
+        public void UpdateCache(float deltaTime)
         {
             var now = _sapi.World.ElapsedMilliseconds;
             
-            // Check cache first (thread-safe)
-            lock (_cacheLock)
+            // Only update if cache expired
+            if (_dataReady && now - _lastUpdate < CACHE_UPDATE_INTERVAL_MS)
             {
-                if (_fullDataCache != null && now < _fullDataCacheExpiry)
-                {
-                    return _fullDataCache;
-                }
+                return;
             }
             
-            // Cache miss - collect fresh data
-            var data = new ServerStatusData
+            try
             {
-                SpawnPoint = GetSpawnPoint(),
-                Date = GetGameDate(),
-                Weather = GetWeatherInfo(),
-                Players = GetPlayersData(),
-                Animals = GetAnimalsData()
-            };
-
-            // Add spawn point climate data
-            if (data.SpawnPoint != null)
-            {
-                var spawnPos = new BlockPos((int)data.SpawnPoint.X, (int)data.SpawnPoint.Y, (int)data.SpawnPoint.Z);
-                var climate = _sapi.World.BlockAccessor.GetClimateAt(spawnPos, EnumGetClimateMode.NowValues);
-                if (climate != null)
+                // Collect all data ON MAIN THREAD (safe!)
+                var data = new ServerStatusData
                 {
-                    data.SpawnTemperature = FiniteOrNull(climate.Temperature);
-                    data.SpawnRainfall = FiniteOrNull(climate.Rainfall);
+                    SpawnPoint = GetSpawnPoint(),
+                    Date = GetGameDate(),
+                    Weather = GetWeatherInfo(),
+                    Players = GetPlayersData(),
+                    Animals = GetAnimalsData()
+                };
+
+                // Add spawn point climate data
+                if (data.SpawnPoint != null)
+                {
+                    var spawnPos = new BlockPos((int)data.SpawnPoint.X, (int)data.SpawnPoint.Y, (int)data.SpawnPoint.Z);
+                    var climate = _sapi.World.BlockAccessor.GetClimateAt(spawnPos, EnumGetClimateMode.NowValues);
+                    if (climate != null)
+                    {
+                        data.SpawnTemperature = FiniteOrNull(climate.Temperature);
+                        data.SpawnRainfall = FiniteOrNull(climate.Rainfall);
+                    }
                 }
+                
+                // Atomically update cache
+                lock (_cacheLock)
+                {
+                    _cachedData = data;
+                    _lastUpdate = now;
+                    _dataReady = true;
+                }
+                
+                // _sapi.Logger.Debug($"[VintageAtlas] Data cache updated: {data.Players.Count} players, {data.Animals.Count} animals");
             }
-            
-            // Update cache (thread-safe)
+            catch (Exception ex)
+            {
+                _sapi.Logger.Error($"[VintageAtlas] Error updating data cache: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// CALLED FROM HTTP THREADS - Returns cached data only
+        /// NEVER accesses game state directly!
+        /// </summary>
+        public ServerStatusData CollectData()
+        {
             lock (_cacheLock)
             {
-                _fullDataCache = data;
-                _fullDataCacheExpiry = now + CACHE_DURATION_MS;
+                if (_cachedData != null && _dataReady)
+                {
+                    return _cachedData;
+                }
+                
+                // Fallback if cache not ready yet (server just started)
+                _sapi.Logger.Debug("[VintageAtlas] Data cache not ready yet, returning empty data");
+                return new ServerStatusData
+                {
+                    Players = new List<PlayerData>(),
+                    Animals = new List<AnimalData>(),
+                    SpawnPoint = new SpawnPoint { X = 0, Y = _sapi.World.SeaLevel, Z = 0 },
+                    Date = new DateInfo { Year = 1, Month = 1, Day = 1, Hour = 0, Minute = 0 },
+                    Weather = new WeatherInfo { Temperature = 20, Rainfall = 0, WindSpeed = 0 }
+                };
             }
-
-            return data;
         }
 
         private SpawnPoint GetSpawnPoint()
@@ -270,101 +307,124 @@ public class DataCollector : IDataCollector
             // Use cached data if still valid (like ServerstatusQuery)
             if (_animalsCache != null && DateTime.UtcNow < _animalsCacheUntil)
             {
-                _sapi.Logger.Debug($"[VintageAtlas] Using cached animal data ({_animalsCache.Count} animals)");
+                // _sapi.Logger.Debug($"[VintageAtlas] Using cached animal data ({_animalsCache.Count} animals)");
                 return _animalsCache;
             }
 
             var animals = new List<AnimalData>();
-            var totalEntities = 0;
-            var processedAgents = 0;
 
             try
             {
-                var loadedEntities = _sapi.World.LoadedEntities;
-                if (loadedEntities == null) return animals;
-
-                foreach (var entity in loadedEntities.Values)
+                var players = _sapi.World.AllOnlinePlayers;
+                
+                // No players online? Return empty list
+                if (players == null || players.Length == 0)
                 {
-                    totalEntities++;
-                    
-                    try
-                    {
-                        // ServerstatusQuery checks
-                        if (entity == null || entity.World == null) continue;
-                        if (entity is EntityPlayer) continue;
-                        if (!(entity is EntityAgent entityAgent)) continue;
-                        if (!entity.Alive) continue;
-
-                        processedAgents++;
-
-                        // Use ServerstatusQuery approach: check Code first, then GetName()
-                        var typeCode = entity.Code?.ToString();
-                        var name = entity.GetName() ?? typeCode ?? "unknown";
-
-                        // Get health using ITreeAttribute
-                        var healthTree = (entity.WatchedAttributes as TreeAttribute)?.GetTreeAttribute("health");
-                        var currentHealth = FiniteOrNull(healthTree?.GetFloat("currenthealth", 0f));
-                        var maxHealth = FiniteOrNull(healthTree?.GetFloat("maxhealth", 0f));
-
-                        // Fallback health values
-                        if (!maxHealth.HasValue || maxHealth <= 0)
-                        {
-                            maxHealth = 20;
-                            currentHealth = entity.Alive ? 20 : 0;
-                        }
-
-                        // Use ServerPos like ServerstatusQuery
-                        var x = entity.ServerPos != null ? (int)entity.ServerPos.X : 0;
-                        var y = entity.ServerPos != null ? (int)entity.ServerPos.Y : _sapi.World.SeaLevel;
-                        var z = entity.ServerPos != null ? (int)entity.ServerPos.Z : 0;
-
-                        // Get climate data
-                        double? temperature = null;
-                        double? rainfall = null;
-                        
-                        if (_sapi.World.BlockAccessor != null)
-                        {
-                            var climate = _sapi.World.BlockAccessor.GetClimateAt(new BlockPos(x, y, z), EnumGetClimateMode.NowValues);
-                            if (climate != null)
-                            {
-                                temperature = FiniteOrNull(climate.Temperature);
-                                rainfall = FiniteOrNull(climate.Rainfall);
-                            }
-                        }
-
-                        // Get wind data
-                        var windPercent = GetWindPercent(new BlockPos(x, y, z));
-
-                        animals.Add(new AnimalData
-                        {
-                            Type = typeCode ?? "unknown",
-                            Name = string.IsNullOrWhiteSpace(name) ? typeCode ?? "unknown" : name,
-                            Coordinates = new CoordinateData { X = x, Y = y, Z = z },
-                            Health = new HealthData
-                            {
-                                Current = currentHealth ?? 0,
-                                Max = maxHealth ?? 20
-                            },
-                            Temperature = temperature,
-                            Rainfall = rainfall ?? 0,
-                            Wind = new WindData { Percent = windPercent }
-                        });
-
-                        // Limit like ServerstatusQuery
-                        if (animals.Count >= AnimalsMax)
-                            break;
-                    }
-                    catch (Exception ex)
-                    {
-                        _sapi.Logger.Warning($"Failed to process entity: {ex.Message}");
-                    }
+                    _animalsCache = animals;
+                    _animalsCacheUntil = DateTime.UtcNow.AddSeconds(AnimalsCacheSeconds);
+                    return animals;
                 }
 
-                _sapi.Logger.Debug($"[VintageAtlas] Animal scan: {totalEntities} total entities, {processedAgents} alive agents, {animals.Count} animals added");
+                // OPTIMIZATION: Only scan around players (spatial query)
+                // This is MUCH faster than iterating all loaded entities
+                var seenEntities = new HashSet<long>(); // Prevent duplicates
+                
+                foreach (var player in players)
+                {
+                    if (player?.Entity?.Pos == null) continue;
+                    
+                    var playerPos = player.Entity.Pos.AsBlockPos;
+                    
+                    // Spatial query - only gets entities near this player (FAST!)
+                    var nearbyEntities = _sapi.World.GetEntitiesAround(
+                        playerPos.ToVec3d(),
+                        AnimalTrackingRadius,
+                        AnimalTrackingRadius,
+                        entity => entity is EntityAgent && 
+                                 !(entity is EntityPlayer) &&
+                                 entity.Alive &&
+                                 !seenEntities.Contains(entity.EntityId)
+                    );
+                    
+                    foreach (var entity in nearbyEntities)
+                    {
+                        if (entity?.Pos == null || entity.Code == null) continue;
+                        
+                        seenEntities.Add(entity.EntityId);
+                        
+                        try
+                        {
+                            // Use ServerstatusQuery approach: check Code first, then GetName()
+                            var typeCode = entity.Code.ToString();
+                            var name = entity.GetName() ?? typeCode;
+
+                            // Get health using ITreeAttribute
+                            var healthTree = (entity.WatchedAttributes as TreeAttribute)?.GetTreeAttribute("health");
+                            var currentHealth = FiniteOrNull(healthTree?.GetFloat("currenthealth", 0f));
+                            var maxHealth = FiniteOrNull(healthTree?.GetFloat("maxhealth", 0f));
+
+                            // Fallback health values
+                            if (!maxHealth.HasValue || maxHealth <= 0)
+                            {
+                                maxHealth = 20;
+                                currentHealth = entity.Alive ? 20 : 0;
+                            }
+
+                            // Use ServerPos like ServerstatusQuery
+                            var x = entity.ServerPos != null ? (int)entity.ServerPos.X : 0;
+                            var y = entity.ServerPos != null ? (int)entity.ServerPos.Y : _sapi.World.SeaLevel;
+                            var z = entity.ServerPos != null ? (int)entity.ServerPos.Z : 0;
+
+                            // Get climate data
+                            double? temperature = null;
+                            double? rainfall = null;
+                            
+                            if (_sapi.World.BlockAccessor != null)
+                            {
+                                var climate = _sapi.World.BlockAccessor.GetClimateAt(new BlockPos(x, y, z), EnumGetClimateMode.NowValues);
+                                if (climate != null)
+                                {
+                                    temperature = FiniteOrNull(climate.Temperature);
+                                    rainfall = FiniteOrNull(climate.Rainfall);
+                                }
+                            }
+
+                            // Get wind data
+                            var windPercent = GetWindPercent(new BlockPos(x, y, z));
+
+                            animals.Add(new AnimalData
+                            {
+                                Type = typeCode,
+                                Name = string.IsNullOrWhiteSpace(name) ? typeCode : name,
+                                Coordinates = new CoordinateData { X = x, Y = y, Z = z },
+                                Health = new HealthData
+                                {
+                                    Current = currentHealth ?? 0,
+                                    Max = maxHealth ?? 20
+                                },
+                                Temperature = temperature,
+                                Rainfall = rainfall ?? 0,
+                                Wind = new WindData { Percent = windPercent }
+                            });
+
+                            // Limit like ServerstatusQuery
+                            if (animals.Count >= AnimalsMax)
+                                break;
+                        }
+                        catch (Exception ex)
+                        {
+                            _sapi.Logger.Warning($"[VintageAtlas] Failed to process entity {entity.Code}: {ex.Message}");
+                        }
+                    }
+                    
+                    if (animals.Count >= AnimalsMax) break;
+                }
+
+                _sapi.Logger.Debug($"[VintageAtlas] Spatial animal scan: {animals.Count} animals found within {AnimalTrackingRadius} blocks of players");
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Warning($"Failed to collect animals data: {ex.Message}");
+                _sapi.Logger.Error($"[VintageAtlas] Failed to collect animals data: {ex.Message}");
             }
 
             // Cache the results

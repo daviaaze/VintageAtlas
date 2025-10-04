@@ -68,6 +68,22 @@ public static class ConfigValidator
                 }
             }
 
+            if (config.MaxConcurrentTileRequests.HasValue)
+            {
+                if (config.MaxConcurrentTileRequests.Value < 10 || config.MaxConcurrentTileRequests.Value > 2000)
+                {
+                    errors.Add($"MaxConcurrentTileRequests ({config.MaxConcurrentTileRequests.Value}) must be between 10 and 2000");
+                }
+            }
+
+            if (config.MaxConcurrentStaticRequests.HasValue)
+            {
+                if (config.MaxConcurrentStaticRequests.Value < 10 || config.MaxConcurrentStaticRequests.Value > 1000)
+                {
+                    errors.Add($"MaxConcurrentStaticRequests ({config.MaxConcurrentStaticRequests.Value}) must be between 10 and 1000");
+                }
+            }
+
             if (config.MapExportIntervalMs < 10000)
             {
                 errors.Add($"MapExportIntervalMs ({config.MapExportIntervalMs}) should be at least 10000ms (10 seconds) to avoid performance issues");

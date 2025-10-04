@@ -50,8 +50,8 @@ public class ChunkSnapshot
     
     public ChunkSnapshot()
     {
-        BlockIds = Array.Empty<int>();
-        HeightMap = Array.Empty<int>();
+        BlockIds = [];
+        HeightMap = [];
         IsLoaded = false;
         SnapshotTime = DateTime.UtcNow;
     }

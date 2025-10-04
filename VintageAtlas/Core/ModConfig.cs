@@ -171,11 +171,25 @@ public class ModConfig
     public int MapExportIntervalMs { get; set; } = 300000;
     
     /// <summary>
-    /// Maximum concurrent HTTP requests allowed (prevents DoS attacks)
+    /// Maximum concurrent API requests allowed (prevents DoS attacks)
     /// Default: 50
     /// Recommended: 20 for small servers, 50 for medium, 100 for large
     /// </summary>
     public int? MaxConcurrentRequests { get; set; } = 50;
+    
+    /// <summary>
+    /// Maximum concurrent tile requests allowed (separate from API limit)
+    /// Default: 500
+    /// High value needed for map tile loading (a single map view can request 20-50+ tiles)
+    /// </summary>
+    public int? MaxConcurrentTileRequests { get; set; } = 500;
+    
+    /// <summary>
+    /// Maximum concurrent static file requests allowed (separate from API limit)
+    /// Default: 200
+    /// Used for HTML, CSS, JS, fonts, etc.
+    /// </summary>
+    public int? MaxConcurrentStaticRequests { get; set; } = 200;
     
     /// <summary>
     /// Base path for the web application (e.g., "/" or "/vintagestory/")

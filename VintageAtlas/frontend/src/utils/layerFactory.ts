@@ -21,6 +21,7 @@ export interface LayerOptions {
   useImage?: boolean; // Use VectorImageLayer for better performance
   cluster?: boolean; // Use clustering for many features
   clusterDistance?: number;
+  projection?: any; // Custom projection for coordinates
 }
 
 /**
@@ -37,12 +38,17 @@ export function createVectorLayer(options: LayerOptions) {
     maxZoom,
     useImage = true, // Default to VectorImage for performance
     cluster = false,
-    clusterDistance = 40
+    clusterDistance = 40,
+    projection
   } = options;
 
   const source = new VectorSource({
     url,
-    format: new GeoJSON(),
+    format: new GeoJSON({
+      // Use custom projection if provided, otherwise GeoJSON defaults to EPSG:4326
+      dataProjection: projection,
+      featureProjection: projection
+    }),
     // Load features only when in viewport
     strategy: (extent, resolution) => [extent],
   });
@@ -118,13 +124,14 @@ function createClusterStyle(baseStyle: StyleLike) {
 /**
  * Create optimized trader layer
  */
-export function createTraderLayer(visible = true) {
+export function createTraderLayer(visible = true, projection?: any) {
   return createVectorLayer({
     name: 'traders',
     url: '/api/geojson/traders',
     visible,
     zIndex: 100,
     useImage: true,
+    projection,
     style: (feature: any) => {
       const properties = feature.getProperties();
       return new Style({
@@ -151,13 +158,14 @@ export function createTraderLayer(visible = true) {
 /**
  * Create optimized translocator layer
  */
-export function createTranslocatorLayer(visible = true) {
+export function createTranslocatorLayer(visible = true, projection?: any) {
   return createVectorLayer({
     name: 'translocators',
     url: '/api/geojson/translocators',
     visible,
     zIndex: 100,
     useImage: true,
+    projection,
     style: (feature: any) => {
       const properties = feature.getProperties();
       return new Style({
@@ -184,13 +192,14 @@ export function createTranslocatorLayer(visible = true) {
 /**
  * Create optimized signs layer
  */
-export function createSignsLayer(visible = true) {
+export function createSignsLayer(visible = true, projection?: any) {
   return createVectorLayer({
     name: 'signs',
     url: '/api/geojson/signposts',
     visible,
     zIndex: 100,
     useImage: true,
+    projection,
     style: (feature: any) => {
       const properties = feature.getProperties();
       return new Style({
@@ -217,13 +226,14 @@ export function createSignsLayer(visible = true) {
 /**
  * Create optimized chunk layer
  */
-export function createChunkLayer(visible = false) {
+export function createChunkLayer(visible = false, projection?: any) {
   return createVectorLayer({
     name: 'chunks',
     url: '/api/geojson/chunks',
     visible,
     zIndex: 10,
     useImage: true,
+    projection,
     style: new Style({
       stroke: new Stroke({
         color: 'rgba(100, 149, 237, 0.6)',
