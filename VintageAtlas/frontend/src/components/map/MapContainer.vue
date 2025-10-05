@@ -189,46 +189,41 @@ onMounted(async () => {
             if (!tileCoord) return '';
             
             // ═══════════════════════════════════════════════════════════════
-            // TILE COORDINATE TRANSFORMATION (SIMPLIFIED)
+            // COORDINATE MAPPING: OpenLayers Relative -> Absolute Storage
             // ═══════════════════════════════════════════════════════════════
-            // OpenLayers provides: [zoom, tileX, tileY]
-            // Backend expects: /tiles/{zoom}/{tileX}_{tileZ}.png
-            // 
-            // Backend flips Z-axis: extent = [minX, -maxZ, maxX, -minZ]
-            // So OpenLayers Y increases northward (opposite of game Z)
-            // We need to flip Y back to get game Z coordinates for tile requests
-            // 
-            // Key transformations:
-            // 1. Zoom: Direct mapping (OL zoom 0 = backend zoom 0)
-            // 2. Tile offset scaling: Offset is defined at maxZoom, must be 
-            //    scaled down for lower zoom levels
-            // 3. Flip Y to get Z, then add scaled offset to get absolute tile coords
+            // OpenLayers numbers tiles from (0,0) at origin
+            // Backend stores tiles with absolute world coordinates
+            // Solution: Add offset to map OL coords -> storage coords
+            //
+            // Example:
+            //   OL tile (0, 0) at origin -> Storage tile (1998, 1997)
+            //   OL tile (1, 2) -> Storage tile (1999, 1999)
             // ═══════════════════════════════════════════════════════════════
             
-            const z = tileCoord[0]; // Zoom level
-            const displayX = tileCoord[1];
-            const displayY = tileCoord[2];
+            const zoom = tileCoord[0];
+            const olTileX = tileCoord[1];  // Relative to origin
+            const olTileY = tileCoord[2];  // Relative to origin
             
-            // Get base tile offset from server config (defined at maxZoom)
-            const [baseOffsetX, baseOffsetZ] = getTileOffset();
+            // Get tile offset from config (which absolute tile the origin maps to)
+            const [offsetX, offsetZ] = getTileOffset();
             const maxZ = maxZoom();
             
-            // Scale offset based on current zoom level
-            const zoomScale = Math.pow(2, maxZ - z);
-            const scaledOffsetX = Math.floor(baseOffsetX / zoomScale);
-            const scaledOffsetZ = Math.floor(baseOffsetZ / zoomScale);
+            // Scale offset for current zoom level
+            // At zoom 9: offset = [1998, 1997]
+            // At zoom 8: offset = [999, 998] (each parent tile = 2x2 child tiles)
+            const zoomScale = Math.pow(2, maxZ - zoom);
+            const scaledOffsetX = Math.floor(offsetX / zoomScale);
+            const scaledOffsetZ = Math.floor(offsetZ / zoomScale);
             
-            // Transform to absolute tile coordinates
-            // CRITICAL: Invert Y because backend flipped Z-axis for north-up display
-            const absoluteX = displayX + scaledOffsetX;
-            const absoluteZ = -displayY + scaledOffsetZ;
+            // Map to absolute storage coordinates
+            const absoluteX = olTileX + scaledOffsetX;
+            const absoluteZ = olTileY + scaledOffsetZ;
             
-            const url = `/tiles/${z}/${absoluteX}_${absoluteZ}.png`;
+            const url = `/tiles/${zoom}/${absoluteX}_${absoluteZ}.png`;
             
-            // Debug logging
-            if (tileCoord[0] <= 3) {
-              console.log(`[Tile] zoom=${z}, display(${displayX},${displayY}), ` +
-                `scaledOffset(${scaledOffsetX},${scaledOffsetZ}) -> ${url}`);
+            // Debug logging at low zoom
+            if (zoom <= 3) {
+              console.log(`[Tile] zoom=${zoom}, OL(${olTileX},${olTileY}) + offset(${scaledOffsetX},${scaledOffsetZ}) = absolute(${absoluteX},${absoluteZ}) -> ${url}`);
             }
             
             return url;

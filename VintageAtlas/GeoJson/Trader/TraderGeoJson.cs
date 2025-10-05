@@ -8,8 +8,8 @@ public record TraderGeoJson
     [JsonProperty("type")]
     public string Type { get; set; } = "FeatureCollection";
 
-    [JsonProperty("crs")]
-    public Crs Crs { get; set; } = new("urn:ogc:def:crs:EPSG::3857");
+    // No CRS specified - OpenLayers will use the projection we provide
+    // This allows our custom VINTAGESTORY projection to work correctly
 
     [JsonProperty("name")]
     public string Name { get; set; } = "traders";

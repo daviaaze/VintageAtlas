@@ -739,18 +739,18 @@ public class GeoJsonController
 
     private List<int> GetGeoJsonCoordinates(BlockPos pos)
     {
+        // ABSOLUTE COORDINATES WITH Z-FLIP (matching map extent)
+        // ======================================================
+        // We use absolute world coordinates with Z-axis flip for north-up display
+        // This matches the extent: [minX, -maxZ, maxX, -minZ]
+        // 
+        // Vintage Story: Z+ = south, Z- = north
+        // Map display: Y+ = north (top), Y- = south (bottom)
+        // Transformation: mapY = -gameZ
+        // ======================================================
+        
         var x = pos.X;
-        var z = pos.Z;
-        
-        var spawnPos = _sapi.World.DefaultSpawnPosition?.AsBlockPos;
-        var spawnX = spawnPos?.X ?? _sapi.World.BlockAccessor.MapSizeX / 2;
-        var spawnZ = spawnPos?.Z ?? _sapi.World.BlockAccessor.MapSizeZ / 2;
-        
-        if (!_config.AbsolutePositions)
-        {
-            x = x - spawnX;
-            z = (z - spawnZ) * -1;
-        }
+        var z = -pos.Z;  // Flip Z-axis for north-up display
         
         return new List<int> { x, z };
     }

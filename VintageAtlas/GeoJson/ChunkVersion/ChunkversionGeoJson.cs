@@ -8,8 +8,7 @@ public class ChunkversionGeoJson
     [JsonProperty("type")]
     public string Type { get; set; } = "FeatureCollection";
 
-    [JsonProperty("crs")]
-    public Crs Crs { get; set; } = new("urn:ogc:def:crs:EPSG::3857");
+    // No CRS specified - OpenLayers will use the projection we provide
 
     [JsonProperty("name")]
     public string Name { get; set; } = "chunk";

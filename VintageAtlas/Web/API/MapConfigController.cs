@@ -152,78 +152,32 @@ public class MapConfigController
         // 1. Tiles are generated once and work in both coordinate modes
         // 2. Only the DISPLAY extent changes, not the tile data itself
         // 3. Avoids regenerating tiles when switching coordinate modes
-        int[] worldExtent;
-        int[] worldOrigin;
-
-        if (_config.AbsolutePositions)
-        {
-            // Use absolute coordinates as-is
-            // Frontend will display world coordinates (e.g., X=512345, Z=519876)
-            worldExtent = [extent.MinX, extent.MinZ, extent.MaxX, extent.MaxZ];
-            worldOrigin = [extent.MinX, extent.MaxZ];
-
-            _sapi.Logger.Debug($"[VintageAtlas] Using ABSOLUTE coordinates: " +
-                $"extent=[{worldExtent[0]}, {worldExtent[1]}, {worldExtent[2]}, {worldExtent[3]}]");
-        }
-        else
-        {
-            // Transform to spawn-relative coordinates for display
-            // This shifts the coordinate space so spawn is at (0, 0)
-            // NO Z-flip here - that happens in the frontend tile URL function
-            var relMinX = extent.MinX - spawn[0];
-            var relMinZ = extent.MinZ - spawn[1];
-            var relMaxX = extent.MaxX - spawn[0];
-            var relMaxZ = extent.MaxZ - spawn[1];
-
-            _sapi.Logger.Debug($"[VintageAtlas] Transforming to SPAWN-RELATIVE coordinates: " +
-                $"Absolute extent=({extent.MinX},{extent.MinZ})-({extent.MaxX},{extent.MaxZ}), " +
-                $"Spawn position=({spawn[0]},{spawn[1]}), " +
-                $"Relative extent=({relMinX},{relMinZ})-({relMaxX},{relMaxZ})");
-
-            // CRITICAL: Flip Z-axis for north-up map!
-            // In Vintage Story: Z increases southward (north=negative, south=positive)
-            // For north-up display: We want north at top, so flip Z to -Z
-            // OpenLayers extent: [minX, minY, maxX, maxY] where Y increases upward
-            // So: minY = -maxZ (south), maxY = -minZ (north)
-            worldExtent = [relMinX, -relMaxZ, relMaxX, -relMinZ];
-            
-            // Origin at TOP-LEFT corner (northwest) for OpenLayers
-            // Top-left = [minX, maxY] = [minX, -minZ]
-            worldOrigin = [relMinX, -relMinZ];
-
-            _sapi.Logger.Debug($"[VintageAtlas] Final display extent (spawn-relative, no flip): " +
-                $"[{worldExtent[0]}, {worldExtent[1]}, {worldExtent[2]}, {worldExtent[3]}], " +
-                $"origin=[{worldOrigin[0]}, {worldOrigin[1]}] (spawn-centered)");
-        }
+        // ABSOLUTE COORDINATES WITH OFFSET MAPPING
+        // ========================================
+        // OpenLayers TileGrid always numbers tiles from (0,0) at origin
+        // But our tiles are stored with absolute world coordinates
+        // Solution: Calculate offset to map OL tile coords -> storage coords
+        // ========================================
         
-        // Calculate tile offset for coordinate transformation
-        // CRITICAL: Tile offset must map OpenLayers tile (0,0) to the absolute tile at the ORIGIN
-        // Origin is at worldOrigin in block coordinates
-        int[] tileOffset;
+        // Z-axis flip: Vintage Story Z increases southward, we want north at top
+        // So: minY = -maxZ (south at bottom), maxY = -minZ (north at top)
+        int[] worldExtent = [extent.MinX, -extent.MaxZ, extent.MaxX, -extent.MinZ];
+        int[] worldOrigin = [extent.MinX, -extent.MinZ];  // Top-left (northwest)
         
-        if (_config.AbsolutePositions)
-        {
-            tileOffset = [0, 0];
-        }
-        else
-        {
-            // Origin is at [relMinX, -relMinZ] in FLIPPED spawn-relative coords
-            // Convert back to absolute GAME coords (un-flip Z), then to tile coords
-            var originAbsoluteX = worldOrigin[0] + spawn[0];   // relMinX + spawnX
-            var originAbsoluteZ = -worldOrigin[1] + spawn[1];  // UN-FLIP: -(-relMinZ) + spawnZ = relMinZ + spawnZ
-            
-            // Tile coordinates (floor division for proper handling of negative coords)
-            var originTileX = (int)Math.Floor((double)originAbsoluteX / _config.TileSize);
-            var originTileZ = (int)Math.Floor((double)originAbsoluteZ / _config.TileSize);
-            
-            tileOffset = [originTileX, originTileZ];
-            
-            _sapi.Logger.Debug($"[VintageAtlas] Tile offset calculation: " +
-                $"origin blocks=({originAbsoluteX},{originAbsoluteZ}), " +
-                $"origin tiles=({originTileX},{originTileZ})");
-        }
-            
-        _sapi.Logger.Debug($"[VintageAtlas] Tile offset for coordinate mapping: [{tileOffset[0]}, {tileOffset[1]}]");
+        _sapi.Logger.Debug($"[VintageAtlas] Absolute extent with Z-flip: " +
+            $"extent=[{worldExtent[0]}, {worldExtent[1]}, {worldExtent[2]}, {worldExtent[3]}], " +
+            $"origin=[{worldOrigin[0]}, {worldOrigin[1]}]");
+        
+        // Calculate which absolute tile the origin maps to
+        // Origin is at [extent.MinX, -extent.MinZ] in flipped coords
+        // Un-flip Z to get game coords: [extent.MinX, extent.MinZ]
+        var originTileX = (int)Math.Floor((double)extent.MinX / _config.TileSize);
+        var originTileZ = (int)Math.Floor((double)extent.MinZ / _config.TileSize);
+        
+        int[] tileOffset = [originTileX, originTileZ];
+        
+        _sapi.Logger.Debug($"[VintageAtlas] Tile offset: origin blocks=({extent.MinX},{extent.MinZ}), " +
+            $"origin tiles=({originTileX},{originTileZ})");
         
         return new MapConfigData
         {
