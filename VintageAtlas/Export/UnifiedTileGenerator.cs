@@ -4,11 +4,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using SkiaSharp;
-using Vintagestory.API.Common;
-using Vintagestory.API.Config;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
-using Vintagestory.API.Util;
 using VintageAtlas.Core;
 using VintageAtlas.Models;
 using VintageAtlas.Storage;
@@ -21,7 +18,7 @@ namespace VintageAtlas.Export;
 /// Uses a single rendering implementation with pluggable data sources (IChunkDataSource)
 /// for both full exports and on-demand generation.
 /// </summary>
-public class UnifiedTileGenerator : ITileGenerator, IDisposable
+public sealed class UnifiedTileGenerator : ITileGenerator
 {
     private readonly ICoreServerAPI _sapi;
     private readonly ModConfig _config;
@@ -32,8 +29,8 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
     // In-memory cache for frequently accessed tiles
     private readonly ConcurrentDictionary<string, CachedTile> _memoryCache = new();
 
-    private const int CHUNK_SIZE = 32;
-    private const int MAX_CACHE_SIZE = 100;
+    private const int ChunkSize = 32;
+    private const int MaxCacheSize = 100;
 
     public UnifiedTileGenerator(
         ICoreServerAPI sapi,
@@ -55,7 +52,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
     #region Full Export
 
     /// <summary>
-    /// Export full map from savegame database.
+    /// Export full map from the savegame database.
     /// This is the replacement for Extractor.ExtractWorldMap().
     /// </summary>
     public async Task ExportFullMapAsync(
@@ -71,7 +68,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
         {
             // Query actual chunk positions from the data source
             List<TilePos> tiles;
-            
+
             if (dataSource is SavegameDataSource savegameSource)
             {
                 var chunkPositions = savegameSource.GetAllMapChunkPositions();
@@ -82,7 +79,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
                 // Fallback to estimated coverage for other data sources
                 tiles = CalculateTileCoverage();
             }
-            
+
             _sapi.Logger.Notification($"[VintageAtlas] Exporting {tiles.Count} tiles at zoom {_config.BaseZoomLevel}");
 
             // Generate base zoom tiles in parallel
@@ -93,7 +90,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
                     : _config.MaxDegreeOfParallelism
             };
 
-            await Parallel.ForEachAsync(tiles, parallelOptions, async (tile, ct) =>
+            await Parallel.ForEachAsync(tiles, parallelOptions, async (tile, _) =>
             {
                 try
                 {
@@ -114,8 +111,8 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
                         if (completed % 100 == 0)
                         {
                             _sapi.Logger.Notification(
-                                $"[VintageAtlas] Exported {completed}/{tiles.Count} tiles ({(completed * 100.0 / tiles.Count):F1}%)");
-                            
+                                $"[VintageAtlas] Exported {completed}/{tiles.Count} tiles ({completed * 100.0 / tiles.Count:F1}%)");
+
                             progress?.Report(new ExportProgress
                             {
                                 TilesCompleted = completed,
@@ -145,7 +142,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
 
             // CRITICAL: Checkpoint WAL to commit all tiles to main database
             _sapi.Logger.Notification("[VintageAtlas] Committing tiles to database...");
-            _storage.CheckpointWAL();
+            _storage.CheckpointWal();
 
             _sapi.Logger.Notification("[VintageAtlas] Full map export completed successfully!");
         }
@@ -170,7 +167,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
         }
 
         var tiles = new HashSet<TilePos>();
-        var chunksPerTile = _config.TileSize / CHUNK_SIZE;
+        var chunksPerTile = _config.TileSize / ChunkSize;
 
         _sapi.Logger.Notification($"[VintageAtlas] Calculating tile coverage from {chunkPositions.Count} chunks...");
 
@@ -180,7 +177,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
             // Calculate which tile this chunk belongs to
             var tileX = chunkPos.X / chunksPerTile;
             var tileZ = chunkPos.Z / chunksPerTile;
-            
+
             tiles.Add(new TilePos(tileX, tileZ));
         }
 
@@ -189,11 +186,11 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
         var maxChunkX = chunkPositions.Max(c => c.X);
         var minChunkZ = chunkPositions.Min(c => c.Z);
         var maxChunkZ = chunkPositions.Max(c => c.Z);
-        
-        var minBlockX = minChunkX * CHUNK_SIZE;
-        var maxBlockX = maxChunkX * CHUNK_SIZE;
-        var minBlockZ = minChunkZ * CHUNK_SIZE;
-        var maxBlockZ = maxChunkZ * CHUNK_SIZE;
+
+        var minBlockX = minChunkX * ChunkSize;
+        var maxBlockX = maxChunkX * ChunkSize;
+        var minBlockZ = minChunkZ * ChunkSize;
+        var maxBlockZ = maxChunkZ * ChunkSize;
 
         _sapi.Logger.Notification($"[VintageAtlas] World extent: X [{minBlockX} to {maxBlockX}], Z [{minBlockZ} to {maxBlockZ}]");
         _sapi.Logger.Notification($"[VintageAtlas] Generated {tiles.Count} unique tiles from {chunkPositions.Count} chunks");
@@ -208,17 +205,17 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
     private List<TilePos> CalculateTileCoverage()
     {
         var tiles = new HashSet<TilePos>();
-        var chunksPerTile = _config.TileSize / CHUNK_SIZE;
+        var chunksPerTile = _config.TileSize / ChunkSize;
 
         // CRITICAL FIX: Use actual world extent, not theoretical max
         // Vintage Story worlds are typically much smaller than MapSizeX
         // Most worlds are ~10,000 to 100,000 blocks, not 1,000,000+
-        
+
         // Use a reasonable default based on typical world sizes
         // This will be overridden by actual chunk positions if available
         var estimatedWorldRadius = 5000; // 10,000 blocks across (reasonable for most worlds)
-        var tilesPerSide = (estimatedWorldRadius * 2) / CHUNK_SIZE / chunksPerTile;
-        
+        var tilesPerSide = estimatedWorldRadius * 2 / ChunkSize / chunksPerTile;
+
         var minTile = -tilesPerSide / 2;
         var maxTile = tilesPerSide / 2;
 
@@ -245,7 +242,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
         {
             _sapi.Logger.Notification($"[VintageAtlas] Generating zoom level {zoom}...");
 
-            // Get extent of tiles at higher zoom level
+            // Get the extent of tiles at a higher zoom level
             var sourceZoom = zoom + 1;
             var extent = await _storage.GetTileExtentAsync(sourceZoom);
 
@@ -260,7 +257,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
             // This matches old Extractor.cs behavior where edge tiles with partial coverage
             // are still created (with transparent areas for missing source tiles)
             var targetTiles = new List<TilePos>();
-            
+
             // Simple division by 2 (matches old Extractor.cs)
             // Edge tiles will have some null source tiles, which is OK
             for (var tileX = extent.MinX / 2; tileX <= extent.MaxX / 2; tileX++)
@@ -274,7 +271,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
             _sapi.Logger.Notification($"[VintageAtlas] Generating {targetTiles.Count} tiles for zoom {zoom}");
 
             var generated = 0;
-            await Parallel.ForEachAsync(targetTiles, async (tile, ct) =>
+            await Parallel.ForEachAsync(targetTiles, async (tile, _) =>
             {
                 try
                 {
@@ -316,7 +313,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
     /// </summary>
     public async Task<byte[]?> GetTileDataAsync(int zoom, int tileX, int tileZ)
     {
-        var result = await GetTileAsync(zoom, tileX, tileZ, null);
+        var result = await GetTileAsync(zoom, tileX, tileZ);
         return result.NotFound ? null : result.Data;
     }
 
@@ -324,7 +321,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
     /// Get or generate a single tile (for web requests).
     /// This is the replacement for DynamicTileGenerator.GenerateTileAsync().
     /// </summary>
-    public async Task<TileResult> GetTileAsync(int zoom, int tileX, int tileZ, string? ifNoneMatch = null)
+    private async Task<TileResult> GetTileAsync(int zoom, int tileX, int tileZ, string? ifNoneMatch = null)
     {
         var tileKey = $"{zoom}_{tileX}_{tileZ}";
 
@@ -359,8 +356,6 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
 
             CacheInMemory(tileKey, tileData, etag, lastModified);
 
-            _sapi.Logger.Debug($"[VintageAtlas] ✅ Found tile in DB: {zoom}/{tileX}_{tileZ}");
-
             return new TileResult
             {
                 Data = tileData,
@@ -392,7 +387,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
         //     // Fallback to placeholder
         //     if (newTileData == null)
         //     {
-        //         _sapi.Logger.Warning($"[VintageAtlas] ⚠️  Tile generation returned null, creating placeholder: {zoom}/{tileX}_{tileZ}");
+        //         _sapi.Logger.Warning($"[VintageAtlas] ⚠️ Tile generation returned null, creating placeholder: {zoom}/{tileX}_{tileZ}");
         //         newTileData = await GeneratePlaceholderTileAsync(zoom, tileX, tileZ);
         //     }
 
@@ -428,9 +423,9 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
         // Tiles are ONLY generated during /atlas export
         // This ensures we're testing the full export system properly
         // ═══════════════════════════════════════════════════════════════
-        
+
         _sapi.Logger.Debug($"[VintageAtlas] ❌ Tile not in database (on-demand generation disabled): {zoom}/{tileX}_{tileZ}");
-        
+
         // Return 404 - tile must be generated via /atlas export
         return new TileResult { NotFound = true };
     }
@@ -443,7 +438,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
     /// CORE RENDERING METHOD - Used by both full export and on-demand generation.
     /// This is the single source of truth for tile rendering logic.
     /// </summary>
-    public async Task<byte[]?> RenderTileAsync(
+    private async Task<byte[]?> RenderTileAsync(
         int zoom,
         int tileX,
         int tileZ,
@@ -454,18 +449,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
             _sapi.Logger.Debug($"[VintageAtlas] RenderTile: z{zoom} t({tileX},{tileZ}) from {dataSource.SourceName}");
 
             // Get chunk data from the source
-            TileChunkData? tileData;
-            
-            if (dataSource.RequiresMainThread)
-            {
-                // Already handled in LoadedChunksDataSource
-                tileData = await dataSource.GetTileChunksAsync(zoom, tileX, tileZ);
-            }
-            else
-            {
-                // Can call directly (e.g., SavegameDataSource)
-                tileData = await dataSource.GetTileChunksAsync(zoom, tileX, tileZ);
-            }
+            var tileData = await dataSource.GetTileChunksAsync(zoom, tileX, tileZ);
 
             if (tileData == null)
             {
@@ -481,7 +465,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
 
             _sapi.Logger.Debug($"[VintageAtlas] Extracted {tileData.Chunks.Count} chunks for tile {zoom}/{tileX}_{tileZ}");
 
-            // Render tile on background thread
+            // Render tile on the background thread
             return await Task.Run(() => RenderTileImage(tileData));
         }
         catch (Exception ex)
@@ -492,7 +476,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
     }
 
     /// <summary>
-    /// Render tile image from chunk data using SkiaSharp.
+    /// Render a tile image from chunk data using SkiaSharp.
     /// This runs on a background thread.
     /// </summary>
     private byte[]? RenderTileImage(TileChunkData tileData)
@@ -507,12 +491,12 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
 
             canvas.Clear(new SKColor(41, 128, 185)); // Ocean blue
 
-            // Create shadow map for hill shading modes
+            // Create a shadow map for hill shading modes
             Span<byte> shadowMap = null;
             if (_config.Mode is ImageMode.ColorVariationsWithHillShading or ImageMode.MedievalStyleWithHillShading)
             {
                 shadowMap = new byte[tileSize * tileSize];
-                for (var i = 0; i < shadowMap.Length; i++) 
+                for (var i = 0; i < shadowMap.Length; i++)
                     shadowMap[i] = 128; // Initialize to neutral (no shadow/highlight)
             }
 
@@ -543,8 +527,8 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
                         continue;
                     }
 
-                    RenderChunkToCanvas(canvas, snapshot, offsetX * CHUNK_SIZE, offsetZ * CHUNK_SIZE, 
-                        shadowMap, tileSize, tileData);
+                    RenderChunkToCanvas(canvas, snapshot, offsetX * ChunkSize, offsetZ * ChunkSize,
+                        shadowMap, tileSize);
                     chunksRendered++;
                 }
             }
@@ -579,11 +563,11 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
     /// Uses BlockColorCache for proper terrain coloring with full rendering mode support.
     /// </summary>
     private void RenderChunkToCanvas(SKCanvas canvas, ChunkSnapshot snapshot, int offsetX, int offsetZ,
-        Span<byte> shadowMap, int tileSize, TileChunkData tileData)
+        Span<byte> shadowMap, int tileSize)
     {
         // DEBUG: Log that we're entering this method
         _sapi.Logger.Notification($"[VintageAtlas] 🖌️ RenderChunkToCanvas called! Mode={_config.Mode}");
-        
+
         try
         {
             var heightMap = snapshot.HeightMap;
@@ -599,30 +583,30 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
 
             using var paint = new SKPaint();
             var random = new Random(snapshot.ChunkX * 31 + snapshot.ChunkZ); // Deterministic seed
-            
+
             var mapYHalf = _sapi.WorldManager.MapSizeY / 2;
 
-            for (var x = 0; x < CHUNK_SIZE; x++)
+            for (var x = 0; x < ChunkSize; x++)
             {
-                for (var z = 0; z < CHUNK_SIZE; z++)
+                for (var z = 0; z < ChunkSize; z++)
                 {
                     // DEBUG: Log first pixel
                     if (x == 0 && z == 0)
                     {
-                        _sapi.Logger.Notification($"[VintageAtlas] 🔍 First pixel: CHUNK_SIZE={CHUNK_SIZE}, heightMap.Length={heightMap.Length}");
+                        _sapi.Logger.Notification($"[VintageAtlas] 🔍 First pixel: CHUNK_SIZE={ChunkSize}, heightMap.Length={heightMap.Length}");
                     }
-                    
-                    var heightIndex = z * CHUNK_SIZE + x;
+
+                    var heightIndex = z * ChunkSize + x;
                     if (heightIndex >= heightMap.Length) continue;
 
                     var height = heightMap[heightIndex];
-                    
+
                     // DEBUG: Log first pixel's height
                     if (x == 0 && z == 0)
                     {
                         _sapi.Logger.Notification($"[VintageAtlas] 📏 First pixel height: {height}, chunkY={snapshot.ChunkY}");
                     }
-                    
+
                     if (height == 0)
                     {
                         if (x == 0 && z == 0)
@@ -637,22 +621,22 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
                     // BlockIds are stored at their actual height's local Y position
                     // e.g., height=114 → localY=114%32=18 → blockIndex at Y=18
                     // ═══════════════════════════════════════════════════════════════
-                    var localY = height % CHUNK_SIZE; // Local Y within 32-block range
-                    
+                    var localY = height % ChunkSize; // Local Y within 32-block range
+
                     // DEBUG: Log first pixel's localY
                     if (x == 0 && z == 0)
                     {
                         _sapi.Logger.Notification($"[VintageAtlas] 📐 First pixel localY: {localY} (height%CHUNK_SIZE)");
                     }
 
-                    var blockIndex = localY * CHUNK_SIZE * CHUNK_SIZE + z * CHUNK_SIZE + x;
-                    
+                    var blockIndex = localY * ChunkSize * ChunkSize + z * ChunkSize + x;
+
                     // DEBUG: Log first pixel's blockIndex
                     if (x == 0 && z == 0)
                     {
                         _sapi.Logger.Notification($"[VintageAtlas] 🔢 First pixel blockIndex: {blockIndex} (blockIds.Length={blockIds.Length})");
                     }
-                    
+
                     if (blockIndex < 0 || blockIndex >= blockIds.Length)
                     {
                         if (x == 0 && z == 0)
@@ -665,7 +649,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
                     }
 
                     var blockId = blockIds[blockIndex];
-                    
+
                     // DEBUG: Log first pixel's blockId
                     if (x == 0 && z == 0)
                     {
@@ -701,13 +685,13 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
 
                         case ImageMode.ColorVariationsWithHillShading:
                             color = _colorCache.GetRandomColorVariation(blockId, random);
-                            
+
                             // DEBUG: Log first pixel of first tile only
                             if (x == 0 && z == 0 && imgX == 0 && imgZ == 0)
                             {
                                 _sapi.Logger.Notification($"[VintageAtlas] MODE 3 RENDERING: blockId={blockId}, color=0x{color:X8}");
                             }
-                            
+
                             // Calculate slope and populate shadow map
                             if (shadowMap != null)
                             {
@@ -723,9 +707,9 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
 
                         case ImageMode.MedievalStyleWithHillShading:
                             // Check if this is a water edge
-                            var isWaterEdge = DetectWaterEdge(blockId, x, z, snapshot, tileData);
+                            var isWaterEdge = DetectWaterEdge(blockId, x, z, snapshot);
                             color = _colorCache.GetMedievalStyleColor(blockId, isWaterEdge);
-                            
+
                             // Apply hill shading for non-water blocks
                             if (shadowMap != null && !_colorCache.IsLake(blockId))
                             {
@@ -769,7 +753,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
     /// Get tile extent (min/max coordinates) for a zoom level.
     /// Required by ITileGenerator interface.
     /// </summary>
-    public async Task<Storage.TileExtent?> GetTileExtentAsync(int zoom)
+    public async Task<TileExtent?> GetTileExtentAsync(int zoom)
     {
         return await _storage.GetTileExtentAsync(zoom);
     }
@@ -806,7 +790,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
 
     private void CacheInMemory(string key, byte[] data, string etag, DateTime lastModified)
     {
-        if (_memoryCache.Count >= MAX_CACHE_SIZE)
+        if (_memoryCache.Count >= MaxCacheSize)
         {
             var oldest = DateTime.MaxValue;
             string? oldestKey = null;
@@ -834,52 +818,6 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
         };
     }
 
-    private async Task<byte[]?> GeneratePlaceholderTileAsync(int zoom, int tileX, int tileZ)
-    {
-        return await Task.Run(() =>
-        {
-            try
-            {
-                var tileSize = _config.TileSize;
-                using var bitmap = new SKBitmap(tileSize, tileSize);
-                using var canvas = new SKCanvas(bitmap);
-
-                canvas.Clear(new SKColor(41, 128, 185));
-
-                using var gridPaint = new SKPaint();
-                gridPaint.Color = new SKColor(52, 152, 219);
-                gridPaint.StrokeWidth = 1;
-                gridPaint.Style = SKPaintStyle.Stroke;
-
-                for (var i = 0; i < tileSize; i += 32)
-                {
-                    canvas.DrawLine(i, 0, i, tileSize, gridPaint);
-                    canvas.DrawLine(0, i, tileSize, i, gridPaint);
-                }
-
-                using var textPaint = new SKPaint
-                {
-                    Color = SKColors.White,
-                    IsAntialias = true
-                };
-
-                using var font = new SKFont();
-                font.Size = 12;
-                var text = $"z{zoom} x{tileX} z{tileZ}";
-                canvas.DrawText(text, 10, 20, SKTextAlign.Left, font, textPaint);
-
-                using var image = SKImage.FromBitmap(bitmap);
-                using var data = image.Encode(SKEncodedImageFormat.Png, 100);
-                return data.ToArray();
-            }
-            catch (Exception ex)
-            {
-                _sapi.Logger.Error($"[VintageAtlas] Failed to generate placeholder: {ex.Message}");
-                return null;
-            }
-        });
-    }
-
     private static string GenerateETag(byte[] data, DateTime lastModified)
     {
         return $"\"{data.Length}-{lastModified.Ticks}\"";
@@ -889,7 +827,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
     /// Calculate altitude differences with neighboring blocks for hill shading.
     /// Optimized to stay within chunk boundaries.
     /// </summary>
-    private (int northWestDelta, int northDelta, int westDelta) CalculateAltitudeDiff(
+    private static (int northWestDelta, int northDelta, int westDelta) CalculateAltitudeDiff(
         int x, int y, int z, int[] heightMap)
     {
         var westernX = x - 1;
@@ -899,12 +837,12 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
         if (westernX < 0) westernX++;
         if (northernZ < 0) northernZ++;
 
-        westernX = GameMath.Mod(westernX, CHUNK_SIZE);
-        northernZ = GameMath.Mod(northernZ, CHUNK_SIZE);
+        westernX = GameMath.Mod(westernX, ChunkSize);
+        northernZ = GameMath.Mod(northernZ, ChunkSize);
 
-        var northWestIndex = northernZ * CHUNK_SIZE + westernX;
-        var northIndex = northernZ * CHUNK_SIZE + x;
-        var westIndex = z * CHUNK_SIZE + westernX;
+        var northWestIndex = northernZ * ChunkSize + westernX;
+        var northIndex = northernZ * ChunkSize + x;
+        var westIndex = z * ChunkSize + westernX;
 
         var northWestHeight = northWestIndex < heightMap.Length ? heightMap[northWestIndex] : y;
         var northHeight = northIndex < heightMap.Length ? heightMap[northIndex] : y;
@@ -914,33 +852,34 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
     }
 
     /// <summary>
-    /// Calculate slope boost multiplier for shadow map based on altitude deltas.
-    /// Returns a value to darken or lighten the pixel based on slope direction.
+    /// Calculate slope boost multiplier for the shadow map based on altitude deltas.
+    /// Returns a value to darken or lighten the pixel based on the slope direction.
     /// </summary>
-    private float CalculateSlopeBoost(int northWestDelta, int northDelta, int westDelta)
+    private static float CalculateSlopeBoost(int northWestDelta, int northDelta, int westDelta)
     {
         var direction = Math.Sign(northWestDelta) + Math.Sign(northDelta) + Math.Sign(westDelta);
         float steepness = Math.Max(Math.Max(Math.Abs(northWestDelta), Math.Abs(northDelta)), Math.Abs(westDelta));
         var slopeFactor = Math.Min(0.5f, steepness / 10f) / 1.25f;
 
-        if (direction > 0)
-            return 1.08f + slopeFactor; // Brighten slopes facing light
-        if (direction < 0)
-            return 0.92f - slopeFactor; // Darken slopes away from light
-        return 1; // Flat terrain
+        return direction switch
+        {
+            > 0 => 1.08f + slopeFactor,
+            < 0 => 0.92f - slopeFactor,
+            _ => 1
+        };
     }
 
     /// <summary>
     /// Detect if a water block is at the edge (borders non-water blocks).
     /// Used for medieval style rendering to draw darker water edges.
     /// </summary>
-    private bool DetectWaterEdge(int blockId, int x, int z, ChunkSnapshot snapshot, TileChunkData tileData)
+    private bool DetectWaterEdge(int blockId, int x, int z, ChunkSnapshot snapshot)
     {
         if (!_colorCache.IsLake(blockId))
             return false;
 
         // Check boundaries - edges are always rendered as water
-        if (x == 0 || x == CHUNK_SIZE - 1 || z == 0 || z == CHUNK_SIZE - 1)
+        if (x == 0 || x == ChunkSize - 1 || z == 0 || z == ChunkSize - 1)
             return false;
 
         var heightMap = snapshot.HeightMap;
@@ -959,25 +898,20 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
         var neighborW = GetBlockAtPosition(w, z, heightMap, blockIds);
 
         // If all neighbors are also water/lake, this is interior water
-        if (_colorCache.IsLake(neighborN) && _colorCache.IsLake(neighborS) &&
-            _colorCache.IsLake(neighborE) && _colorCache.IsLake(neighborW))
-        {
-            return false;
-        }
-
+        return !_colorCache.IsLake(neighborN) || !_colorCache.IsLake(neighborS) ||
+               !_colorCache.IsLake(neighborE) || !_colorCache.IsLake(neighborW);
         // At least one neighbor is land - this is a water edge
-        return true;
     }
 
     /// <summary>
-    /// Get block ID at a specific X,Z position within a chunk using height map.
+    /// Get block ID at a specific X, Z position within a chunk using the height map.
     /// </summary>
-    private int GetBlockAtPosition(int x, int z, int[] heightMap, int[] blockIds)
+    private static int GetBlockAtPosition(int x, int z, int[] heightMap, int[] blockIds)
     {
-        if (x < 0 || x >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE)
+        if (x < 0 || x >= ChunkSize || z < 0 || z >= ChunkSize)
             return 0;
 
-        var heightIndex = z * CHUNK_SIZE + x;
+        var heightIndex = z * ChunkSize + x;
         if (heightIndex >= heightMap.Length)
             return 0;
 
@@ -986,8 +920,8 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
             return 0;
 
         // Calculate local Y and block index
-        var localY = height % CHUNK_SIZE;
-        var blockIndex = localY * CHUNK_SIZE * CHUNK_SIZE + z * CHUNK_SIZE + x;
+        var localY = height % ChunkSize;
+        var blockIndex = localY * ChunkSize * ChunkSize + z * ChunkSize + x;
 
         if (blockIndex < 0 || blockIndex >= blockIds.Length)
             return 0;
@@ -999,7 +933,7 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
     /// Apply shadow map blur and lighting to the final bitmap.
     /// This creates the hill shading effect.
     /// </summary>
-    private unsafe void ApplyShadowMapToBitmap(SKBitmap bitmap, Span<byte> shadowMap, int size)
+    private static unsafe void ApplyShadowMapToBitmap(SKBitmap bitmap, Span<byte> shadowMap, int size)
     {
         // Create a copy for sharpening
         Span<byte> originalShadowMap = new byte[shadowMap.Length];
@@ -1022,7 +956,8 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
             var shadowEffect = (int)(blurredValue * 5) / 5f;
             shadowEffect += originalValue * 5 % 1 / 5f;
 
-            if (shadowEffect == 0) continue;
+            if (shadowEffect is 0) 
+                continue;
 
             var imgX = i % size;
             var imgZ = i / size;
@@ -1038,11 +973,20 @@ public class UnifiedTileGenerator : ITileGenerator, IDisposable
 
     public void Dispose()
     {
-        _storage?.Dispose();
+        Dispose(true);
+        GC.SuppressFinalize(this);
     }
 
-    #endregion
+    private void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _storage.Dispose();
+        }
+    }
 }
+
+#endregion
 
 /// <summary>
 /// Simple struct for tile coordinates
@@ -1057,6 +1001,6 @@ public class ExportProgress
     public int TilesCompleted { get; set; }
     public int TotalTiles { get; set; }
     public int CurrentZoomLevel { get; set; }
-    public double PercentComplete => TotalTiles > 0 ? (TilesCompleted * 100.0 / TotalTiles) : 0;
+    public double PercentComplete => TotalTiles > 0 ? TilesCompleted * 100.0 / TotalTiles : 0;
 }
 

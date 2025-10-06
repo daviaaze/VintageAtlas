@@ -42,13 +42,20 @@ namespace VintageAtlas.Tests.Mocks
 
         public EnumLogType LogLevel { get; set; } = EnumLogType.Notification;
         public ILogger TraceLog => this;
+#pragma warning disable CS0067 // Event is never used
         public event LogEntryDelegate? EntryAdded;
+#pragma warning restore CS0067
 
         public void VerboseDebug(string message)
         {
             throw new NotImplementedException();
         }
 
+        public void VerboseDebug(string message, params object[] args)
+        {
+            Debug(message, args);
+        }
+        
         public void Debug(string message, params object[] args)
         {
             Log(EnumLogType.Debug, message, args);
@@ -141,11 +148,6 @@ namespace VintageAtlas.Tests.Mocks
         public void Build(string message)
         {
             throw new NotImplementedException();
-        }
-
-        public void VerboseDebug(string message, params object[] args)
-        {
-            Debug(message, args);
         }
 
         public void Chat(string message)

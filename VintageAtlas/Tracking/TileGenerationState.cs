@@ -1,7 +1,5 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Data;
 using System.IO;
 using System.Linq;
 using Microsoft.Data.Sqlite;
@@ -471,14 +469,23 @@ public class TileGenerationState : IDisposable
 
     public void Dispose()
     {
-        lock (_dbLock)
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (disposing)
         {
-            _db?.Close();
-            _db?.Dispose();
-            _db = null;
+            lock (_dbLock)
+            {
+                _db?.Close();
+                _db?.Dispose();
+                _db = null;
+            }
+            
+            _sapi.Logger.Notification("[VintageAtlas] Tile state database disposed");
         }
-        
-        _sapi.Logger.Notification("[VintageAtlas] Tile state database disposed");
     }
 }
 

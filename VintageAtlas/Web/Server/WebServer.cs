@@ -1,6 +1,5 @@
 using System;
 using System.Net;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Vintagestory.API.Server;
@@ -11,11 +10,9 @@ namespace VintageAtlas.Web.Server;
 /// <summary>
 /// Manages the HTTP server lifecycle and request handling with production-optimized concurrency
 /// </summary>
-public class WebServer : IDisposable
+public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRouter router)
+    : IDisposable
 {
-    private readonly ICoreServerAPI _sapi;
-    private readonly ModConfig _config;
-    private readonly RequestRouter _router;
     private HttpListener? _httpListener;
     
     // Separate semaphores for different request types
@@ -24,13 +21,6 @@ public class WebServer : IDisposable
     private SemaphoreSlim? _staticRequestSemaphore;  // Higher limit for static files
     
     private bool _isRunning;
-
-    public WebServer(ICoreServerAPI sapi, ModConfig config, RequestRouter router)
-    {
-        _sapi = sapi;
-        _config = config;
-        _router = router;
-    }
 
     /// <summary>
     /// Start the HTTP server with production-optimized settings
@@ -41,31 +31,31 @@ public class WebServer : IDisposable
 
         try
         {
-            var port = _config.LiveServerPort ?? _sapi.Server.Config.Port + 1;
+            var port = config.LiveServerPort ?? sapi.Server.Config.Port + 1;
             
-            _sapi.Logger.Notification($"[VintageAtlas] Starting production web server on port {port}");
+            sapi.Logger.Notification($"[VintageAtlas] Starting production web server on port {port}");
             
             // PRODUCTION OPTIMIZATION: Increase ServicePointManager limits for high-volume requests
             // This affects client connections FROM this server (not incoming connections)
             ServicePointManager.DefaultConnectionLimit = 1000;
-            ServicePointManager.MaxServicePointIdleTime = 10000; // 10 seconds idle timeout
+            ServicePointManager.MaxServicePointIdleTime = 10000; // 10-second idle timeout
             ServicePointManager.Expect100Continue = false; // Disable 100-continue handshake
             ServicePointManager.UseNagleAlgorithm = false; // Disable Nagle's algorithm for lower latency
-            _sapi.Logger.Notification($"[VintageAtlas] ServicePointManager optimized for high-volume serving");
+            sapi.Logger.Notification($"[VintageAtlas] ServicePointManager optimized for high-volume serving");
             
             // Initialize separate throttling semaphores for different request types
-            var maxApiRequests = _config.MaxConcurrentRequests ?? 50;
-            var maxTileRequests = _config.MaxConcurrentTileRequests ?? 500;  // Much higher for tiles
-            var maxStaticRequests = _config.MaxConcurrentStaticRequests ?? 200;
+            var maxApiRequests = config.MaxConcurrentRequests ?? 50;
+            var maxTileRequests = config.MaxConcurrentTileRequests ?? 500;  // Much higher for tiles
+            var maxStaticRequests = config.MaxConcurrentStaticRequests ?? 200;
             
             _apiRequestSemaphore = new SemaphoreSlim(maxApiRequests, maxApiRequests);
             _tileRequestSemaphore = new SemaphoreSlim(maxTileRequests, maxTileRequests);
             _staticRequestSemaphore = new SemaphoreSlim(maxStaticRequests, maxStaticRequests);
             
-            _sapi.Logger.Notification($"[VintageAtlas] Request throttling configured:");
-            _sapi.Logger.Notification($"  - API requests: {maxApiRequests} concurrent");
-            _sapi.Logger.Notification($"  - Tile requests: {maxTileRequests} concurrent");
-            _sapi.Logger.Notification($"  - Static files: {maxStaticRequests} concurrent");
+            sapi.Logger.Notification($"[VintageAtlas] Request throttling configured:");
+            sapi.Logger.Notification($"  - API requests: {maxApiRequests} concurrent");
+            sapi.Logger.Notification($"  - Tile requests: {maxTileRequests} concurrent");
+            sapi.Logger.Notification($"  - Static files: {maxStaticRequests} concurrent");
 
             // Start HTTP listener - use + prefix for all-interface binding (like ServerstatusQuery)
             _httpListener = new HttpListener();
@@ -75,16 +65,16 @@ public class WebServer : IDisposable
             
             _isRunning = true;
             
-            _sapi.Logger.Notification($"[VintageAtlas] Web server started successfully");
-            _sapi.Logger.Notification($"  - Web UI: http://localhost:{port}/");
-            _sapi.Logger.Notification($"  - API Status: http://localhost:{port}/api/{_config.LiveServerEndpoint}");
-            _sapi.Logger.Notification($"  - Accessible from network: http://<server-ip>:{port}/");
+            sapi.Logger.Notification($"[VintageAtlas] Web server started successfully");
+            sapi.Logger.Notification($"  - Web UI: http://localhost:{port}/");
+            sapi.Logger.Notification($"  - API Status: http://localhost:{port}/api/{config.LiveServerEndpoint}");
+            sapi.Logger.Notification($"  - Accessible from network: http://<server-ip>:{port}/");
             
             _ = Task.Run(ListenAsync);
         }
         catch (Exception ex)
         {
-            _sapi.Logger.Error($"[VintageAtlas] Failed to start web server: {ex.Message}");
+            sapi.Logger.Error($"[VintageAtlas] Failed to start web server: {ex.Message}");
             _isRunning = false;
         }
     }
@@ -92,30 +82,31 @@ public class WebServer : IDisposable
     /// <summary>
     /// Stop the HTTP server
     /// </summary>
-    public void Stop()
+    private void Stop()
     {
         if (!_isRunning) return;
 
         try
         {
             _isRunning = false;
+
+            if (_httpListener is not { IsListening: true }) 
+                return;
             
-            if (_httpListener != null && _httpListener.IsListening)
-            {
-                _sapi.Logger.Notification("[VintageAtlas] Shutting down web server");
-                _httpListener.Stop();
-                _httpListener.Close();
-            }
+            sapi.Logger.Notification("[VintageAtlas] Shutting down web server");
+            _httpListener.Stop();
+            _httpListener.Close();
         }
         catch (Exception ex)
         {
-            _sapi.Logger.Error($"[VintageAtlas] Error stopping web server: {ex.Message}");
+            sapi.Logger.Error($"[VintageAtlas] Error stopping web server: {ex.Message}");
         }
     }
 
     private async Task ListenAsync()
     {
-        if (_httpListener == null || _sapi == null) return;
+        if (_httpListener == null) 
+            return;
         
         while (_httpListener.IsListening && _isRunning)
         {
@@ -123,7 +114,7 @@ public class WebServer : IDisposable
             {
                 var context = await _httpListener.GetContextAsync();
                 
-                // Determine request type and apply appropriate throttling
+                // Determine the request type and apply appropriate throttling
                 var path = context.Request.Url?.AbsolutePath ?? "/";
                 var requestType = ClassifyRequest(path);
                 var semaphore = GetSemaphoreForRequestType(requestType);
@@ -141,7 +132,7 @@ public class WebServer : IDisposable
                         finally
                         {
                             // Always release the slot
-                            semaphore?.Release();
+                            semaphore.Release();
                         }
                     });
                 }
@@ -153,15 +144,15 @@ public class WebServer : IDisposable
             }
             catch (Exception ex)
             {
-                if (_httpListener.IsListening && _sapi != null)
+                if (_httpListener.IsListening && sapi != null)
                 {
-                    _sapi.Logger.Error($"[VintageAtlas] Web server error: {ex.Message}");
+                    sapi.Logger.Error($"[VintageAtlas] Web server error: {ex.Message}");
                 }
             }
         }
     }
 
-    private RequestType ClassifyRequest(string path)
+    private static RequestType ClassifyRequest(string path)
     {
         if (path.StartsWith("/api/"))
             return RequestType.Api;
@@ -188,7 +179,7 @@ public class WebServer : IDisposable
         try
         {
             // Add CORS headers if enabled
-            if (_config.EnableCORS)
+            if (config.EnableCors)
             {
                 context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
                 context.Response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -204,11 +195,11 @@ public class WebServer : IDisposable
             }
 
             // Route the request
-            await _router.RouteRequest(context);
+            await router.RouteRequest(context);
         }
         catch (Exception ex)
         {
-            _sapi.Logger.Error($"[VintageAtlas] Request processing error: {ex.Message}");
+            sapi.Logger.Error($"[VintageAtlas] Request processing error: {ex.Message}");
             try
             {
                 context.Response.StatusCode = 500;
@@ -228,30 +219,39 @@ public class WebServer : IDisposable
             context.Response.StatusCode = 503;
             context.Response.Headers.Add("Retry-After", "2"); // Shorter retry for tiles
             
-            if (_config.EnableCORS)
+            if (config.EnableCors)
             {
                 context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
             }
             
             var errorMsg = requestType == RequestType.Tile 
-                ? Encoding.UTF8.GetBytes("{\"error\":\"Tile server at capacity\"}")
-                : Encoding.UTF8.GetBytes("{\"error\":\"Server too busy, please retry later\"}");
+                ? "{\"error\":\"Tile server at capacity\"}"u8.ToArray()
+                : "{\"error\":\"Server too busy, please retry later\"}"u8.ToArray();
                 
             context.Response.ContentType = "application/json";
             context.Response.ContentLength64 = errorMsg.Length;
-            await context.Response.OutputStream.WriteAsync(errorMsg, 0, errorMsg.Length);
+            await context.Response.OutputStream.WriteAsync(errorMsg);
             context.Response.Close();
             
-            _sapi?.Logger.Debug($"[VintageAtlas] {requestType} request rejected - server at capacity");
+            sapi.Logger.Debug($"[VintageAtlas] {requestType} request rejected - server at capacity");
         }
         catch
         {
-            // Failed to send rejection response
+            // Failed to send a rejection response
         }
     }
 
     public void Dispose()
     {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    private void Dispose(bool disposing)
+    {
+        if (!disposing) 
+            return;
+        
         Stop();
         _apiRequestSemaphore?.Dispose();
         _tileRequestSemaphore?.Dispose();

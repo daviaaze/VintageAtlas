@@ -14,38 +14,24 @@ namespace VintageAtlas.Web.API;
 /// <summary>
 /// Handles configuration and export trigger API endpoints
 /// </summary>
-public class ConfigController
+public class ConfigController(
+    ICoreServerAPI sapi,
+    ModConfig config,
+    IMapExporter mapExporter)
 {
-    private readonly ICoreServerAPI _sapi;
-    private readonly ModConfig _config;
-    private readonly IMapExporter _mapExporter;
-    private readonly JsonSerializerSettings _jsonSettings;
-    private bool _autoExportEnabled;
-    private bool _historicalTrackingEnabled;
-
-    public ConfigController(
-        ICoreServerAPI sapi,
-        ModConfig config,
-        IMapExporter mapExporter)
+    private readonly JsonSerializerSettings _jsonSettings = new()
     {
-        _sapi = sapi;
-        _config = config;
-        _mapExporter = mapExporter;
-        
-        // Initialize runtime state from config
-        _autoExportEnabled = config.AutoExportMap;
-        _historicalTrackingEnabled = config.EnableHistoricalTracking;
-        
-        _jsonSettings = new JsonSerializerSettings
+        ContractResolver = new DefaultContractResolver
         {
-            ContractResolver = new DefaultContractResolver
-            {
-                NamingStrategy = new CamelCaseNamingStrategy()
-            },
-            Formatting = Formatting.Indented,
-            NullValueHandling = NullValueHandling.Ignore
-        };
-    }
+            NamingStrategy = new CamelCaseNamingStrategy()
+        },
+        Formatting = Formatting.Indented,
+        NullValueHandling = NullValueHandling.Ignore
+    };
+    private bool _autoExportEnabled = config.AutoExportMap;
+    private bool _historicalTrackingEnabled = config.EnableHistoricalTracking;
+
+    // Initialize runtime state from config
 
     /// <summary>
     /// Get current runtime configuration
@@ -58,10 +44,10 @@ public class ConfigController
             {
                 autoExportMap = _autoExportEnabled,
                 historicalTracking = _historicalTrackingEnabled,
-                exportIntervalMs = _config.MapExportIntervalMs,
-                isExporting = _mapExporter.IsRunning,
-                enableLiveServer = _config.EnableLiveServer,
-                maxConcurrentRequests = _config.MaxConcurrentRequests ?? 50
+                exportIntervalMs = config.MapExportIntervalMs,
+                isExporting = mapExporter.IsRunning,
+                enableLiveServer = config.EnableLiveServer,
+                maxConcurrentRequests = config.MaxConcurrentRequests ?? 50
             };
             
             var json = JsonConvert.SerializeObject(configData, _jsonSettings);
@@ -71,14 +57,14 @@ public class ConfigController
             context.Response.ContentType = "application/json";
             context.Response.ContentLength64 = bytes.Length;
             
-            await context.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+            await context.Response.OutputStream.WriteAsync(bytes);
             context.Response.Close();
             
-            _sapi.Logger.Debug("[VintageAtlas] Config requested via API");
+            sapi.Logger.Debug("[VintageAtlas] Config requested via API");
         }
         catch (Exception ex)
         {
-            _sapi.Logger.Error($"[VintageAtlas] Error serving config: {ex.Message}");
+            sapi.Logger.Error($"[VintageAtlas] Error serving config: {ex.Message}");
             await ServeError(context, "Failed to get configuration");
         }
     }
@@ -102,27 +88,27 @@ public class ConfigController
             }
             
             // Update runtime config
-            if (update.ContainsKey("autoExportMap"))
+            if (update.TryGetValue("autoExportMap", out var autoExportMap))
             {
                 var oldValue = _autoExportEnabled;
-                _autoExportEnabled = Convert.ToBoolean(update["autoExportMap"]);
-                _sapi.Logger.Notification($"[VintageAtlas] Auto-export toggled: {oldValue} → {_autoExportEnabled} (via web UI)");
+                _autoExportEnabled = Convert.ToBoolean(autoExportMap);
+                sapi.Logger.Notification($"[VintageAtlas] Auto-export toggled: {oldValue} → {_autoExportEnabled} (via web UI)");
             }
             
-            if (update.ContainsKey("historicalTracking"))
+            if (update.TryGetValue("historicalTracking", out var historicalTracking))
             {
                 var oldValue = _historicalTrackingEnabled;
-                _historicalTrackingEnabled = Convert.ToBoolean(update["historicalTracking"]);
-                _sapi.Logger.Notification($"[VintageAtlas] Historical tracking toggled: {oldValue} → {_historicalTrackingEnabled} (via web UI)");
+                _historicalTrackingEnabled = Convert.ToBoolean(historicalTracking);
+                sapi.Logger.Notification($"[VintageAtlas] Historical tracking toggled: {oldValue} → {_historicalTrackingEnabled} (via web UI)");
             }
             
             // Optionally save to persistent config
             if (update.ContainsKey("saveToDisk") && Convert.ToBoolean(update["saveToDisk"]))
             {
-                _config.AutoExportMap = _autoExportEnabled;
-                _config.EnableHistoricalTracking = _historicalTrackingEnabled;
-                SaveConfig(_config);
-                _sapi.Logger.Notification("[VintageAtlas] Runtime config saved to disk");
+                config.AutoExportMap = _autoExportEnabled;
+                config.EnableHistoricalTracking = _historicalTrackingEnabled;
+                SaveConfig(config);
+                sapi.Logger.Notification("[VintageAtlas] Runtime config saved to disk");
             }
             
             // Return updated config
@@ -130,7 +116,7 @@ public class ConfigController
         }
         catch (Exception ex)
         {
-            _sapi.Logger.Error($"[VintageAtlas] Error updating config: {ex.Message}");
+            sapi.Logger.Error($"[VintageAtlas] Error updating config: {ex.Message}");
             await ServeError(context, "Failed to update configuration");
         }
     }
@@ -142,7 +128,7 @@ public class ConfigController
     {
         try
         {
-            if (_mapExporter.IsRunning)
+            if (mapExporter.IsRunning)
             {
                 var json = JsonConvert.SerializeObject(new { 
                     success = false, 
@@ -154,14 +140,14 @@ public class ConfigController
                 context.Response.ContentType = "application/json";
                 context.Response.ContentLength64 = bytes.Length;
                 
-                await context.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+                await context.Response.OutputStream.WriteAsync(bytes);
                 context.Response.Close();
                 return;
             }
             
             // Trigger export
-            _mapExporter.StartExport();
-            _sapi.Logger.Notification("[VintageAtlas] Manual export triggered via web UI");
+            mapExporter.StartExport();
+            sapi.Logger.Notification("[VintageAtlas] Manual export triggered via web UI");
             
             var successJson = JsonConvert.SerializeObject(new { 
                 success = true, 
@@ -173,12 +159,12 @@ public class ConfigController
             context.Response.ContentType = "application/json";
             context.Response.ContentLength64 = successBytes.Length;
             
-            await context.Response.OutputStream.WriteAsync(successBytes, 0, successBytes.Length);
+            await context.Response.OutputStream.WriteAsync(successBytes);
             context.Response.Close();
         }
         catch (Exception ex)
         {
-            _sapi.Logger.Error($"[VintageAtlas] Error triggering export: {ex.Message}");
+            sapi.Logger.Error($"[VintageAtlas] Error triggering export: {ex.Message}");
             await ServeError(context, "Failed to trigger export");
         }
     }
@@ -189,21 +175,21 @@ public class ConfigController
     public bool AutoExportEnabled => _autoExportEnabled;
     
     /// <summary>
-    /// Get current historical tracking enabled state
+    /// Get the current historical tracking enabled state
     /// </summary>
     public bool HistoricalTrackingEnabled => _historicalTrackingEnabled;
 
-    private void SaveConfig(ModConfig config)
+    private void SaveConfig(ModConfig modConfig)
     {
         try
         {
-            var json = JsonConvert.SerializeObject(config, Formatting.Indented);
-            var configPath = _sapi.GetOrCreateDataPath("ModConfig") + "/vintageatlas.json";
+            var json = JsonConvert.SerializeObject(modConfig, Formatting.Indented);
+            var configPath = sapi.GetOrCreateDataPath("ModConfig") + "/vintageatlas.json";
             File.WriteAllText(configPath, json);
         }
         catch (Exception ex)
         {
-            _sapi.Logger.Error($"[VintageAtlas] Failed to save config: {ex.Message}");
+            sapi.Logger.Error($"[VintageAtlas] Failed to save config: {ex.Message}");
         }
     }
 
@@ -218,7 +204,7 @@ public class ConfigController
             var errorBytes = Encoding.UTF8.GetBytes(errorJson);
             
             context.Response.ContentLength64 = errorBytes.Length;
-            await context.Response.OutputStream.WriteAsync(errorBytes, 0, errorBytes.Length);
+            await context.Response.OutputStream.WriteAsync(errorBytes);
             context.Response.Close();
         }
         catch

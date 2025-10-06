@@ -1,665 +1,261 @@
-# Coordinate Systems Guide
+# VintageAtlas Coordinate System Design
 
-**Last Updated:** 2025-10-02  
-**Version:** 1.0.0
+**Last Updated:** 2025-10-02
+**Version:** 1.1 (Fixed spawn-relative positioning)
 
 ## Overview
 
-VintageAtlas uses three different coordinate systems that must be properly transformed between each other:
-1. **Game Coordinates** - Vintage Story world positions
-2. **Map Coordinates** - OpenLayers display coordinates
-3. **Tile Coordinates** - XYZ tile addressing
+VintageAtlas uses a multi-layer coordinate system to support both **absolute world coordinates** and **spawn-relative coordinates** while maintaining compatibility with tile caching and OpenLayers display.
 
-This document explains each system and how to transform between them.
+## Design Principles
 
-## Game Coordinates (Vintage Story)
+### 1. **Tiles Are Always Generated in Absolute Coordinates**
+- Tiles on disk use absolute chunk coordinates for filenames (e.g., `1234_5678.png`)
+- `ChunkDataExtractor` always operates in absolute world chunk space
+- This allows tiles to work in both coordinate modes without regeneration
 
-### Coordinate System
+### 2. **Coordinate Transformation Happens at Display Time**
+- `MapConfigController` transforms the **extent** based on `AbsolutePositions` setting
+- The **tiles themselves** don't change, only how they're positioned on the map
+- Frontend receives pre-transformed extent values
 
-```
-      North (Z-)
-           ↑
-           |
-West (X-) ← Spawn → East (X+)
-           |
-           ↓
-      South (Z+)
-```
+### 3. **Backend Handles All Transformation Logic**
+- Frontend treats coordinates as opaque display values
+- No coordinate math needed in JavaScript
+- Simplifies frontend and prevents coordinate bugs
 
-**Properties:**
-- Origin: World spawn position
-- X-axis: East (+) / West (-)
-- Y-axis: Height (up/down)
-- Z-axis: South (+) / North (-)
-- Units: Blocks (1 block = 1 unit)
+## Coordinate Spaces
 
-**Example:**
-```
-Spawn at: [512000, 512000] (absolute world coordinates)
-Player at: [512100, 511900]
-  → 100 blocks East of spawn
-  → 100 blocks North of spawn
-```
-
-### Absolute vs Relative Positions
-
-VintageAtlas supports two modes controlled by `AbsolutePositions` in config:
-
-#### Relative Mode (Default: `false`)
-
-Spawn becomes origin [0, 0]:
+### World Coordinate Space
+**Used by:** Vintage Story game engine, world chunks
 
 ```
-World Spawn: [512000, 512000]  (absolute)
-Display as:  [0, 0]             (relative)
+Origin: Arbitrary world origin (often near 0,0 but not guaranteed)
+X axis: West (-) to East (+)
+Z axis: North (-) to South (+)
+Y axis: Down (0) to Up (+)
 
-Player at [512100, 511900]  (absolute)
-Display as [100, -100]      (relative: 100E, 100N)
+Example spawn: X=512345, Z=519876
 ```
 
-**Why use relative:**
-- Players think relative to spawn ("500 north of spawn")
-- Matches in-game F3 coordinate display
-- Easier for navigation
-
-#### Absolute Mode (`true`)
-
-Uses raw world coordinates:
+### Absolute Tile Coordinate Space
+**Used by:** Tile generation, disk storage
 
 ```
-World Spawn: [512000, 512000]
-Display as:  [512000, 512000]
+Tile coordinates = World Chunk Coordinates / ChunksPerTile
+ChunksPerTile = TileSize / 32 (e.g., 256/32 = 8)
 
-Player at [512100, 511900]
-Display as [512100, 511900]
+Example:
+- Spawn at world X=512345, Z=519876
+- Spawn chunk: X=16010, Z=16246
+- Spawn tile (at 256px): X=2001, Z=2030
+
+Tile filename: 2001_2030.png
 ```
 
-**Why use absolute:**
-- Debugging and development
-- Integration with external tools
-- Raw world data analysis
+### Spawn-Relative Display Space
+**Used by:** Frontend display (when AbsolutePositions = false)
 
-### Chunk Coordinates
+```
+Origin: Spawn position (0, 0)
+X axis: West (-) to East (+)
+Z axis: South (+) to North (-) [FLIPPED for map display]
 
-Chunks are 32×32 blocks:
+Transformation (in MapConfigController):
+relativeX = absoluteX - spawnX
+relativeZ = absoluteZ - spawnZ
+displayZ = -relativeZ  // Flip for North-up map
 
+Example:
+- Absolute extent: MinX=508000, MinZ=515000, MaxX=516000, MaxZ=524000
+- Spawn: X=512000, Z=519500
+- Relative extent: MinX=-4000, MinZ=-4500, MaxX=4000, MaxZ=4500
+- Display extent: MinX=-4000, MinZ=-4500, MaxX=4000, MaxZ=4500
+  (with Z flip: MinZ=-maxRelZ=-4500, MaxZ=-minRelZ=4500)
+```
+
+## Implementation Details
+
+### Backend: ChunkDataExtractor.cs
+
+**OLD (INCORRECT) Implementation:**
 ```csharp
-// Block position to chunk position
-int chunkX = blockX / 32;
-int chunkZ = blockZ / 32;
-
-// Chunk position to block position (chunk origin)
-int blockX = chunkX * 32;
-int blockZ = chunkZ * 32;
-
-// Block within chunk (0-31)
-int localX = blockX % 32;
-int localZ = blockZ % 32;
-```
-
-**Example:**
-```
-Block [512100, 511900]
-Chunk [16003, 15996]  (512100/32, 511900/32)
-Local [4, 20]         (512100%32, 511900%32)
-```
-
-## Map Coordinates (OpenLayers)
-
-### Coordinate System
-
-OpenLayers uses different conventions:
-
-```
-     North (Y+)
-          ↑
-          |
-West (X-) ← Center → East (X+)
-          |
-          ↓
-     South (Y-)
-```
-
-**Properties:**
-- Origin: Map center (configurable)
-- X-axis: East (+) / West (-)
-- Y-axis: North (+) / South (-)  [FLIPPED from game Z]
-- Projection: Simple CRS or Web Mercator (EPSG:3857)
-- Units: Pixels or projected units
-
-### Game to Map Transformation
-
-#### When `AbsolutePositions: false` (Default)
-
-```typescript
-// Game coordinates (relative to spawn)
-const gameX = 100;   // 100 blocks East
-const gameZ = -50;   // 50 blocks North (negative Z)
-
-// Map coordinates
-const mapX = gameX;          // 100 (same direction)
-const mapY = -gameZ;         // 50 (flip Z to Y)
-
-// Result: [100, 50] on map
-```
-
-**Formula:**
-```typescript
-mapX = gameX
-mapY = -gameZ  // Note the negation!
-```
-
-#### When `AbsolutePositions: true`
-
-```typescript
-// Game coordinates (absolute)
-const gameX = 512100;
-const gameZ = 511900;
-const spawnX = 512000;
-const spawnZ = 512000;
-
-// Map coordinates (still relative to spawn)
-const mapX = gameX - spawnX;           // 100
-const mapY = -(gameZ - spawnZ);        // -(-100) = 100
-
-// Result: [100, 100] on map
-```
-
-**Formula:**
-```typescript
-mapX = gameX - spawnX
-mapY = -(gameZ - spawnZ)
-```
-
-### Map to Game Transformation
-
-#### When `AbsolutePositions: false`
-
-```typescript
-// Map coordinates
-const mapX = 100;
-const mapY = 50;
-
-// Game coordinates (relative)
-const gameX = mapX;          // 100
-const gameZ = -mapY;         // -50
-
-// Result: [100, -50] in game
-```
-
-#### When `AbsolutePositions: true`
-
-```typescript
-// Map coordinates
-const mapX = 100;
-const mapY = 50;
-const spawnX = 512000;
-const spawnZ = 512000;
-
-// Game coordinates (absolute)
-const gameX = mapX + spawnX;         // 512100
-const gameZ = spawnZ - mapY;         // 511950
-
-// Result: [512100, 511950] in game
-```
-
-### OpenLayers Configuration
-
-```typescript
-import { Projection } from 'ol/proj';
-import { View } from 'ol';
-
-// Define custom projection
-const mapSize = config.mapSizeX;
-const extent = [-mapSize/2, -mapSize/2, mapSize/2, mapSize/2];
-
-const projection = new Projection({
-  code: 'SIMPLE',
-  units: 'pixels',
-  extent: extent,
-  global: false
-});
-
-// Create map view
-const view = new View({
-  projection: projection,
-  center: config.defaultCenter,  // [0, 0] for spawn-relative
-  zoom: config.defaultZoom,
-  minZoom: 0,
-  maxZoom: config.maxZoom,
-  extent: config.worldExtent
-});
-```
-
-## Tile Coordinates (XYZ)
-
-### Tile Addressing
-
-Tiles use standard XYZ addressing:
-
-```
-/tiles/{zoom}/{x}_{z}.png
-```
-
-**Properties:**
-- Zoom: 0 (furthest) to N (closest)
-- X: Tile column (East +)
-- Z: Tile row (South +)
-- Size: 256×256 pixels (configurable)
-
-### Tile Coordinate System
-
-```
-(0,0) ────────────→ X (East)
-  │
-  │   Tile (5, 3)
-  │   ┌─────┐
-  │   │     │
-  │   └─────┘
-  ↓
-  Z (South)
-```
-
-### Zoom Levels
-
-Each zoom level doubles resolution:
-
-| Zoom | World Units/Tile | Pixels/Block | Coverage |
-|------|------------------|--------------|----------|
-| 0    | 65536           | 0.0039       | Very far |
-| 1    | 32768           | 0.0078       | Far      |
-| 2    | 16384           | 0.0156       | Medium   |
-| ...  | ...             | ...          | ...      |
-| 7    | 512             | 0.5          | Near     |
-| 8    | 256             | 1.0          | Close    |
-| 9    | 128             | 2.0          | Closest  |
-
-**Formula:**
-```
-worldUnitsPerTile = tileSize * (2^(maxZoom - zoom))
-```
-
-**Example (tileSize=256, maxZoom=9):**
-```
-Zoom 9: 256 * (2^0) = 256 blocks/tile  (1px = 1 block)
-Zoom 8: 256 * (2^1) = 512 blocks/tile  (1px = 2 blocks)
-Zoom 7: 256 * (2^2) = 1024 blocks/tile (1px = 4 blocks)
-```
-
-### Block to Tile Transformation
-
-```csharp
-// Block position to tile position
-int worldUnitsPerTile = tileSize * (1 << (maxZoom - zoom));
-
-int tileX = blockX / worldUnitsPerTile;
-int tileZ = blockZ / worldUnitsPerTile;
-
-// Tile position to block position (tile origin)
-int blockX = tileX * worldUnitsPerTile;
-int blockZ = tileZ * worldUnitsPerTile;
-
-// Block within tile
-int localX = blockX % worldUnitsPerTile;
-int localZ = blockZ % worldUnitsPerTile;
-```
-
-**Example (zoom=9, tileSize=256):**
-```csharp
-// Block [512100, 511900]
-int worldUnitsPerTile = 256;  // zoom 9
-
-int tileX = 512100 / 256 = 2000;
-int tileZ = 511900 / 256 = 1999;
-
-// Tile (2000, 1999) at zoom 9
-// URL: /tiles/9/2000_1999.png
-```
-
-### Tile Pyramid
-
-Lower zoom tiles are generated by downsampling:
-
-```
-Zoom 9:  [TILE]
-           ↓
-Zoom 8:  4 tiles → 1 tile (2×2 grid)
-           ↓
-Zoom 7:  16 tiles → 1 tile (4×4 grid)
-           ↓
-         ... etc
-```
-
-**Downsampling:**
-```
-Zoom N+1 (higher detail):
-┌─────┬─────┐
-│ TL  │ TR  │  4 tiles
-├─────┼─────┤
-│ BL  │ BR  │
-└─────┴─────┘
-      ↓ (combine)
-Zoom N (lower detail):
-┌───────────┐
-│   Single  │  1 tile
-│   Tile    │
-└───────────┘
-```
-
-## Complete Transformation Examples
-
-### Example 1: Player Position to Map
-
-**Scenario:** Player at game coordinates, display on map
-
-**Given:**
-- Config: `AbsolutePositions: false`
-- Spawn: [512000, 512000] (absolute)
-- Player: [512100, 511900] (absolute)
-
-**Step 1: Convert to relative**
-```
-playerRelX = 512100 - 512000 = 100
-playerRelZ = 511900 - 512000 = -100
-```
-
-**Step 2: Convert to map coordinates**
-```
-mapX = playerRelX = 100
-mapY = -playerRelZ = -(-100) = 100
-```
-
-**Result:** Display player at [100, 100] on map
-
-### Example 2: Map Click to Game Coordinate
-
-**Scenario:** User clicks map, get game coordinates
-
-**Given:**
-- Config: `AbsolutePositions: false`
-- Spawn: [512000, 512000]
-- Click: [150, -75] (map coordinates)
-
-**Step 1: Convert to game relative**
-```
-gameRelX = mapX = 150
-gameRelZ = -mapY = -(-75) = 75
-```
-
-**Step 2: Convert to absolute (if needed)**
-```
-gameAbsX = 512000 + 150 = 512150
-gameAbsZ = 512000 + 75 = 512075
-```
-
-**Result:** Click at [512150, 512075] in world
-
-### Example 3: Block Position to Tile URL
-
-**Scenario:** Generate tile for block position
-
-**Given:**
-- Block: [512100, 511900]
-- Zoom: 9
-- TileSize: 256
-
-**Step 1: Calculate world units per tile**
-```
-worldUnitsPerTile = 256 * (2^(9-9)) = 256
-```
-
-**Step 2: Calculate tile coordinates**
-```
-tileX = 512100 / 256 = 2000
-tileZ = 511900 / 256 = 1999
-```
-
-**Result:** `/tiles/9/2000_1999.png`
-
-### Example 4: Chunk Change to Tile Regeneration
-
-**Scenario:** Block placed, determine which tiles to regenerate
-
-**Given:**
-- Chunk: [16003, 15996] (chunk coordinates)
-- Zoom: 9
-- TileSize: 256
-- ChunkSize: 32
-
-**Step 1: Convert chunk to block coordinates**
-```
-blockX = 16003 * 32 = 512096
-blockZ = 15996 * 32 = 511872
-```
-
-**Step 2: Calculate affected tiles**
-```
-Chunk covers blocks [512096-512127, 511872-511903]
-
-At zoom 9 (256 blocks/tile):
-  tileXmin = 512096 / 256 = 2000
-  tileXmax = 512127 / 256 = 2000  (same tile)
-  tileZmin = 511872 / 256 = 1999
-  tileZmax = 511903 / 256 = 1999  (same tile)
-```
-
-**Result:** Regenerate tile (2000, 1999) at zoom 9
-
-## Implementation Code Examples
-
-### Backend (C#)
-
-#### Game to Map Coordinate
-```csharp
-public class CoordinateTransform
+// ❌ Applied spawn offset during extraction - caused double transformation
+if (!_config.AbsolutePositions && _sapi.World.DefaultSpawnPosition != null)
 {
-    private readonly bool _absolutePositions;
-    private readonly Vec3d _spawnPos;
-    
-    public (int mapX, int mapY) GameToMap(int gameX, int gameZ)
-    {
-        int relX = _absolutePositions ? gameX - (int)_spawnPos.X : gameX;
-        int relZ = _absolutePositions ? gameZ - (int)_spawnPos.Z : gameZ;
-        
-        return (relX, -relZ);  // Note Z flip
-    }
-    
-    public (int gameX, int gameZ) MapToGame(int mapX, int mapY)
-    {
-        int gameZ = -mapY;  // Flip back
-        int gameX = mapX;
-        
-        if (_absolutePositions)
-        {
-            gameX += (int)_spawnPos.X;
-            gameZ += (int)_spawnPos.Z;
-        }
-        
-        return (gameX, gameZ);
-    }
+    var spawnChunkX = _sapi.World.DefaultSpawnPosition.AsBlockPos.X / CHUNK_SIZE;
+    var spawnChunkZ = _sapi.World.DefaultSpawnPosition.AsBlockPos.Z / CHUNK_SIZE;
+    chunkOffsetX = spawnChunkX;
+    chunkOffsetZ = spawnChunkZ;
 }
+var startChunkX = tileX * chunksPerTile + chunkOffsetX;
+var startChunkZ = tileZ * chunksPerTile + chunkOffsetZ;
 ```
 
-#### Block to Tile
+**NEW (CORRECT) Implementation:**
 ```csharp
-public (int tileX, int tileZ) BlockToTile(int blockX, int blockZ, int zoom)
+// ✅ Always use absolute coordinates - transformation happens at display time
+var startChunkX = tileX * chunksPerTile;
+var startChunkZ = tileZ * chunksPerTile;
+```
+
+**Why:** Tiles are generated at their absolute world positions. The frontend receives transformed extent values that position these absolute tiles correctly in the display space.
+
+### Backend: MapConfigController.cs
+
+**Coordinate Transformation Logic:**
+```csharp
+if (_config.AbsolutePositions)
 {
-    int worldUnitsPerTile = _config.TileSize * (1 << (_config.BaseZoomLevel - zoom));
-    
-    return (
-        blockX / worldUnitsPerTile,
-        blockZ / worldUnitsPerTile
-    );
+    // No transformation - use world coordinates directly
+    worldExtent = new[] { extent.MinX, extent.MinZ, extent.MaxX, extent.MaxZ };
+    worldOrigin = new[] { extent.MinX, extent.MaxZ };
+}
+else
+{
+    // Transform to spawn-relative with Z-axis flip
+    var relMinX = extent.MinX - spawn[0];
+    var relMinZ = extent.MinZ - spawn[1];
+    var relMaxX = extent.MaxX - spawn[0];
+    var relMaxZ = extent.MaxZ - spawn[1];
+
+    // Apply Z flip: North is negative, South is positive
+    worldExtent = new[] { relMinX, -relMaxZ, relMaxX, -relMinZ };
+    worldOrigin = new[] { relMinX, -relMinZ };
 }
 ```
 
-### Frontend (TypeScript)
+### Frontend: mapConfig.ts
 
-#### Game to Map Coordinate
+**Coordinate Display:**
 ```typescript
-export function gameToMap(
-  gameX: number,
-  gameZ: number,
-  config: MapConfigData
-): [number, number] {
-  let relX = gameX;
-  let relZ = gameZ;
-  
-  if (config.absolutePositions) {
-    relX = gameX - config.spawnPosition[0];
-    relZ = gameZ - config.spawnPosition[1];
-  }
-  
-  return [relX, -relZ];  // Note Z flip
-}
-```
-
-#### Map to Game Coordinate
-```typescript
-export function mapToGame(
-  mapX: number,
-  mapY: number,
-  config: MapConfigData
-): [number, number] {
-  let gameX = mapX;
-  let gameZ = -mapY;  // Flip back
-  
-  if (config.absolutePositions) {
-    gameX += config.spawnPosition[0];
-    gameZ += config.spawnPosition[1];
-  }
-  
-  return [gameX, gameZ];
-}
-```
-
-#### Format Coordinates for Display
-```typescript
-export function formatCoordinates(
-  x: number,
-  z: number,
-  config: MapConfigData
-): string {
-  if (config.absolutePositions) {
-    return `[${x}, ${z}]`;
+export const formatCoordinates = (x: number, z: number): string => {
+  if (isAbsolutePositions()) {
+    // Display as-is: world coordinates
+    return `${Math.round(x)}, ${Math.round(z)}`;
   } else {
+    // Display as spawn-relative with directions
     const ew = x >= 0 ? 'E' : 'W';
-    const ns = z <= 0 ? 'N' : 'S';  // Remember: negative Z is North
-    return `${Math.abs(x)}${ew}, ${Math.abs(z)}${ns}`;
+    const ns = z <= 0 ? 'N' : 'S'; // Negative = North (due to flip)
+    return `${Math.abs(Math.round(x))}${ew}, ${Math.abs(Math.round(z))}${ns} from spawn`;
   }
-}
+};
 ```
 
-## Common Pitfalls
+### Frontend: MapContainer.vue
 
-### 1. Forgetting Z-Axis Flip
-
-❌ **Wrong:**
+**Tile URL Function:**
 ```typescript
-const mapY = gameZ;  // Wrong direction!
-```
+tileUrlFunction: (tileCoord) => {
+  const z = tileCoord[0] + 1; // Zoom level: OL 0->directory 1
+  const x = tileCoord[1];     // Tile X
+  const y = tileCoord[2];     // Tile Y (OpenLayers coordinate)
 
-✅ **Correct:**
-```typescript
-const mapY = -gameZ;  // Flip the axis
-```
-
-### 2. Confusing Relative and Absolute
-
-❌ **Wrong:**
-```csharp
-// Assuming always relative
-var mapX = gameX;
-var mapY = -gameZ;
-```
-
-✅ **Correct:**
-```csharp
-// Check mode first
-if (_config.AbsolutePositions) {
-    gameX -= spawnX;
-    gameZ -= spawnZ;
-}
-var mapX = gameX;
-var mapY = -gameZ;
-```
-
-### 3. Integer Division Errors
-
-❌ **Wrong:**
-```csharp
-int tileX = blockX / worldUnitsPerTile;  // Rounds toward zero
-// Block -100 / 256 = 0 (wrong!)
-```
-
-✅ **Correct:**
-```csharp
-int tileX = (int)Math.Floor((double)blockX / worldUnitsPerTile);
-// Block -100 / 256 = -1 (correct)
-```
-
-### 4. Off-by-One in Tile Ranges
-
-❌ **Wrong:**
-```csharp
-// Chunk covers blocks [0-31]
-int maxTileX = 31 / 256;  // 0 (wrong!)
-```
-
-✅ **Correct:**
-```csharp
-// Chunk covers blocks [0-31]
-int maxTileX = (31 + 1) / 256;  // Account for inclusive range
-```
-
-## Testing Coordinate Transformations
-
-### Unit Test Examples
-
-```csharp
-[Test]
-public void TestGameToMapCoordinate()
-{
-    // Relative mode
-    var result = GameToMap(100, -50, absolutePositions: false);
-    Assert.AreEqual((100, 50), result);
-    
-    // Absolute mode
-    var spawn = new Vec3d(512000, 0, 512000);
-    var result2 = GameToMap(512100, 511950, absolutePositions: true, spawn);
-    Assert.AreEqual((100, 50), result2);
-}
-
-[Test]
-public void TestBlockToTile()
-{
-    var result = BlockToTile(512100, 511900, zoom: 9, tileSize: 256, maxZoom: 9);
-    Assert.AreEqual((2000, 1999), result);
+  // OpenLayers Y is inverted from our Z
+  return `/tiles/${z}/${x}_${-y}.png`;
 }
 ```
 
-### Visual Testing
+**Note:** The `-y` flips OpenLayers Y axis to match our tile Z axis. This is **separate** from the spawn-relative Z flip.
 
-1. **Place marker at spawn** - Should appear at map center (0, 0)
-2. **Walk 100 blocks East** - Marker should move 100 units right
-3. **Walk 100 blocks North** - Marker should move 100 units up
-4. **Check tile boundaries** - Tiles should align with grid
+## Data Flow Example
 
-## Resources
+### Scenario: Map with spawn-relative coordinates enabled
 
-- [OpenLayers Coordinate Systems](https://openlayers.org/en/latest/apidoc/module-ol_proj.html)
-- [Web Mercator Projection](https://en.wikipedia.org/wiki/Web_Mercator_projection)
-- [Tile Map Service Specification](https://wiki.osgeo.org/wiki/Tile_Map_Service_Specification)
+**Step 1: Tile Generation**
+```
+Request: Generate tile z=9, tileX=2001, tileZ=2030
+ChunkDataExtractor calculates:
+- startChunkX = 2001 * 8 = 16008
+- startChunkZ = 2030 * 8 = 16240
+- Extracts chunks 16008-16015 (X) and 16240-16247 (Z)
+- Saves as: tiles/9/2001_2030.png
+```
 
-## See Also
+**Step 2: Config Generation**
+```
+MapConfigController calculates:
+- Absolute extent: MinX=508000, MinZ=515000, MaxX=516000, MaxZ=524000
+- Spawn: X=512000, Z=519500
+- Relative extent: MinX=-4000, MinZ=-4500, MaxX=4000, MaxZ=4500
+- With Z-flip: MinZ=-4500 (North), MaxZ=4500 (South)
+- Sends to frontend: worldExtent=[-4000, -4500, 4000, 4500]
+```
 
-- [Architecture Overview](architecture-overview.md)
-- [API Integration](api-integration.md)
-- [Tile Generation](../implementation/tile-generation.md)
-- [Map Configuration API](../api/map-config.md)
+**Step 3: Frontend Display**
+```
+OpenLayers view:
+- extent: [-4000, -4500, 4000, 4500]
+- Maps tile 2001_2030.png to display coordinates
+- User sees coordinates relative to spawn
+- Clicking at display (0, 0) shows "0E, 0N from spawn" = spawn position
+```
+
+## Switching Between Coordinate Modes
+
+### From Spawn-Relative to Absolute
+1. Update `ModConfig`: `AbsolutePositions = true`
+2. Restart server (or reload config if hot-reload supported)
+3. MapConfigController serves new extent values
+4. Frontend reloads, receives absolute extent
+5. **Same tiles used** - only display positioning changes
+
+### From Absolute to Spawn-Relative
+1. Update `ModConfig`: `AbsolutePositions = false`
+2. Restart server
+3. MapConfigController serves spawn-relative extent
+4. Frontend reloads, receives transformed extent
+5. **Same tiles used** - only display positioning changes
+
+## Testing Coordinate System
+
+### Verification Checklist
+
+**Backend Tests:**
+- [ ] Tile generated at spawn chunk has correct filename (absolute coordinates)
+- [ ] Tile filename doesn't change when switching coordinate modes
+- [ ] MapConfigController logs show correct transformation
+- [ ] Spawn position is correct in both modes
+
+**Frontend Tests:**
+- [ ] Map centers on spawn in spawn-relative mode
+- [ ] Clicking spawn shows (0, 0) in spawn-relative mode
+- [ ] Clicking spawn shows correct world coordinates in absolute mode
+- [ ] Tiles load correctly in both modes
+- [ ] North is up (negative Z in spawn-relative mode)
+
+**Integration Tests:**
+- [ ] Generate tiles in one mode, switch modes, verify tiles still work
+- [ ] Player position shows correctly in both modes
+- [ ] Markers (traders, translocators) position correctly in both modes
+
+## Common Issues and Solutions
+
+### Issue: Map not centering on spawn
+**Cause:** Extent transformation incorrect
+**Solution:** Check MapConfigController Z-flip logic (lines 177-179)
+
+### Issue: Tiles not loading
+**Cause:** Tile coordinates don't match filenames
+**Solution:** Verify ChunkDataExtractor uses absolute coordinates (no offset)
+
+### Issue: Coordinates show wrong direction
+**Cause:** Z-axis flip not applied or applied incorrectly
+**Solution:** Check formatCoordinates: `ns = z <= 0 ? 'N' : 'S'`
+
+### Issue: Tiles regenerate when switching modes
+**Cause:** ChunkDataExtractor applying coordinate-mode-dependent offset
+**Solution:** Remove offset logic, tiles should always use absolute coordinates
+
+## References
+
+- [Coordinate Systems Documentation](coordinate-systems.md) - Original design
+- [MapConfigController.cs](../../VintageAtlas/Web/API/MapConfigController.cs) - Backend transformation
+- [ChunkDataExtractor.cs](../../VintageAtlas/Export/ChunkDataExtractor.cs) - Tile generation
+- [mapConfig.ts](../../VintageAtlas/frontend/src/utils/mapConfig.ts) - Frontend display
 
 ---
 
-**Maintained by:** daviaaze  
-**Last Reviewed:** 2025-10-02
-
+**Fixed by:** daviaaze
+**Date:** 2025-10-02
+**Issue:** Double transformation causing spawn-relative mode to be offset incorrectly

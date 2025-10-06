@@ -1,6 +1,6 @@
 # VintageAtlas
 
-**A comprehensive mapping and server monitoring solution for Vintage Story**
+## A comprehensive mapping and server monitoring solution for Vintage Story
 
 [![Build Status](https://github.com/daviaaze/VintageAtlas/workflows/Build%20VintageAtlas/badge.svg)](https://github.com/daviaaze/VintageAtlas/actions)
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/daviaaze/VintageAtlas/releases)

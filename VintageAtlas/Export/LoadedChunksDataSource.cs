@@ -1,7 +1,6 @@
 using System.Threading.Tasks;
 using Vintagestory.API.Server;
 using VintageAtlas.Core;
-using VintageAtlas.Models;
 
 namespace VintageAtlas.Export;
 
@@ -10,30 +9,23 @@ namespace VintageAtlas.Export;
 /// Used for on-demand tile generation (web requests).
 /// Requires main thread access to read game state safely.
 /// </summary>
-public class LoadedChunksDataSource : IChunkDataSource
+public class LoadedChunksDataSource(ICoreServerAPI sapi, ModConfig config) : IChunkDataSource
 {
-    private readonly ICoreServerAPI _sapi;
-    private readonly ChunkDataExtractor _extractor;
+    private readonly ChunkDataExtractor _extractor = new(sapi, config);
 
     public string SourceName => "LoadedChunks";
     public bool RequiresMainThread => true;
 
-    public LoadedChunksDataSource(ICoreServerAPI sapi, ModConfig config)
-    {
-        _sapi = sapi;
-        _extractor = new ChunkDataExtractor(sapi, config);
-    }
-
     /// <summary>
-    /// Get chunks for a tile from loaded game state.
+    /// Get chunks for a tile from the loaded game state.
     /// This MUST be called from the main thread or via EnqueueMainThreadTask.
     /// </summary>
     public async Task<TileChunkData?> GetTileChunksAsync(int zoom, int tileX, int tileZ)
     {
-        // Always queue to main thread for safety
+        // Always queue to the main thread for safety
         var tcs = new TaskCompletionSource<TileChunkData?>();
         
-        _sapi.Event.EnqueueMainThreadTask(() =>
+        sapi.Event.EnqueueMainThreadTask(() =>
         {
             try
             {
@@ -42,7 +34,7 @@ public class LoadedChunksDataSource : IChunkDataSource
             }
             catch (System.Exception ex)
             {
-                _sapi.Logger.Error($"[VintageAtlas] LoadedChunksDataSource: Failed to extract tile data: {ex.Message}");
+                sapi.Logger.Error($"[VintageAtlas] LoadedChunksDataSource: Failed to extract tile data: {ex.Message}");
                 tcs.SetException(ex);
             }
         }, $"extract-tile-unified-{zoom}-{tileX}-{tileZ}");

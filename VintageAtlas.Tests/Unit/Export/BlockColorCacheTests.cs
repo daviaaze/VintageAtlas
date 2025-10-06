@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using Xunit;
 using FluentAssertions;
@@ -113,12 +112,8 @@ public class BlockColorCacheTests
     [Fact]
     public void GetColorByMaterial_WithKnownMaterial_ReturnsColor()
     {
-        // Arrange
-        var cache = new BlockColorCache(_mockApi.Object, _config);
-        cache.Initialize();
-
         // Act
-        var color = cache.GetColorByMaterial(EnumBlockMaterial.Stone);
+        var color = BlockColorCache.GetColorByMaterial(EnumBlockMaterial.Stone);
 
         // Assert
         color.Should().NotBe(0);

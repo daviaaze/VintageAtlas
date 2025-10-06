@@ -32,19 +32,19 @@ public static class ConfigValidator
             errors.Add($"TileSize ({config.TileSize}) must be evenly divisible by 32");
         }
 
-        if (config.TileSize < 32 || config.TileSize > 1024)
+        if (config.TileSize is < 32 or > 1024)
         {
             errors.Add($"TileSize ({config.TileSize}) must be between 32 and 1024");
         }
 
         // Zoom level validation
-        if (config.BaseZoomLevel < 1 || config.BaseZoomLevel > 15)
+        if (config.BaseZoomLevel is < 1 or > 15)
         {
             errors.Add($"BaseZoomLevel ({config.BaseZoomLevel}) must be between 1 and 15");
         }
 
         // Parallelism validation
-        if (config.MaxDegreeOfParallelism < -1 || config.MaxDegreeOfParallelism == 0)
+        if (config.MaxDegreeOfParallelism is < -1 or 0)
         {
             errors.Add($"MaxDegreeOfParallelism must be -1 (auto) or a positive number");
         }
@@ -52,36 +52,24 @@ public static class ConfigValidator
         // Web server validation
         if (config.EnableLiveServer)
         {
-            if (config.LiveServerPort.HasValue)
+            if (config.LiveServerPort is < 1 or > 65535)
             {
-                if (config.LiveServerPort.Value < 1 || config.LiveServerPort.Value > 65535)
-                {
-                    errors.Add($"LiveServerPort ({config.LiveServerPort.Value}) must be between 1 and 65535");
-                }
+                errors.Add($"LiveServerPort ({config.LiveServerPort.Value}) must be between 1 and 65535");
             }
 
-            if (config.MaxConcurrentRequests.HasValue)
+            if (config.MaxConcurrentRequests is < 1 or > 1000)
             {
-                if (config.MaxConcurrentRequests.Value < 1 || config.MaxConcurrentRequests.Value > 1000)
-                {
-                    errors.Add($"MaxConcurrentRequests ({config.MaxConcurrentRequests.Value}) must be between 1 and 1000");
-                }
+                errors.Add($"MaxConcurrentRequests ({config.MaxConcurrentRequests.Value}) must be between 1 and 1000");
             }
 
-            if (config.MaxConcurrentTileRequests.HasValue)
+            if (config.MaxConcurrentTileRequests is < 10 or > 2000)
             {
-                if (config.MaxConcurrentTileRequests.Value < 10 || config.MaxConcurrentTileRequests.Value > 2000)
-                {
-                    errors.Add($"MaxConcurrentTileRequests ({config.MaxConcurrentTileRequests.Value}) must be between 10 and 2000");
-                }
+                errors.Add($"MaxConcurrentTileRequests ({config.MaxConcurrentTileRequests.Value}) must be between 10 and 2000");
             }
 
-            if (config.MaxConcurrentStaticRequests.HasValue)
+            if (config.MaxConcurrentStaticRequests is < 10 or > 1000)
             {
-                if (config.MaxConcurrentStaticRequests.Value < 10 || config.MaxConcurrentStaticRequests.Value > 1000)
-                {
-                    errors.Add($"MaxConcurrentStaticRequests ({config.MaxConcurrentStaticRequests.Value}) must be between 10 and 1000");
-                }
+                errors.Add($"MaxConcurrentStaticRequests ({config.MaxConcurrentStaticRequests.Value}) must be between 10 and 1000");
             }
 
             if (config.MapExportIntervalMs < 10000)
@@ -91,21 +79,18 @@ public static class ConfigValidator
         }
 
         // Historical tracking validation
-        if (config.EnableHistoricalTracking)
+        if (config is { EnableHistoricalTracking: true, HistoricalTickIntervalMs: < 1000 })
         {
-            if (config.HistoricalTickIntervalMs < 1000)
-            {
-                errors.Add($"HistoricalTickIntervalMs ({config.HistoricalTickIntervalMs}) should be at least 1000ms (1 second)");
-            }
+            errors.Add($"HistoricalTickIntervalMs ({config.HistoricalTickIntervalMs}) should be at least 1000ms (1 second)");
         }
 
         // Feature dependency validation
-        if (config.CreateZoomLevels && !config.ExtractWorldMap)
+        if (config is { CreateZoomLevels: true, ExtractWorldMap: false })
         {
             errors.Add("CreateZoomLevels requires ExtractWorldMap to be enabled (it generates zoom levels from the base map tiles)");
         }
 
-        if (config.ExportHeightmap && !config.ExtractWorldMap)
+        if (config is { ExportHeightmap: true, ExtractWorldMap: false })
         {
             errors.Add("ExportHeightmap requires ExtractWorldMap to be enabled");
         }
@@ -131,10 +116,10 @@ public static class ConfigValidator
             config.MaxDegreeOfParallelism = Environment.ProcessorCount;
         }
 
-        // Ensure base path format
-        if (!config.BasePath.StartsWith("/"))
+        // Ensure the base path format
+        if (!config.BasePath.StartsWith('/'))
         {
-            config.BasePath = "/" + config.BasePath;
+            config.BasePath = $"/{config.BasePath}";
         }
     }
 }

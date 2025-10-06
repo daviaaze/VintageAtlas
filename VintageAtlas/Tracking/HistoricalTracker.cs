@@ -16,16 +16,16 @@ namespace VintageAtlas.Tracking
     /// Historical data tracker using SQLite for persistence
     /// Tracks player positions, entity census, server stats, and events
     /// </summary>
-    public class HistoricalTracker(ICoreServerAPI sapi) : IHistoricalTracker
+    public class HistoricalTracker(ICoreServerAPI sapi) : IHistoricalTracker, IDisposable
     {
         private SqliteConnection? _metricsDb;
         private long _lastPlayerSnapshot;
         private long _lastCensusSnapshot;
         private long _lastStatsSnapshot;
-        private const int PLAYER_SNAPSHOT_INTERVAL_MS = 15000; // 15 seconds
-        private const int CENSUS_SNAPSHOT_INTERVAL_MS = 60000; // 1 minute
-        private const int STATS_SNAPSHOT_INTERVAL_MS = 30000;  // 30 seconds
-        private const int MAX_POSITIONS_PER_PLAYER = 10000; // Limit history per player
+        private const int PlayerSnapshotIntervalMs = 15000; // 15 seconds
+        private const int CensusSnapshotIntervalMs = 60000; // 1 minute
+        private const int StatsSnapshotIntervalMs = 30000;  // 30 seconds
+        private const int MaxPositionsPerPlayer = 10000; // Limit history per player
 
         public void Initialize()
         {
@@ -145,7 +145,7 @@ namespace VintageAtlas.Tracking
             try
             {
                 // Player position snapshots
-                if (now - _lastPlayerSnapshot > PLAYER_SNAPSHOT_INTERVAL_MS)
+                if (now - _lastPlayerSnapshot > PlayerSnapshotIntervalMs)
                 {
                     RecordPlayerPositions();
                     _lastPlayerSnapshot = now;
@@ -153,14 +153,14 @@ namespace VintageAtlas.Tracking
                 }
 
                 // Entity census
-                if (now - _lastCensusSnapshot > CENSUS_SNAPSHOT_INTERVAL_MS)
+                if (now - _lastCensusSnapshot > CensusSnapshotIntervalMs)
                 {
                     RecordEntityCensus();
                     _lastCensusSnapshot = now;
                 }
 
                 // Server stats
-                if (now - _lastStatsSnapshot > STATS_SNAPSHOT_INTERVAL_MS)
+                if (now - _lastStatsSnapshot > StatsSnapshotIntervalMs)
                 {
                     RecordServerStats();
                     _lastStatsSnapshot = now;
@@ -183,11 +183,13 @@ namespace VintageAtlas.Tracking
             {
                 var cmd = _metricsDb.CreateCommand();
                 cmd.Transaction = transaction;
-                cmd.CommandText = @"
-                    INSERT INTO player_positions 
-                    (timestamp, player_uid, player_name, x, y, z, health, max_health, hunger, max_hunger, temperature, body_temp)
-                    VALUES (@ts, @uid, @name, @x, @y, @z, @health, @maxHealth, @hunger, @maxHunger, @temp, @bodyTemp)
-                ";
+                cmd.CommandText = """
+
+                                                      INSERT INTO player_positions 
+                                                      (timestamp, player_uid, player_name, x, y, z, health, max_health, hunger, max_hunger, temperature, body_temp)
+                                                      VALUES (@ts, @uid, @name, @x, @y, @z, @health, @maxHealth, @hunger, @maxHunger, @temp, @bodyTemp)
+                                                  
+                                  """;
 
                 var recorded = 0;
                 foreach (var player in sapi.World.AllOnlinePlayers)
@@ -249,16 +251,18 @@ namespace VintageAtlas.Tracking
             // Group entities by type
             foreach (var entity in sapi.World.LoadedEntities.Values)
             {
-                if (entity == null || !entity.Alive) continue;
+                if (entity is not { Alive: true }) continue;
                 if (entity is EntityPlayer) continue;
-                if (!(entity is EntityAgent)) continue;
+                if (entity is not EntityAgent) continue;
 
                 var typeCode = entity.Code?.ToString() ?? "unknown";
-                if (!entityGroups.ContainsKey(typeCode))
+                if (!entityGroups.TryGetValue(typeCode, out var value))
                 {
-                    entityGroups[typeCode] = new List<Entity>();
+                    value = [];
+                    entityGroups[typeCode] = value;
                 }
-                entityGroups[typeCode].Add(entity);
+
+                value.Add(entity);
             }
 
             using var transaction = _metricsDb.BeginTransaction();
@@ -266,15 +270,16 @@ namespace VintageAtlas.Tracking
             {
                 var cmd = _metricsDb.CreateCommand();
                 cmd.Transaction = transaction;
-                cmd.CommandText = @"
-                    INSERT INTO entity_census 
-                    (timestamp, entity_type, count, avg_health, min_x, max_x, min_z, max_z)
-                    VALUES (@ts, @type, @count, @avgHealth, @minX, @maxX, @minZ, @maxZ)
-                ";
+                cmd.CommandText = """
 
-                foreach (var group in entityGroups)
+                                                      INSERT INTO entity_census 
+                                                      (timestamp, entity_type, count, avg_health, min_x, max_x, min_z, max_z)
+                                                      VALUES (@ts, @type, @count, @avgHealth, @minX, @maxX, @minZ, @maxZ)
+                                                  
+                                  """;
+
+                foreach (var (key, entities) in entityGroups)
                 {
-                    var entities = group.Value;
                     var healthValues = new List<double>();
                     double minX = double.MaxValue, maxX = double.MinValue;
                     double minZ = double.MaxValue, maxZ = double.MinValue;
@@ -295,9 +300,9 @@ namespace VintageAtlas.Tracking
 
                     cmd.Parameters.Clear();
                     cmd.Parameters.AddWithValue("@ts", timestamp);
-                    cmd.Parameters.AddWithValue("@type", group.Key);
+                    cmd.Parameters.AddWithValue("@type", key);
                     cmd.Parameters.AddWithValue("@count", entities.Count);
-                    cmd.Parameters.AddWithValue("@avgHealth", healthValues.Any() ? healthValues.Average() : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@avgHealth", healthValues.Count != 0 ? healthValues.Average() : DBNull.Value);
                     cmd.Parameters.AddWithValue("@minX", minX != double.MaxValue ? minX : DBNull.Value);
                     cmd.Parameters.AddWithValue("@maxX", maxX != double.MinValue ? maxX : DBNull.Value);
                     cmd.Parameters.AddWithValue("@minZ", minZ != double.MaxValue ? minZ : DBNull.Value);
@@ -402,7 +407,7 @@ namespace VintageAtlas.Tracking
                         ) WHERE rn > @limit
                     )
                 ";
-                cmd.Parameters.AddWithValue("@limit", MAX_POSITIONS_PER_PLAYER);
+                cmd.Parameters.AddWithValue("@limit", MaxPositionsPerPlayer);
                 var deleted = cmd.ExecuteNonQuery();
                 
                 if (deleted > 0)
@@ -723,13 +728,21 @@ namespace VintageAtlas.Tracking
 
         public void Dispose()
         {
-            if (_metricsDb != null)
-            {
-                sapi.Logger.Notification("[VintageAtlas] Shutting down historical tracker");
-                _metricsDb.Close();
-                _metricsDb.Dispose();
-                _metricsDb = null;
-            }
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        private void Dispose(bool disposing)
+        {
+            if (!disposing) 
+                return;
+            if (_metricsDb is null)
+                return;
+            
+            sapi.Logger.Notification("[VintageAtlas] Shutting down historical tracker");
+            _metricsDb.Close();
+            _metricsDb.Dispose();
+            _metricsDb = null;
         }
     }
 }

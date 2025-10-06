@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
-using Vintagestory.API.Common;
 using Vintagestory.API.Server;
 using VintageAtlas.Core;
 using VintageAtlas.Export;
@@ -19,33 +18,21 @@ namespace VintageAtlas.Web.API;
 /// Provides dynamic map configuration (extent, center, zoom levels, etc.)
 /// Replaces hardcoded values in frontend mapConfig.ts
 /// </summary>
-public class MapConfigController
+public class MapConfigController(ICoreServerAPI sapi, ModConfig config, ITileGenerator tileGenerator)
 {
-    private readonly ICoreServerAPI _sapi;
-    private readonly ModConfig _config;
-    private readonly ITileGenerator _tileGenerator;
-    private readonly JsonSerializerSettings _jsonSettings;
+    private readonly JsonSerializerSettings _jsonSettings = new()
+    {
+        ContractResolver = new DefaultContractResolver
+        {
+            NamingStrategy = new CamelCaseNamingStrategy()
+        },
+        Formatting = Formatting.Indented,
+        NullValueHandling = NullValueHandling.Ignore
+    };
     
     private MapConfigData? _cachedConfig;
     private long _lastConfigUpdate;
     private readonly object _cacheLock = new();
-
-    public MapConfigController(ICoreServerAPI sapi, ModConfig config, ITileGenerator tileGenerator)
-    {
-        _sapi = sapi;
-        _config = config;
-        _tileGenerator = tileGenerator;
-        
-        _jsonSettings = new JsonSerializerSettings
-        {
-            ContractResolver = new DefaultContractResolver
-            {
-                NamingStrategy = new CamelCaseNamingStrategy()
-            },
-            Formatting = Formatting.Indented,
-            NullValueHandling = NullValueHandling.Ignore
-        };
-    }
 
     /// <summary>
     /// Serve map configuration as JSON
@@ -54,8 +41,8 @@ public class MapConfigController
     {
         try
         {
-            var config = GetMapConfig();
-            var json = JsonConvert.SerializeObject(config, _jsonSettings);
+            var mapConfig = GetMapConfig();
+            var json = JsonConvert.SerializeObject(mapConfig, _jsonSettings);
             var bytes = Encoding.UTF8.GetBytes(json);
             
             context.Response.StatusCode = 200;
@@ -63,15 +50,15 @@ public class MapConfigController
             context.Response.ContentLength64 = bytes.Length;
             context.Response.Headers.Add("Cache-Control", "public, max-age=300"); // Cache for 5 minutes
             
-            await context.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+            await context.Response.OutputStream.WriteAsync(bytes);
             context.Response.Close();
             
-            _sapi.Logger.Debug("[VintageAtlas] Map config served via API");
+            sapi.Logger.Debug("[VintageAtlas] Map config served via API");
         }
         catch (Exception ex)
         {
-            _sapi.Logger.Error($"[VintageAtlas] Error serving map config: {ex.Message}");
-            await ServeError(context, "Failed to get map configuration", 500);
+            sapi.Logger.Error($"[VintageAtlas] Error serving map config: {ex.Message}");
+            await ServeError(context, "Failed to get map configuration");
         }
     }
 
@@ -90,25 +77,25 @@ public class MapConfigController
             context.Response.ContentType = "application/json";
             context.Response.ContentLength64 = bytes.Length;
             
-            await context.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+            await context.Response.OutputStream.WriteAsync(bytes);
             context.Response.Close();
         }
         catch (Exception ex)
         {
-            _sapi.Logger.Error($"[VintageAtlas] Error serving world extent: {ex.Message}");
-            await ServeError(context, "Failed to calculate world extent", 500);
+            sapi.Logger.Error($"[VintageAtlas] Error serving world extent: {ex.Message}");
+            await ServeError(context, "Failed to calculate world extent");
         }
     }
 
     private MapConfigData GetMapConfig()
     {
-        // Check if world is ready (can be null during early startup)
-        if (_sapi.World?.BlockAccessor == null)
+        // Check if the world is ready (can be null during early startup)
+        if (sapi.World?.BlockAccessor == null)
         {
             throw new InvalidOperationException("World not yet initialized");
         }
         
-        var now = _sapi.World.ElapsedMilliseconds;
+        var now = sapi.World.ElapsedMilliseconds;
         
         lock (_cacheLock)
         {
@@ -119,15 +106,15 @@ public class MapConfigController
             }
         }
 
-        var config = GenerateMapConfig();
+        var mapConfig = GenerateMapConfig();
         
         lock (_cacheLock)
         {
-            _cachedConfig = config;
+            _cachedConfig = mapConfig;
             _lastConfigUpdate = now;
         }
 
-        return config;
+        return mapConfig;
     }
 
     private MapConfigData GenerateMapConfig()
@@ -138,8 +125,8 @@ public class MapConfigController
         var spawn = GetSpawnPosition();
         
         // Calculate resolutions for OpenLayers
-        var tileResolutions = GenerateResolutions(_config.BaseZoomLevel);
-        var viewResolutions = GenerateResolutions(_config.BaseZoomLevel + 3); // Extra zoom for smooth viewing
+        var tileResolutions = GenerateResolutions(config.BaseZoomLevel);
+        var viewResolutions = GenerateResolutions(config.BaseZoomLevel + 3); // Extra zoom for smooth viewing
 
         // Transform extent to relative coordinates if needed
         // COORDINATE SYSTEM DESIGN:
@@ -164,19 +151,19 @@ public class MapConfigController
         int[] worldExtent = [extent.MinX, -extent.MaxZ, extent.MaxX, -extent.MinZ];
         int[] worldOrigin = [extent.MinX, -extent.MinZ];  // Top-left (northwest)
         
-        _sapi.Logger.Debug($"[VintageAtlas] Absolute extent with Z-flip: " +
+        sapi.Logger.Debug($"[VintageAtlas] Absolute extent with Z-flip: " +
             $"extent=[{worldExtent[0]}, {worldExtent[1]}, {worldExtent[2]}, {worldExtent[3]}], " +
             $"origin=[{worldOrigin[0]}, {worldOrigin[1]}]");
         
         // Calculate which absolute tile the origin maps to
         // Origin is at [extent.MinX, -extent.MinZ] in flipped coords
         // Un-flip Z to get game coords: [extent.MinX, extent.MinZ]
-        var originTileX = (int)Math.Floor((double)extent.MinX / _config.TileSize);
-        var originTileZ = (int)Math.Floor((double)extent.MinZ / _config.TileSize);
+        var originTileX = (int)Math.Floor((double)extent.MinX / config.TileSize);
+        var originTileZ = (int)Math.Floor((double)extent.MinZ / config.TileSize);
         
         int[] tileOffset = [originTileX, originTileZ];
         
-        _sapi.Logger.Debug($"[VintageAtlas] Tile offset: origin blocks=({extent.MinX},{extent.MinZ}), " +
+        sapi.Logger.Debug($"[VintageAtlas] Tile offset: origin blocks=({extent.MinX},{extent.MinZ}), " +
             $"origin tiles=({originTileX},{originTileZ})");
         
         return new MapConfigData
@@ -191,48 +178,48 @@ public class MapConfigController
             
             // Zoom configuration
             MinZoom = 0,
-            MaxZoom = _config.BaseZoomLevel,
-            BaseZoomLevel = _config.BaseZoomLevel,
+            MaxZoom = config.BaseZoomLevel,
+            BaseZoomLevel = config.BaseZoomLevel,
             
             // Tile configuration
-            TileSize = _config.TileSize,
+            TileSize = config.TileSize,
             TileResolutions = tileResolutions,
             ViewResolutions = viewResolutions,
             TileOffset = tileOffset,  // Tile coordinate offset for spawn-relative mode
             
             // Map metadata
             SpawnPosition = spawn,
-            MapSizeX = _sapi.World.BlockAccessor.MapSizeX,
-            MapSizeZ = _sapi.World.BlockAccessor.MapSizeZ,
-            MapSizeY = _sapi.World.BlockAccessor.MapSizeY,
+            MapSizeX = sapi.World.BlockAccessor.MapSizeX,
+            MapSizeZ = sapi.World.BlockAccessor.MapSizeZ,
+            MapSizeY = sapi.World.BlockAccessor.MapSizeY,
             
             // Tile availability
             TileStats = tileStats,
             
             // Server info
-            ServerName = _sapi.Server.Config.ServerName,
-            WorldName = _sapi.World.SavegameIdentifier,
+            ServerName = sapi.Server.Config.ServerName,
+            WorldName = sapi.World.SavegameIdentifier,
             
             // Coordinate system
-            AbsolutePositions = _config.AbsolutePositions
+            AbsolutePositions = config.AbsolutePositions
         };
     }
 
     private WorldExtentData CalculateWorldExtent()
     {
         // STEP 1: Try MBTiles first (fast if tiles exist)
-        _sapi.Logger.Debug($"[VintageAtlas] MapConfig: Querying tile extent for zoom {_config.BaseZoomLevel}...");
-        var tileExtent = _tileGenerator.GetTileExtentAsync(_config.BaseZoomLevel).GetAwaiter().GetResult();
+        sapi.Logger.Debug($"[VintageAtlas] MapConfig: Querying tile extent for zoom {config.BaseZoomLevel}...");
+        var tileExtent = tileGenerator.GetTileExtentAsync(config.BaseZoomLevel).GetAwaiter().GetResult();
         
         if (tileExtent != null)
         {
             // Tiles exist - calculate extent from them
-            _sapi.Logger.Debug($"[VintageAtlas] MapConfig: Found tile extent: ({tileExtent.MinX},{tileExtent.MinY})-({tileExtent.MaxX},{tileExtent.MaxY})");
+            sapi.Logger.Debug($"[VintageAtlas] MapConfig: Found tile extent: ({tileExtent.MinX},{tileExtent.MinY})-({tileExtent.MaxX},{tileExtent.MaxY})");
             return CalculateExtentFromTiles(tileExtent);
         }
 
         // STEP 2: No tiles yet - query savegame database for actual chunk positions
-        _sapi.Logger.Warning("[VintageAtlas] MapConfig: No tiles in MBTiles database, querying savegame for chunk extent...");
+        sapi.Logger.Warning("[VintageAtlas] MapConfig: No tiles in MBTiles database, querying savegame for chunk extent...");
         
         return CalculateExtentFromSavegame();
     }
@@ -241,7 +228,7 @@ public class MapConfigController
     {
         // Convert tile coordinates to world coordinates
         const int chunkSize = 32;
-        var chunksPerTile = _config.TileSize / chunkSize;
+        var chunksPerTile = config.TileSize / chunkSize;
         var worldUnitsPerTile = chunksPerTile * chunkSize;
         
         var minX = tileExtent.MinX * worldUnitsPerTile;
@@ -249,7 +236,7 @@ public class MapConfigController
         var minZ = tileExtent.MinY * worldUnitsPerTile;
         var maxZ = (tileExtent.MaxY + 1) * worldUnitsPerTile;
         
-        _sapi.Logger.Debug($"[VintageAtlas] Calculated extent from MBTiles database: " +
+        sapi.Logger.Debug($"[VintageAtlas] Calculated extent from MBTiles database: " +
             $"Tiles: ({tileExtent.MinX},{tileExtent.MinY})-({tileExtent.MaxX},{tileExtent.MaxY}), " +
             $"World coords: ({minX},{minZ})-({maxX},{maxZ})");
         
@@ -271,7 +258,7 @@ public class MapConfigController
             
             if (chunkPositions.Count == 0)
             {
-                _sapi.Logger.Debug("[VintageAtlas] No chunks found in savegame, using spawn fallback extent");
+                sapi.Logger.Debug("[VintageAtlas] No chunks found in savegame, using spawn fallback extent");
                 return GetSpawnFallbackExtent();
             }
             
@@ -287,7 +274,7 @@ public class MapConfigController
             var minZ = minChunkZ * chunkSize;
             var maxZ = (maxChunkZ + 1) * chunkSize;
             
-            _sapi.Logger.Debug($"[VintageAtlas] Calculated extent from savegame database: " +
+            sapi.Logger.Debug($"[VintageAtlas] Calculated extent from savegame database: " +
                 $"Chunks: ({minChunkX},{minChunkZ})-({maxChunkX},{maxChunkZ}), " +
                 $"World coords: ({minX},{minZ})-({maxX},{maxZ})");
             
@@ -301,8 +288,8 @@ public class MapConfigController
         }
         catch (Exception ex)
         {
-            _sapi.Logger.Error($"[VintageAtlas] Failed to query savegame database: {ex.Message}");
-            _sapi.Logger.Debug($"[VintageAtlas] Stack trace: {ex.StackTrace}");
+            sapi.Logger.Error($"[VintageAtlas] Failed to query savegame database: {ex.Message}");
+            sapi.Logger.Debug($"[VintageAtlas] Stack trace: {ex.StackTrace}");
             return GetSpawnFallbackExtent();
         }
     }
@@ -312,17 +299,17 @@ public class MapConfigController
         var positions = new List<(int x, int z)>();
         
         // Get savegame database path
-        var savegamePath = _sapi.World.SavegameIdentifier;
-        var dataPath = _sapi.GetOrCreateDataPath("Saves");
+        var savegamePath = sapi.World.SavegameIdentifier;
+        var dataPath = sapi.GetOrCreateDataPath("Saves");
         var dbPath = Path.Combine(dataPath, savegamePath, "default.vcdbs");
         
         if (!File.Exists(dbPath))
         {
-            _sapi.Logger.Warning($"[VintageAtlas] Savegame database not found at: {dbPath}");
+            sapi.Logger.Warning($"[VintageAtlas] Savegame database not found at: {dbPath}");
             return positions;
         }
         
-        _sapi.Logger.Debug($"[VintageAtlas] Querying savegame database: {dbPath}");
+        sapi.Logger.Debug($"[VintageAtlas] Querying savegame database: {dbPath}");
         
         var connectionString = $"Data Source={dbPath};Mode=ReadOnly";
         
@@ -339,16 +326,16 @@ public class MapConfigController
             
             // Decode position using Vintage Story's chunk index format
             // From ChunkPos.FromChunkIndex_saveGamev2
-            var mapSizeX = _sapi.World.BlockAccessor.MapSizeX / 32;
-            var mapSizeZ = _sapi.World.BlockAccessor.MapSizeZ / 32;
+            var mapSizeX = sapi.World.BlockAccessor.MapSizeX / 32;
+            var mapSizeZ = sapi.World.BlockAccessor.MapSizeZ / 32;
             
             var chunkX = (int)(position % mapSizeX);
-            var chunkZ = (int)((position / mapSizeX) % mapSizeZ);
+            var chunkZ = (int)(position / mapSizeX % mapSizeZ);
             
             positions.Add((chunkX, chunkZ));
         }
         
-        _sapi.Logger.Debug($"[VintageAtlas] Found {positions.Count} chunks in savegame database");
+        sapi.Logger.Debug($"[VintageAtlas] Found {positions.Count} chunks in savegame database");
         
         return positions;
     }
@@ -358,7 +345,7 @@ public class MapConfigController
         var spawn = GetSpawnPosition();
         const int fallbackRadius = 10000; // 10km radius around spawn
         
-        _sapi.Logger.Debug($"[VintageAtlas] Using spawn fallback extent: ±{fallbackRadius} blocks around spawn ({spawn[0]}, {spawn[1]})");
+        sapi.Logger.Debug($"[VintageAtlas] Using spawn fallback extent: ±{fallbackRadius} blocks around spawn ({spawn[0]}, {spawn[1]})");
         
         return new WorldExtentData
         {
@@ -374,7 +361,7 @@ public class MapConfigController
         // Use spawn position or center of tile coverage
         var spawn = GetSpawnPosition();
         
-        if (_config.AbsolutePositions)
+        if (config.AbsolutePositions)
         {
             return [spawn[0], spawn[1]];
         }
@@ -388,19 +375,19 @@ public class MapConfigController
     private int CalculateDefaultZoom()
     {
         // Default to mid-range zoom (good balance between overview and detail)
-        return Math.Max(1, _config.BaseZoomLevel - 2);
+        return Math.Max(1, config.BaseZoomLevel - 2);
     }
 
     private int[] GetSpawnPosition()
     {
-        var spawnPos = _sapi.World.DefaultSpawnPosition?.AsBlockPos;
-        var spawnX = spawnPos?.X ?? _sapi.World.BlockAccessor.MapSizeX / 2;
-        var spawnZ = spawnPos?.Z ?? _sapi.World.BlockAccessor.MapSizeZ / 2;
+        var spawnPos = sapi.World.DefaultSpawnPosition?.AsBlockPos;
+        var spawnX = spawnPos?.X ?? sapi.World.BlockAccessor.MapSizeX / 2;
+        var spawnZ = spawnPos?.Z ?? sapi.World.BlockAccessor.MapSizeZ / 2;
         
         return [spawnX, spawnZ];
     }
 
-    private double[] GenerateResolutions(int maxZoom)
+    private static double[] GenerateResolutions(int maxZoom)
     {
         // Generate resolutions for zooms 0 through maxZoom (inclusive)
         // Need maxZoom + 1 elements for all zoom levels
@@ -419,25 +406,25 @@ public class MapConfigController
     {
         var stats = new TileStatistics
         {
-            ZoomLevels = new System.Collections.Generic.Dictionary<int, ZoomLevelStats>()
+            ZoomLevels = new Dictionary<int, ZoomLevelStats>()
         };
 
-        for (var zoom = 1; zoom <= _config.BaseZoomLevel; zoom++)
+        for (var zoom = 1; zoom <= config.BaseZoomLevel; zoom++)
         {
-            var zoomDir = Path.Combine(_config.OutputDirectoryWorld, zoom.ToString());
+            var zoomDir = Path.Combine(config.OutputDirectoryWorld, zoom.ToString());
+
+            if (!Directory.Exists(zoomDir)) 
+                continue;
             
-            if (Directory.Exists(zoomDir))
-            {
-                var tileCount = Directory.GetFiles(zoomDir, "*.png").Length;
-                var dirInfo = new DirectoryInfo(zoomDir);
-                var totalSize = dirInfo.GetFiles("*.png").Sum(f => f.Length);
+            var tileCount = Directory.GetFiles(zoomDir, "*.png").Length;
+            var dirInfo = new DirectoryInfo(zoomDir);
+            var totalSize = dirInfo.GetFiles("*.png").Sum(f => f.Length);
                 
-                stats.ZoomLevels[zoom] = new ZoomLevelStats
-                {
-                    TileCount = tileCount,
-                    TotalSizeBytes = totalSize
-                };
-            }
+            stats.ZoomLevels[zoom] = new ZoomLevelStats
+            {
+                TileCount = tileCount,
+                TotalSizeBytes = totalSize
+            };
         }
 
         stats.TotalTiles = stats.ZoomLevels.Values.Sum(z => z.TileCount);
@@ -456,7 +443,7 @@ public class MapConfigController
             _cachedConfig = null;
         }
         
-        _sapi.Logger.Debug("[VintageAtlas] Map config cache invalidated");
+        sapi.Logger.Debug("[VintageAtlas] Map config cache invalidated");
     }
 
     private async Task ServeError(HttpListenerContext context, string message, int statusCode = 500)
@@ -470,7 +457,7 @@ public class MapConfigController
             var errorBytes = Encoding.UTF8.GetBytes(errorJson);
             
             context.Response.ContentLength64 = errorBytes.Length;
-            await context.Response.OutputStream.WriteAsync(errorBytes, 0, errorBytes.Length);
+            await context.Response.OutputStream.WriteAsync(errorBytes);
             context.Response.Close();
         }
         catch
@@ -523,7 +510,7 @@ public class TileStatistics
 {
     public int TotalTiles { get; set; }
     public long TotalSizeBytes { get; set; }
-    public System.Collections.Generic.Dictionary<int, ZoomLevelStats> ZoomLevels { get; set; } = new();
+    public Dictionary<int, ZoomLevelStats> ZoomLevels { get; set; } = new();
 }
 
 public class ZoomLevelStats

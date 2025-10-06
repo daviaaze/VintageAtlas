@@ -27,13 +27,13 @@ public class ModConfig
     public string OutputDirectoryGeojson { get; set; } = "";
     
     /// <summary>
-    /// Extract the world topmost blocklayer as images
+    /// Extract the world's topmost blocklayer as images
     /// Default: true
     /// </summary>
     public bool ExtractWorldMap { get; set; } = true;
     
     /// <summary>
-    /// Fix white lines on in-game map by rebuilding the rain map
+    /// Fix white lines on the in-game map by rebuilding the rain map
     /// Default: false
     /// </summary>
     public bool FixWhiteLines { get; set; } = false;
@@ -156,10 +156,10 @@ public class ModConfig
     /// Enable CORS for API endpoints
     /// Default: true
     /// </summary>
-    public bool EnableCORS { get; set; } = true;
+    public bool EnableCors { get; set; } = true;
     
     /// <summary>
-    /// Auto-export map data periodically when live server is running
+    /// Auto-export map data periodically when a live server is running
     /// Default: true
     /// </summary>
     public bool AutoExportMap { get; set; } = true;

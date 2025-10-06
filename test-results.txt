@@ -1,0 +1,421 @@
+warning: Git tree '/home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas' is dirty
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  VintageAtlas -> /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas/bin/Debug/Mods/vintageatlas/VintageAtlas.dll
+  VintageAtlas.Tests -> /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/bin/Debug/net8.0/VintageAtlas.Tests.dll
+Test run for /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/bin/Debug/net8.0/VintageAtlas.Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.0+6438bb880a (64-bit .NET 8.0.20)
+[xUnit.net 00:00:00.10]   Discovering: VintageAtlas.Tests
+[xUnit.net 00:00:00.17]   Discovered:  VintageAtlas.Tests
+[xUnit.net 00:00:00.18]   Starting:    VintageAtlas.Tests
+  Passed VintageAtlas.Tests.Unit.Export.BlurToolTests.Blur_WithDifferentRanges_AffectsNeighbors(range: 2) [13 ms]
+  Passed VintageAtlas.Tests.Unit.Models.TileResultTests.ContentType_CanBeChanged [13 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.Validate_WithValidConfig_ReturnsNoErrors [13 ms]
+  Passed VintageAtlas.Tests.Unit.Export.BlurToolTests.Blur_WithDifferentRanges_AffectsNeighbors(range: 4) [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.BlurToolTests.Blur_WithDifferentRanges_AffectsNeighbors(range: 3) [< 1 ms]
+  Passed VintageAtlas.Tests.Integration.TileGeneratorIntegrationTests.IChunkDataSource_BothImplementations_ShareSameInterface [22 ms]
+  Passed VintageAtlas.Tests.Integration.TileGeneratorIntegrationTests.IChunkDataSource_InterfaceAllowsSwapping_BetweenImplementations [6 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.Validate_WithMultipleErrors_ReturnsAllErrors [10 ms]
+  Passed VintageAtlas.Tests.Unit.Export.BlurToolTests.Blur_WithSmallImage_HandlesEdgesCorrectly [10 ms]
+  Passed VintageAtlas.Tests.Unit.Export.BlurToolTests.Blur_WithGradient_ModifiesData [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.BlurToolTests.Blur_WithSingleBrightPixel_SpreadsBrightness [1 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.Validate_WithInvalidBaseZoomLevel_ReturnsErrors(zoomLevel: 0) [3 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.Validate_WithInvalidBaseZoomLevel_ReturnsErrors(zoomLevel: -1) [1 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.Validate_WithInvalidBaseZoomLevel_ReturnsErrors(zoomLevel: 20) [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.Validate_WithInvalidBaseZoomLevel_ReturnsErrors(zoomLevel: 16) [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.Validate_WithInvalidTileSize_ReturnsErrors(tileSize: 31) [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.Validate_WithInvalidTileSize_ReturnsErrors(tileSize: 100) [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.Validate_WithInvalidTileSize_ReturnsErrors(tileSize: 2000) [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.Validate_WithValidTileSize_ReturnsNoErrors(tileSize: 64) [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.Validate_WithValidTileSize_ReturnsNoErrors(tileSize: 1024) [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.Validate_WithValidTileSize_ReturnsNoErrors(tileSize: 256) [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.Validate_WithValidTileSize_ReturnsNoErrors(tileSize: 512) [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.Validate_WithValidTileSize_ReturnsNoErrors(tileSize: 128) [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.ApplyAutoFixes_WithInvalidTileSize_FixesToNearestValid [1 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.Validate_WithInvalidParallelism_ReturnsErrors(parallelism: -2) [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.Validate_WithInvalidParallelism_ReturnsErrors(parallelism: 0) [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.Validate_WithEmptyOutputDirectory_ReturnsError [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Core.ConfigValidatorTests.Validate_WithZoomLevelsButNoExtract_ReturnsError [1 ms]
+  Passed VintageAtlas.Tests.Unit.Models.TileResultTests.Data_CanBeSetAndRetrieved [28 ms]
+  Passed VintageAtlas.Tests.Unit.Models.TileResultTests.ETag_CanBeSetAndRetrieved [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Models.TileResultTests.NotModified_CanBeSetToTrue [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Models.TileResultTests.Constructor_InitializesWithDefaults [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Models.TileResultTests.LastModified_CanBeSet [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Models.TileResultTests.NotFound_DefaultsToFalse [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Models.TileResultTests.NotModified_DefaultsToFalse [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Models.TileResultTests.ContentType_DefaultsToImagePng [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Models.TileResultTests.TileResult_SupportsFullConfiguration [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Models.TileResultTests.NotFound_CanBeSetToTrue [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.BlurToolTests.Blur_WithZeroRange_KeepsDataUnchanged [35 ms]
+  Passed VintageAtlas.Tests.Unit.Export.BlurToolTests.Blur_PreservesTotalBrightness [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.IChunkDataSourceTests.IChunkDataSource_CanBeUsedWithUnifiedTileGenerator [89 ms]
+  Passed VintageAtlas.Tests.Unit.Export.IChunkDataSourceTests.MockChunkDataSource_GetTileChunksAsync_CanReturnNull [1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.IChunkDataSourceTests.IChunkDataSource_ReturnsDataWithChunks [2 ms]
+  Passed VintageAtlas.Tests.Unit.Export.IChunkDataSourceTests.IChunkDataSource_HasSourceName [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.IChunkDataSourceTests.IChunkDataSource_HasRequiresMainThread [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.IChunkDataSourceTests.IChunkDataSource_SupportsMultipleTiles [3 ms]
+  Passed VintageAtlas.Tests.Unit.Export.IChunkDataSourceTests.IChunkDataSource_AcceptsVariousCoordinates(zoom: 7, tileX: 123, tileZ: 456) [1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.IChunkDataSourceTests.IChunkDataSource_AcceptsVariousCoordinates(zoom: 10, tileX: -50, tileZ: -50) [1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.IChunkDataSourceTests.IChunkDataSource_AcceptsVariousCoordinates(zoom: 0, tileX: 0, tileZ: 0) [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.ITileGeneratorTests.ITileGenerator_AcceptsVariousCoordinates(zoom: 7, tileX: 123, tileZ: 456) [103 ms]
+  Passed VintageAtlas.Tests.Unit.Export.BlockColorCacheTests.GetColorByMaterial_WithKnownMaterial_ReturnsColor [108 ms]
+  Passed VintageAtlas.Tests.Unit.Export.ITileGeneratorTests.ITileGenerator_AcceptsVariousCoordinates(zoom: 0, tileX: 0, tileZ: 0) [3 ms]
+[xUnit.net 00:00:00.34]     VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_CorrectZoomAndCoordinateMapping(targetZoom: 4, targetX: -5, targetZ: -5, sourceZoom: 5, expectedSourceX: -10, expectedSourceZ: -10) [FAIL]
+[xUnit.net 00:00:00.34]       Moq.MockException : top-left source tile should match expected coordinates
+[xUnit.net 00:00:00.34]       Expected invocation on the mock once, but was 0 times: g => g.GetTileDataAsync(5, -10, -10)
+[xUnit.net 00:00:00.34]       
+[xUnit.net 00:00:00.34]       Performed invocations:
+[xUnit.net 00:00:00.34]       
+[xUnit.net 00:00:00.34]          Mock<ITileGenerator:2> (g):
+[xUnit.net 00:00:00.34]          No invocations performed.
+[xUnit.net 00:00:00.34]       
+[xUnit.net 00:00:00.35]       Stack Trace:
+[xUnit.net 00:00:00.35]         /_/src/Moq/Mock.cs(331,0): at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage)
+[xUnit.net 00:00:00.35]         /_/src/Moq/Mock`1.cs(979,0): at Moq.Mock`1.Verify(Expression`1 expression, Func`1 times, String failMessage)
+[xUnit.net 00:00:00.35]         /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs(191,0): at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_CorrectZoomAndCoordinateMapping(Int32 targetZoom, Int32 targetX, Int32 targetZ, Int32 sourceZoom, Int32 expectedSourceX, Int32 expectedSourceZ)
+[xUnit.net 00:00:00.35]         --- End of stack trace from previous location ---
+  Passed VintageAtlas.Tests.Unit.Export.IChunkDataSourceTests.MockChunkDataSource_ImplementsInterface_ReturnsData [4 ms]
+  Passed VintageAtlas.Tests.Unit.Export.ITileGeneratorTests.ITileGenerator_AcceptsVariousCoordinates(zoom: 10, tileX: -50, tileZ: -50) [1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.IChunkDataSourceTests.IChunkDataSource_HandlesEmptyChunks [1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.ITileGeneratorTests.ITileGenerator_AcceptsVariousCoordinates(zoom: 5, tileX: 1000, tileZ: 1000) [1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.IChunkDataSourceTests.IChunkDataSource_InterfaceHasCorrectMembers [1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.ITileGeneratorTests.MockTileGenerator_ImplementsInterface_ReturnsData [1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.ITileGeneratorTests.MockTileGenerator_GetTileExtentAsync_ReturnsExtent [1 ms]
+  Failed VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_CorrectZoomAndCoordinateMapping(targetZoom: 4, targetX: -5, targetZ: -5, sourceZoom: 5, expectedSourceX: -10, expectedSourceZ: -10) [117 ms]
+  Error Message:
+   Moq.MockException : top-left source tile should match expected coordinates
+Expected invocation on the mock once, but was 0 times: g => g.GetTileDataAsync(5, -10, -10)
+
+Performed invocations:
+
+   Mock<ITileGenerator:2> (g):
+   No invocations performed.
+
+  Stack Trace:
+     at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage) in /_/src/Moq/Mock.cs:line 331
+   at Moq.Mock`1.Verify(Expression`1 expression, Func`1 times, String failMessage) in /_/src/Moq/Mock`1.cs:line 979
+   at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_CorrectZoomAndCoordinateMapping(Int32 targetZoom, Int32 targetX, Int32 targetZ, Int32 sourceZoom, Int32 expectedSourceX, Int32 expectedSourceZ) in /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs:line 191
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:00.35]     VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_CorrectZoomAndCoordinateMapping(targetZoom: 6, targetX: 0, targetZ: 0, sourceZoom: 7, expectedSourceX: 0, expectedSourceZ: 0) [FAIL]
+[xUnit.net 00:00:00.35]       Moq.MockException : top-left source tile should match expected coordinates
+[xUnit.net 00:00:00.35]       Expected invocation on the mock once, but was 0 times: g => g.GetTileDataAsync(7, 0, 0)
+[xUnit.net 00:00:00.35]       
+[xUnit.net 00:00:00.35]       Performed invocations:
+[xUnit.net 00:00:00.35]       
+[xUnit.net 00:00:00.35]          Mock<ITileGenerator:10> (g):
+[xUnit.net 00:00:00.35]          No invocations performed.
+[xUnit.net 00:00:00.35]       
+[xUnit.net 00:00:00.35]       Stack Trace:
+[xUnit.net 00:00:00.35]         /_/src/Moq/Mock.cs(331,0): at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage)
+[xUnit.net 00:00:00.35]         /_/src/Moq/Mock`1.cs(979,0): at Moq.Mock`1.Verify(Expression`1 expression, Func`1 times, String failMessage)
+[xUnit.net 00:00:00.35]         /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs(191,0): at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_CorrectZoomAndCoordinateMapping(Int32 targetZoom, Int32 targetX, Int32 targetZ, Int32 sourceZoom, Int32 expectedSourceX, Int32 expectedSourceZ)
+[xUnit.net 00:00:00.35]         --- End of stack trace from previous location ---
+  Passed VintageAtlas.Tests.Unit.Export.ITileGeneratorTests.ITileGenerator_CanBeUsedByPyramidDownsampler [3 ms]
+  Passed VintageAtlas.Tests.Unit.Export.ITileGeneratorTests.ITileGenerator_InterfaceHasCorrectMethods [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.BlockColorCacheTests.Initialize_CanBeCalledOnlyOnce [13 ms]
+  Passed VintageAtlas.Tests.Unit.Export.BlockColorCacheTests.Constructor_InitializesCache [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.BlockColorCacheTests.IsLake_WithInvalidBlockId_ReturnsFalse [< 1 ms]
+  Failed VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_CorrectZoomAndCoordinateMapping(targetZoom: 6, targetX: 0, targetZ: 0, sourceZoom: 7, expectedSourceX: 0, expectedSourceZ: 0) [2 ms]
+  Error Message:
+   Moq.MockException : top-left source tile should match expected coordinates
+Expected invocation on the mock once, but was 0 times: g => g.GetTileDataAsync(7, 0, 0)
+
+Performed invocations:
+
+   Mock<ITileGenerator:10> (g):
+   No invocations performed.
+
+  Stack Trace:
+     at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage) in /_/src/Moq/Mock.cs:line 331
+   at Moq.Mock`1.Verify(Expression`1 expression, Func`1 times, String failMessage) in /_/src/Moq/Mock`1.cs:line 979
+   at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_CorrectZoomAndCoordinateMapping(Int32 targetZoom, Int32 targetX, Int32 targetZ, Int32 sourceZoom, Int32 expectedSourceX, Int32 expectedSourceZ) in /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs:line 191
+--- End of stack trace from previous location ---
+  Passed VintageAtlas.Tests.Unit.Export.BlockColorCacheTests.GetMedievalStyleColor_WithWaterEdge_ReturnsColor [< 1 ms]
+[xUnit.net 00:00:00.35]     VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_CorrectZoomAndCoordinateMapping(targetZoom: 5, targetX: 10, targetZ: 10, sourceZoom: 6, expectedSourceX: 20, expectedSourceZ: 20) [FAIL]
+[xUnit.net 00:00:00.35]       Moq.MockException : top-left source tile should match expected coordinates
+[xUnit.net 00:00:00.35]       Expected invocation on the mock once, but was 0 times: g => g.GetTileDataAsync(6, 20, 20)
+[xUnit.net 00:00:00.35]       
+[xUnit.net 00:00:00.35]       Performed invocations:
+[xUnit.net 00:00:00.35]       
+[xUnit.net 00:00:00.35]          Mock<ITileGenerator:12> (g):
+[xUnit.net 00:00:00.35]          No invocations performed.
+[xUnit.net 00:00:00.35]       
+[xUnit.net 00:00:00.35]       Stack Trace:
+[xUnit.net 00:00:00.35]         /_/src/Moq/Mock.cs(331,0): at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage)
+[xUnit.net 00:00:00.35]         /_/src/Moq/Mock`1.cs(979,0): at Moq.Mock`1.Verify(Expression`1 expression, Func`1 times, String failMessage)
+[xUnit.net 00:00:00.35]         /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs(191,0): at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_CorrectZoomAndCoordinateMapping(Int32 targetZoom, Int32 targetX, Int32 targetZ, Int32 sourceZoom, Int32 expectedSourceX, Int32 expectedSourceZ)
+[xUnit.net 00:00:00.35]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:00.35]     VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_CalculatesCorrectSourceCoordinates [FAIL]
+[xUnit.net 00:00:00.35]       Moq.MockException : top-left
+[xUnit.net 00:00:00.35]       Expected invocation on the mock once, but was 0 times: g => g.GetTileDataAsync(7, 6, 10)
+[xUnit.net 00:00:00.35]       
+[xUnit.net 00:00:00.35]       Performed invocations:
+[xUnit.net 00:00:00.35]       
+[xUnit.net 00:00:00.35]          Mock<ITileGenerator:15> (g):
+[xUnit.net 00:00:00.35]          No invocations performed.
+[xUnit.net 00:00:00.35]       
+[xUnit.net 00:00:00.35]       Stack Trace:
+[xUnit.net 00:00:00.35]         /_/src/Moq/Mock.cs(331,0): at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage)
+[xUnit.net 00:00:00.35]         /_/src/Moq/Mock`1.cs(979,0): at Moq.Mock`1.Verify(Expression`1 expression, Func`1 times, String failMessage)
+[xUnit.net 00:00:00.35]         /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs(123,0): at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_CalculatesCorrectSourceCoordinates()
+[xUnit.net 00:00:00.35]         --- End of stack trace from previous location ---
+  Passed VintageAtlas.Tests.Unit.Export.BlockColorCacheTests.GetBaseColor_WithInvalidBlockId_ReturnsDefaultColor [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.BlockColorCacheTests.GetRandomColorVariation_WithNoVariations_ReturnsBaseColor [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.BlockColorCacheTests.GetColorVariations_WithNonExistentBlock_ReturnsNull [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.BlockColorCacheTests.GetMedievalStyleColor_WithValidBlockId_ReturnsColor [< 1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.ITileGeneratorTests.ITileGenerator_HandlesParallelRequests [4 ms]
+  Failed VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_CorrectZoomAndCoordinateMapping(targetZoom: 5, targetX: 10, targetZ: 10, sourceZoom: 6, expectedSourceX: 20, expectedSourceZ: 20) [3 ms]
+  Error Message:
+   Moq.MockException : top-left source tile should match expected coordinates
+Expected invocation on the mock once, but was 0 times: g => g.GetTileDataAsync(6, 20, 20)
+
+Performed invocations:
+
+   Mock<ITileGenerator:12> (g):
+   No invocations performed.
+
+  Stack Trace:
+     at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage) in /_/src/Moq/Mock.cs:line 331
+   at Moq.Mock`1.Verify(Expression`1 expression, Func`1 times, String failMessage) in /_/src/Moq/Mock`1.cs:line 979
+   at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_CorrectZoomAndCoordinateMapping(Int32 targetZoom, Int32 targetX, Int32 targetZ, Int32 sourceZoom, Int32 expectedSourceX, Int32 expectedSourceZ) in /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs:line 191
+--- End of stack trace from previous location ---
+  Passed VintageAtlas.Tests.Unit.Export.ITileGeneratorTests.MockTileGenerator_GetTileDataAsync_CanReturnNull [1 ms]
+  Passed VintageAtlas.Tests.Unit.Export.ITileGeneratorTests.MockTileGenerator_GetTileExtentAsync_CanReturnNull [< 1 ms]
+  Failed VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_CalculatesCorrectSourceCoordinates [3 ms]
+  Error Message:
+   Moq.MockException : top-left
+Expected invocation on the mock once, but was 0 times: g => g.GetTileDataAsync(7, 6, 10)
+
+Performed invocations:
+
+   Mock<ITileGenerator:15> (g):
+   No invocations performed.
+
+  Stack Trace:
+     at Moq.Mock.Verify(Mock mock, LambdaExpression expression, Times times, String failMessage) in /_/src/Moq/Mock.cs:line 331
+   at Moq.Mock`1.Verify(Expression`1 expression, Func`1 times, String failMessage) in /_/src/Moq/Mock`1.cs:line 979
+   at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_CalculatesCorrectSourceCoordinates() in /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs:line 123
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:00.39]     VintageAtlas.Tests.Integration.TileGeneratorIntegrationTests.PyramidTileDownsampler_WithMockITileGenerator_GeneratesTiles [FAIL]
+[xUnit.net 00:00:00.39]       Expected result not to be <null> because downsampler should work with any ITileGenerator.
+[xUnit.net 00:00:00.39]       Stack Trace:
+[xUnit.net 00:00:00.39]            at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+[xUnit.net 00:00:00.39]            at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+[xUnit.net 00:00:00.39]            at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+[xUnit.net 00:00:00.39]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.39]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.39]            at FluentAssertions.Execution.AssertionScope.FailWith(String message)
+[xUnit.net 00:00:00.39]            at FluentAssertions.Primitives.ReferenceTypeAssertions`2.NotBeNull(String because, Object[] becauseArgs)
+[xUnit.net 00:00:00.39]         /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Integration/TileGeneratorIntegrationTests.cs(75,0): at VintageAtlas.Tests.Integration.TileGeneratorIntegrationTests.PyramidTileDownsampler_WithMockITileGenerator_GeneratesTiles()
+[xUnit.net 00:00:00.39]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:00.39]     VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_LogsVerboseDebugOnSuccess [FAIL]
+[xUnit.net 00:00:00.39]       Expected _mockLogger.DebugMessages {empty} to have an item matching m.Contains("Successfully downsampled").
+[xUnit.net 00:00:00.39]       Stack Trace:
+[xUnit.net 00:00:00.39]            at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+[xUnit.net 00:00:00.39]            at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+[xUnit.net 00:00:00.39]            at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+[xUnit.net 00:00:00.39]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.39]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.39]            at FluentAssertions.Execution.AssertionScope.FailWith(String message, Object[] args)
+[xUnit.net 00:00:00.39]            at FluentAssertions.Collections.GenericCollectionAssertions`3.Contain(Expression`1 predicate, String because, Object[] becauseArgs)
+[xUnit.net 00:00:00.39]         /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs(241,0): at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_LogsVerboseDebugOnSuccess()
+[xUnit.net 00:00:00.39]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:00.39]     VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_WithMissingSourceTile_ReturnsNull [FAIL]
+[xUnit.net 00:00:00.39]       Expected _mockLogger.Warnings {empty} to have an item matching w.Contains("Could not get all source tiles").
+[xUnit.net 00:00:00.39]       Stack Trace:
+[xUnit.net 00:00:00.39]            at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+[xUnit.net 00:00:00.39]            at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+[xUnit.net 00:00:00.39]            at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+[xUnit.net 00:00:00.39]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.39]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.39]            at FluentAssertions.Execution.AssertionScope.FailWith(String message, Object[] args)
+[xUnit.net 00:00:00.39]            at FluentAssertions.Collections.GenericCollectionAssertions`3.Contain(Expression`1 predicate, String because, Object[] becauseArgs)
+[xUnit.net 00:00:00.39]         /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs(103,0): at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_WithMissingSourceTile_ReturnsNull()
+[xUnit.net 00:00:00.39]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:00.40]     VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_WithFourSourceTiles_GeneratesDownsampledTile [FAIL]
+[xUnit.net 00:00:00.40]       Expected result not to be <null> because downsampling should produce a tile.
+[xUnit.net 00:00:00.40]       Stack Trace:
+[xUnit.net 00:00:00.40]            at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+[xUnit.net 00:00:00.40]            at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+[xUnit.net 00:00:00.40]            at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+[xUnit.net 00:00:00.40]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.40]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.40]            at FluentAssertions.Execution.AssertionScope.FailWith(String message)
+[xUnit.net 00:00:00.40]            at FluentAssertions.Primitives.ReferenceTypeAssertions`2.NotBeNull(String because, Object[] becauseArgs)
+[xUnit.net 00:00:00.40]         /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs(70,0): at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_WithFourSourceTiles_GeneratesDownsampledTile()
+[xUnit.net 00:00:00.40]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:00.40]     VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_HandlesNegativeCoordinates [FAIL]
+[xUnit.net 00:00:00.40]       Expected result not to be <null>.
+[xUnit.net 00:00:00.40]       Stack Trace:
+[xUnit.net 00:00:00.40]            at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+[xUnit.net 00:00:00.40]            at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+[xUnit.net 00:00:00.40]            at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+[xUnit.net 00:00:00.40]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.40]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.40]            at FluentAssertions.Execution.AssertionScope.FailWith(String message)
+[xUnit.net 00:00:00.40]            at FluentAssertions.Primitives.ReferenceTypeAssertions`2.NotBeNull(String because, Object[] becauseArgs)
+[xUnit.net 00:00:00.40]         /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs(146,0): at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_HandlesNegativeCoordinates()
+[xUnit.net 00:00:00.40]         --- End of stack trace from previous location ---
+  Failed VintageAtlas.Tests.Integration.TileGeneratorIntegrationTests.PyramidTileDownsampler_WithMockITileGenerator_GeneratesTiles [141 ms]
+  Error Message:
+   Expected result not to be <null> because downsampler should work with any ITileGenerator.
+  Stack Trace:
+     at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+   at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+   at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(String message)
+   at FluentAssertions.Primitives.ReferenceTypeAssertions`2.NotBeNull(String because, Object[] becauseArgs)
+   at VintageAtlas.Tests.Integration.TileGeneratorIntegrationTests.PyramidTileDownsampler_WithMockITileGenerator_GeneratesTiles() in /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Integration/TileGeneratorIntegrationTests.cs:line 75
+--- End of stack trace from previous location ---
+  Failed VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_LogsVerboseDebugOnSuccess [39 ms]
+  Error Message:
+   Expected _mockLogger.DebugMessages {empty} to have an item matching m.Contains("Successfully downsampled").
+  Stack Trace:
+     at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+   at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+   at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(String message, Object[] args)
+   at FluentAssertions.Collections.GenericCollectionAssertions`3.Contain(Expression`1 predicate, String because, Object[] becauseArgs)
+   at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_LogsVerboseDebugOnSuccess() in /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs:line 241
+--- End of stack trace from previous location ---
+  Passed VintageAtlas.Tests.Integration.TileGeneratorIntegrationTests.IChunkDataSource_WithMockImplementation_ProvidesDataToRenderer [2 ms]
+  Passed VintageAtlas.Tests.Integration.TileGeneratorIntegrationTests.ITileGenerator_BothImplementations_ShareSameInterface [< 1 ms]
+  Failed VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_WithMissingSourceTile_ReturnsNull [2 ms]
+  Error Message:
+   Expected _mockLogger.Warnings {empty} to have an item matching w.Contains("Could not get all source tiles").
+  Stack Trace:
+     at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+   at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+   at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(String message, Object[] args)
+   at FluentAssertions.Collections.GenericCollectionAssertions`3.Contain(Expression`1 predicate, String because, Object[] becauseArgs)
+   at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_WithMissingSourceTile_ReturnsNull() in /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs:line 103
+--- End of stack trace from previous location ---
+  Passed VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.Constructor_WithMockGenerator_Initializes [< 1 ms]
+  Failed VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_WithFourSourceTiles_GeneratesDownsampledTile [1 ms]
+  Error Message:
+   Expected result not to be <null> because downsampling should produce a tile.
+  Stack Trace:
+     at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+   at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+   at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(String message)
+   at FluentAssertions.Primitives.ReferenceTypeAssertions`2.NotBeNull(String because, Object[] becauseArgs)
+   at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_WithFourSourceTiles_GeneratesDownsampledTile() in /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs:line 70
+--- End of stack trace from previous location ---
+  Failed VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_HandlesNegativeCoordinates [4 ms]
+  Error Message:
+   Expected result not to be <null>.
+  Stack Trace:
+     at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+   at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+   at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(String message)
+   at FluentAssertions.Primitives.ReferenceTypeAssertions`2.NotBeNull(String because, Object[] becauseArgs)
+   at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_HandlesNegativeCoordinates() in /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs:line 146
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:00.41]     VintageAtlas.Tests.Integration.TileGeneratorIntegrationTests.PyramidDownsampler_WorksWithMultipleGeneratorTypes [FAIL]
+[xUnit.net 00:00:00.41]       Expected result1 not to be <null>.
+[xUnit.net 00:00:00.41]       Stack Trace:
+[xUnit.net 00:00:00.41]            at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+[xUnit.net 00:00:00.41]            at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+[xUnit.net 00:00:00.41]            at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+[xUnit.net 00:00:00.41]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.41]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.41]            at FluentAssertions.Execution.AssertionScope.FailWith(String message)
+[xUnit.net 00:00:00.41]            at FluentAssertions.Primitives.ReferenceTypeAssertions`2.NotBeNull(String because, Object[] becauseArgs)
+[xUnit.net 00:00:00.41]         /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Integration/TileGeneratorIntegrationTests.cs(271,0): at VintageAtlas.Tests.Integration.TileGeneratorIntegrationTests.PyramidDownsampler_WorksWithMultipleGeneratorTypes()
+[xUnit.net 00:00:00.41]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:00.41]     VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_ConcurrentRequests_HandledCorrectly [FAIL]
+[xUnit.net 00:00:00.41]       Expected results to contain only items matching (r != null), but {<null>, <null>, <null>, <null>, <null>} do(es) not match.
+[xUnit.net 00:00:00.41]       Stack Trace:
+[xUnit.net 00:00:00.41]            at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+[xUnit.net 00:00:00.41]            at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+[xUnit.net 00:00:00.41]            at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+[xUnit.net 00:00:00.41]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.41]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.41]            at FluentAssertions.Execution.AssertionScope.FailWith(String message, Object[] args)
+[xUnit.net 00:00:00.41]            at FluentAssertions.Execution.GivenSelector`1.FailWith(String message, Object[] args)
+[xUnit.net 00:00:00.41]            at FluentAssertions.Execution.GivenSelector`1.FailWith(String message, Func`2[] args)
+[xUnit.net 00:00:00.41]            at FluentAssertions.Collections.GenericCollectionAssertions`3.OnlyContain(Expression`1 predicate, String because, Object[] becauseArgs)
+[xUnit.net 00:00:00.41]         /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs(217,0): at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_ConcurrentRequests_HandledCorrectly()
+[xUnit.net 00:00:00.41]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:00.42]     VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_WorksWithAnyITileGenerator [FAIL]
+[xUnit.net 00:00:00.42]       Expected result not to be <null> because any ITileGenerator implementation should work.
+[xUnit.net 00:00:00.42]       Stack Trace:
+[xUnit.net 00:00:00.42]            at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+[xUnit.net 00:00:00.42]            at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+[xUnit.net 00:00:00.42]            at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+[xUnit.net 00:00:00.42]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.42]            at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+[xUnit.net 00:00:00.42]            at FluentAssertions.Execution.AssertionScope.FailWith(String message)
+[xUnit.net 00:00:00.42]            at FluentAssertions.Primitives.ReferenceTypeAssertions`2.NotBeNull(String because, Object[] becauseArgs)
+[xUnit.net 00:00:00.42]         /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs(168,0): at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_WorksWithAnyITileGenerator()
+[xUnit.net 00:00:00.42]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:00.42]   Finished:    VintageAtlas.Tests
+  Passed VintageAtlas.Tests.Integration.TileGeneratorIntegrationTests.TileGenerationPipeline_EndToEnd_MockedFlow [11 ms]
+  Failed VintageAtlas.Tests.Integration.TileGeneratorIntegrationTests.PyramidDownsampler_WorksWithMultipleGeneratorTypes [2 ms]
+  Error Message:
+   Expected result1 not to be <null>.
+  Stack Trace:
+     at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+   at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+   at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(String message)
+   at FluentAssertions.Primitives.ReferenceTypeAssertions`2.NotBeNull(String because, Object[] becauseArgs)
+   at VintageAtlas.Tests.Integration.TileGeneratorIntegrationTests.PyramidDownsampler_WorksWithMultipleGeneratorTypes() in /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Integration/TileGeneratorIntegrationTests.cs:line 271
+--- End of stack trace from previous location ---
+  Passed VintageAtlas.Tests.Integration.TileGeneratorIntegrationTests.Architecture_VerifyInterfacesDefined [< 1 ms]
+  Passed VintageAtlas.Tests.Integration.TileGeneratorIntegrationTests.MultipleDataSources_CanProvideDataToSameGenerator [1 ms]
+  Passed VintageAtlas.Tests.Integration.TileGeneratorIntegrationTests.ITileGenerator_InterfaceAllowsSwapping_BetweenImplementations [< 1 ms]
+  Failed VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_ConcurrentRequests_HandledCorrectly [11 ms]
+  Error Message:
+   Expected results to contain only items matching (r != null), but {<null>, <null>, <null>, <null>, <null>} do(es) not match.
+  Stack Trace:
+     at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+   at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+   at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(String message, Object[] args)
+   at FluentAssertions.Execution.GivenSelector`1.FailWith(String message, Object[] args)
+   at FluentAssertions.Execution.GivenSelector`1.FailWith(String message, Func`2[] args)
+   at FluentAssertions.Collections.GenericCollectionAssertions`3.OnlyContain(Expression`1 predicate, String because, Object[] becauseArgs)
+   at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_ConcurrentRequests_HandledCorrectly() in /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs:line 217
+--- End of stack trace from previous location ---
+  Failed VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_WorksWithAnyITileGenerator [1 ms]
+  Error Message:
+   Expected result not to be <null> because any ITileGenerator implementation should work.
+  Stack Trace:
+     at FluentAssertions.Execution.XUnit2TestFramework.Throw(String message)
+   at FluentAssertions.Execution.TestFrameworkProvider.Throw(String message)
+   at FluentAssertions.Execution.DefaultAssertionStrategy.HandleFailure(String message)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(Func`1 failReasonFunc)
+   at FluentAssertions.Execution.AssertionScope.FailWith(String message)
+   at FluentAssertions.Primitives.ReferenceTypeAssertions`2.NotBeNull(String because, Object[] becauseArgs)
+   at VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_WorksWithAnyITileGenerator() in /home/daviaaze/Projects/pessoal/vintagestory/VintageAtlas/VintageAtlas.Tests/Unit/Export/PyramidTileDownsamplerTests.cs:line 168
+--- End of stack trace from previous location ---
+  Passed VintageAtlas.Tests.Unit.Export.PyramidTileDownsamplerTests.GenerateTileByDownsamplingAsync_WithException_LogsErrorAndReturnsNull [1 ms]
+
+Test Run Failed.
+Total tests: 92
+     Passed: 80
+     Failed: 12
+ Total time: 0.8593 Seconds

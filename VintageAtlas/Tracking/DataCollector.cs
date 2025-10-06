@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using Vintagestory.API.Common;
-using Vintagestory.API.Datastructures;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 using VintageAtlas.Models;
@@ -13,11 +12,9 @@ namespace VintageAtlas.Tracking;
 /// Collects live game data for API responses (based on ServerstatusQuery patterns)
 /// THREAD-SAFE: UpdateCache() called from game tick, CollectData() called from HTTP threads
 /// </summary>
-public class DataCollector : IDataCollector
+public class DataCollector(ICoreServerAPI sapi) : IDataCollector
 {
-        private readonly ICoreServerAPI _sapi;
-        
-        // Animal caching (like ServerstatusQuery does)
+    // Animal caching (like ServerstatusQuery does)
         private List<AnimalData>? _animalsCache;
         private DateTime _animalsCacheUntil = DateTime.MinValue;
         private const int AnimalsCacheSeconds = 3;
@@ -28,13 +25,8 @@ public class DataCollector : IDataCollector
         private ServerStatusData? _cachedData;
         private volatile bool _dataReady;
         private long _lastUpdate;
-        private const int CACHE_UPDATE_INTERVAL_MS = 1000; // Update every 1 second
+        private const int CacheUpdateIntervalMs = 1000; // Update every 1 second
         private readonly object _cacheLock = new();
-
-        public DataCollector(ICoreServerAPI sapi)
-        {
-            _sapi = sapi;
-        }
 
         /// <summary>
         /// CALLED FROM GAME TICK (MAIN THREAD) - Updates cache safely
@@ -42,10 +34,10 @@ public class DataCollector : IDataCollector
         /// </summary>
         public void UpdateCache(float deltaTime)
         {
-            var now = _sapi.World.ElapsedMilliseconds;
+            var now = sapi.World.ElapsedMilliseconds;
             
-            // Only update if cache expired
-            if (_dataReady && now - _lastUpdate < CACHE_UPDATE_INTERVAL_MS)
+            // Only update if the cache expired
+            if (_dataReady && now - _lastUpdate < CacheUpdateIntervalMs)
             {
                 return;
             }
@@ -63,17 +55,14 @@ public class DataCollector : IDataCollector
                 };
 
                 // Add spawn point climate data
-                if (data.SpawnPoint != null)
-                {
                     var spawnPos = new BlockPos((int)data.SpawnPoint.X, (int)data.SpawnPoint.Y, (int)data.SpawnPoint.Z);
-                    var climate = _sapi.World.BlockAccessor.GetClimateAt(spawnPos, EnumGetClimateMode.NowValues);
+                    var climate = sapi.World.BlockAccessor.GetClimateAt(spawnPos);
                     if (climate != null)
                     {
                         data.SpawnTemperature = FiniteOrNull(climate.Temperature);
                         data.SpawnRainfall = FiniteOrNull(climate.Rainfall);
                     }
-                }
-                
+
                 // Atomically update cache
                 lock (_cacheLock)
                 {
@@ -81,12 +70,10 @@ public class DataCollector : IDataCollector
                     _lastUpdate = now;
                     _dataReady = true;
                 }
-                
-                // _sapi.Logger.Debug($"[VintageAtlas] Data cache updated: {data.Players.Count} players, {data.Animals.Count} animals");
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Error($"[VintageAtlas] Error updating data cache: {ex.Message}");
+                sapi.Logger.Error($"[VintageAtlas] Error updating data cache: {ex.Message}");
             }
         }
 
@@ -104,12 +91,12 @@ public class DataCollector : IDataCollector
                 }
                 
                 // Fallback if cache not ready yet (server just started)
-                _sapi.Logger.Debug("[VintageAtlas] Data cache not ready yet, returning empty data");
+                sapi.Logger.Debug("[VintageAtlas] Data cache not ready yet, returning empty data");
                 return new ServerStatusData
                 {
                     Players = new List<PlayerData>(),
                     Animals = new List<AnimalData>(),
-                    SpawnPoint = new SpawnPoint { X = 0, Y = _sapi.World.SeaLevel, Z = 0 },
+                    SpawnPoint = new SpawnPoint { X = 0, Y = sapi.World.SeaLevel, Z = 0 },
                     Date = new DateInfo { Year = 1, Month = 1, Day = 1, Hour = 0, Minute = 0 },
                     Weather = new WeatherInfo { Temperature = 20, Rainfall = 0, WindSpeed = 0 }
                 };
@@ -120,8 +107,8 @@ public class DataCollector : IDataCollector
         {
             try
             {
-                var spawnPos = _sapi.World.DefaultSpawnPosition;
-                if (spawnPos == null) return new SpawnPoint { X = 0, Y = _sapi.World.SeaLevel, Z = 0 };
+                var spawnPos = sapi.World.DefaultSpawnPosition;
+                if (spawnPos == null) return new SpawnPoint { X = 0, Y = sapi.World.SeaLevel, Z = 0 };
 
                 var pos = spawnPos.AsBlockPos;
                 return new SpawnPoint
@@ -133,13 +120,13 @@ public class DataCollector : IDataCollector
             }
             catch
             {
-                return new SpawnPoint { X = 0, Y = _sapi.World.SeaLevel, Z = 0 };
+                return new SpawnPoint { X = 0, Y = sapi.World.SeaLevel, Z = 0 };
             }
         }
 
         private DateInfo GetGameDate()
         {
-            var calendar = _sapi.World.Calendar;
+            var calendar = sapi.World.Calendar;
             if (calendar == null)
             {
                 return new DateInfo { Year = 1, Month = 1, Day = 1, Hour = 0, Minute = 0 };
@@ -175,7 +162,7 @@ public class DataCollector : IDataCollector
             try
             {
                 // Check if world is ready (can be null during early startup)
-                if (_sapi.World?.BlockAccessor == null)
+                if (sapi.World?.BlockAccessor == null)
                 {
                     return new WeatherInfo
                     {
@@ -186,14 +173,14 @@ public class DataCollector : IDataCollector
                 }
                 
                 BlockPos pos;
-                if (_sapi.World.DefaultSpawnPosition != null)
+                if (sapi.World.DefaultSpawnPosition != null)
                 {
-                    pos = _sapi.World.DefaultSpawnPosition.AsBlockPos;
+                    pos = sapi.World.DefaultSpawnPosition.AsBlockPos;
                 }
                 else
                 {
                     // Fallback to first online player position
-                    var firstPlayer = System.Linq.Enumerable.FirstOrDefault(_sapi.World.AllOnlinePlayers, p => p?.Entity != null);
+                    var firstPlayer = System.Linq.Enumerable.FirstOrDefault(sapi.World.AllOnlinePlayers, p => p?.Entity != null);
                     if (firstPlayer != null)
                     {
                         var playerPos = firstPlayer.Entity.Pos.AsBlockPos;
@@ -201,11 +188,11 @@ public class DataCollector : IDataCollector
                     }
                     else
                     {
-                        pos = new BlockPos(0, _sapi.World.SeaLevel, 0);
+                        pos = new BlockPos(0, sapi.World.SeaLevel, 0);
                     }
                 }
 
-                var climate = _sapi.World.BlockAccessor.GetClimateAt(pos, EnumGetClimateMode.NowValues);
+                var climate = sapi.World.BlockAccessor.GetClimateAt(pos);
                 if (climate != null)
                 {
                     var windSpeed = GetWindSpeed(pos);
@@ -220,7 +207,7 @@ public class DataCollector : IDataCollector
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Warning($"Failed to get weather info: {ex.Message}");
+                sapi.Logger.Warning($"Failed to get weather info: {ex.Message}");
             }
 
             return new WeatherInfo
@@ -237,37 +224,37 @@ public class DataCollector : IDataCollector
 
             try
             {
-                foreach (var player in _sapi.World.AllOnlinePlayers)
+                foreach (var player in sapi.World.AllOnlinePlayers)
                 {
                     if (player?.Entity == null) continue;
 
                     try
                     {
                         // Use ServerstatusQuery approach: directly access position
-                        var entityPos = player.Entity.Pos?.XYZ ?? new Vec3d(0, _sapi.World.SeaLevel, 0);
+                        var entityPos = player.Entity.Pos?.XYZ ?? new Vec3d(0, sapi.World.SeaLevel, 0);
                         var pos = new BlockPos((int)entityPos.X, (int)entityPos.Y, (int)entityPos.Z);
                         
-                        var climate = _sapi.World.BlockAccessor?.GetClimateAt(pos, EnumGetClimateMode.NowValues);
+                        var climate = sapi.World.BlockAccessor?.GetClimateAt(pos);
                         var watchedAttributes = player.Entity.WatchedAttributes;
 
                         // Health - using ITreeAttribute like ServerstatusQuery
-                        var healthTree = (watchedAttributes as TreeAttribute)?.GetTreeAttribute("health");
-                        var currentHealth = FiniteOrNull(healthTree?.GetFloat("currenthealth", 0f)) ?? 0;
-                        var maxHealth = FiniteOrNull(healthTree?.GetFloat("maxhealth", 0f)) ?? 20;
+                        var healthTree = watchedAttributes?.GetTreeAttribute("health");
+                        var currentHealth = FiniteOrNull(healthTree?.GetFloat("currenthealth")) ?? 0;
+                        var maxHealth = FiniteOrNull(healthTree?.GetFloat("maxhealth")) ?? 20;
 
                         // Hunger
-                        var hungerTree = (watchedAttributes as TreeAttribute)?.GetTreeAttribute("hunger");
-                        var currentSaturation = FiniteOrNull(hungerTree?.GetFloat("currentsaturation", 0f)) ?? 0;
-                        var maxSaturation = FiniteOrNull(hungerTree?.GetFloat("maxsaturation", 0f)) ?? 1500;
+                        var hungerTree = watchedAttributes?.GetTreeAttribute("hunger");
+                        var currentSaturation = FiniteOrNull(hungerTree?.GetFloat("currentsaturation")) ?? 0;
+                        var maxSaturation = FiniteOrNull(hungerTree?.GetFloat("maxsaturation")) ?? 1500;
 
                         // Body temperature
-                        var bodyTempTree = (watchedAttributes as TreeAttribute)?.GetTreeAttribute("bodyTemp");
-                        var bodyTemp = FiniteOrNull(bodyTempTree?.GetFloat("bodytemp", 0f));
+                        var bodyTempTree = watchedAttributes?.GetTreeAttribute("bodyTemp");
+                        var bodyTemp = FiniteOrNull(bodyTempTree?.GetFloat("bodytemp"));
 
                         players.Add(new PlayerData
                         {
                             Name = player.PlayerName,
-                            UID = player.PlayerUID,
+                            Uid = player.PlayerUID,
                             Coordinates = new CoordinateData
                             {
                                 X = pos.X,
@@ -290,13 +277,13 @@ public class DataCollector : IDataCollector
                     }
                     catch (Exception ex)
                     {
-                        _sapi.Logger.Warning($"Failed to collect data for player {player.PlayerName}: {ex.Message}");
+                        sapi.Logger.Warning($"Failed to collect data for player {player.PlayerName}: {ex.Message}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Warning($"Failed to collect players data: {ex.Message}");
+                sapi.Logger.Warning($"Failed to collect players data: {ex.Message}");
             }
 
             return players;
@@ -307,7 +294,6 @@ public class DataCollector : IDataCollector
             // Use cached data if still valid (like ServerstatusQuery)
             if (_animalsCache != null && DateTime.UtcNow < _animalsCacheUntil)
             {
-                // _sapi.Logger.Debug($"[VintageAtlas] Using cached animal data ({_animalsCache.Count} animals)");
                 return _animalsCache;
             }
 
@@ -315,9 +301,9 @@ public class DataCollector : IDataCollector
 
             try
             {
-                var players = _sapi.World.AllOnlinePlayers;
+                var players = sapi.World.AllOnlinePlayers;
                 
-                // No players online? Return empty list
+                // No players online? Return an empty list
                 if (players == null || players.Length == 0)
                 {
                     _animalsCache = animals;
@@ -336,7 +322,7 @@ public class DataCollector : IDataCollector
                     var playerPos = player.Entity.Pos.AsBlockPos;
                     
                     // Spatial query - only gets entities near this player (FAST!)
-                    var nearbyEntities = _sapi.World.GetEntitiesAround(
+                    var nearbyEntities = sapi.World.GetEntitiesAround(
                         playerPos.ToVec3d(),
                         AnimalTrackingRadius,
                         AnimalTrackingRadius,
@@ -359,12 +345,12 @@ public class DataCollector : IDataCollector
                             var name = entity.GetName() ?? typeCode;
 
                             // Get health using ITreeAttribute
-                            var healthTree = (entity.WatchedAttributes as TreeAttribute)?.GetTreeAttribute("health");
-                            var currentHealth = FiniteOrNull(healthTree?.GetFloat("currenthealth", 0f));
-                            var maxHealth = FiniteOrNull(healthTree?.GetFloat("maxhealth", 0f));
+                            var healthTree = entity.WatchedAttributes?.GetTreeAttribute("health");
+                            var currentHealth = FiniteOrNull(healthTree?.GetFloat("currenthealth"));
+                            var maxHealth = FiniteOrNull(healthTree?.GetFloat("maxhealth"));
 
                             // Fallback health values
-                            if (!maxHealth.HasValue || maxHealth <= 0)
+                            if (maxHealth is null or <= 0)
                             {
                                 maxHealth = 20;
                                 currentHealth = entity.Alive ? 20 : 0;
@@ -372,16 +358,16 @@ public class DataCollector : IDataCollector
 
                             // Use ServerPos like ServerstatusQuery
                             var x = entity.ServerPos != null ? (int)entity.ServerPos.X : 0;
-                            var y = entity.ServerPos != null ? (int)entity.ServerPos.Y : _sapi.World.SeaLevel;
+                            var y = entity.ServerPos != null ? (int)entity.ServerPos.Y : sapi.World.SeaLevel;
                             var z = entity.ServerPos != null ? (int)entity.ServerPos.Z : 0;
 
                             // Get climate data
                             double? temperature = null;
                             double? rainfall = null;
                             
-                            if (_sapi.World.BlockAccessor != null)
+                            if (sapi.World.BlockAccessor != null)
                             {
-                                var climate = _sapi.World.BlockAccessor.GetClimateAt(new BlockPos(x, y, z), EnumGetClimateMode.NowValues);
+                                var climate = sapi.World.BlockAccessor.GetClimateAt(new BlockPos(x, y, z));
                                 if (climate != null)
                                 {
                                     temperature = FiniteOrNull(climate.Temperature);
@@ -400,7 +386,7 @@ public class DataCollector : IDataCollector
                                 Health = new HealthData
                                 {
                                     Current = currentHealth ?? 0,
-                                    Max = maxHealth ?? 20
+                                    Max = (double)maxHealth
                                 },
                                 Temperature = temperature,
                                 Rainfall = rainfall ?? 0,
@@ -413,18 +399,18 @@ public class DataCollector : IDataCollector
                         }
                         catch (Exception ex)
                         {
-                            _sapi.Logger.Warning($"[VintageAtlas] Failed to process entity {entity.Code}: {ex.Message}");
+                            sapi.Logger.Warning($"[VintageAtlas] Failed to process entity {entity.Code}: {ex.Message}");
                         }
                     }
                     
                     if (animals.Count >= AnimalsMax) break;
                 }
 
-                _sapi.Logger.Debug($"[VintageAtlas] Spatial animal scan: {animals.Count} animals found within {AnimalTrackingRadius} blocks of players");
+                sapi.Logger.Debug($"[VintageAtlas] Spatial animal scan: {animals.Count} animals found within {AnimalTrackingRadius} blocks of players");
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Error($"[VintageAtlas] Failed to collect animals data: {ex.Message}");
+                sapi.Logger.Error($"[VintageAtlas] Failed to collect animals data: {ex.Message}");
             }
 
             // Cache the results
@@ -453,9 +439,9 @@ public class DataCollector : IDataCollector
         {
             try
             {
-                if (_sapi.World.BlockAccessor == null || pos == null) return 0;
+                if (sapi.World.BlockAccessor == null) return 0;
                 
-                var windVec = _sapi.World.BlockAccessor.GetWindSpeedAt(pos);
+                var windVec = sapi.World.BlockAccessor.GetWindSpeedAt(pos);
                 if (windVec == null) return 0;
 
                 // Calculate magnitude
@@ -472,9 +458,9 @@ public class DataCollector : IDataCollector
         {
             try
             {
-                if (_sapi.World.BlockAccessor == null || pos == null) return 0;
+                if (sapi.World.BlockAccessor == null) return 0;
                 
-                var windVec = _sapi.World.BlockAccessor.GetWindSpeedAt(pos);
+                var windVec = sapi.World.BlockAccessor.GetWindSpeedAt(pos);
                 if (windVec == null) return 0;
 
                 // Calculate magnitude and convert to percentage

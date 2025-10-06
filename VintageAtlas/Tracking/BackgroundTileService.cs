@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -479,11 +478,20 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
 
     public void Dispose()
     {
-        Stop();
-        _cancellationToken?.Dispose();
-        _wakeupSignal.Dispose();
-        
-        _sapi.Logger.Notification("[VintageAtlas] Background tile service disposed");
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            Stop();
+            _cancellationToken?.Dispose();
+            _wakeupSignal.Dispose();
+            
+            _sapi.Logger.Notification("[VintageAtlas] Background tile service disposed");
+        }
     }
 }
 

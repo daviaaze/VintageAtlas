@@ -13,34 +13,24 @@ namespace VintageAtlas.Web.API;
 /// <summary>
 /// Handles historical data API endpoints (heatmap, paths, census, stats)
 /// </summary>
-public class HistoricalController
+public class HistoricalController(ICoreServerAPI sapi, IHistoricalTracker? historicalTracker)
 {
-    private readonly ICoreServerAPI _sapi;
-    private readonly IHistoricalTracker? _historicalTracker;
-    private readonly JsonSerializerSettings _jsonSettings;
-
-    public HistoricalController(ICoreServerAPI sapi, IHistoricalTracker? historicalTracker)
+    private readonly JsonSerializerSettings _jsonSettings = new()
     {
-        _sapi = sapi;
-        _historicalTracker = historicalTracker;
-        
-        _jsonSettings = new JsonSerializerSettings
+        ContractResolver = new DefaultContractResolver
         {
-            ContractResolver = new DefaultContractResolver
-            {
-                NamingStrategy = new CamelCaseNamingStrategy()
-            },
-            Formatting = Formatting.Indented,
-            NullValueHandling = NullValueHandling.Ignore
-        };
-    }
+            NamingStrategy = new CamelCaseNamingStrategy()
+        },
+        Formatting = Formatting.Indented,
+        NullValueHandling = NullValueHandling.Ignore
+    };
 
     /// <summary>
     /// Serve heatmap data
     /// </summary>
     public async Task ServeHeatmap(HttpListenerContext context)
     {
-        if (_historicalTracker == null)
+        if (historicalTracker == null)
         {
             await ServeError(context, "Historical tracking not enabled", 501);
             return;
@@ -49,7 +39,7 @@ public class HistoricalController
         try
         {
             var queryParams = ParseHistoricalQuery(context);
-            var heatmapData = _historicalTracker.GetHeatmap(queryParams);
+            var heatmapData = historicalTracker.GetHeatmap(queryParams);
 
             var json = JsonConvert.SerializeObject(new
             {
@@ -64,12 +54,12 @@ public class HistoricalController
             context.Response.ContentType = "application/json";
             context.Response.ContentLength64 = bytes.Length;
 
-            await context.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+            await context.Response.OutputStream.WriteAsync(bytes);
             context.Response.Close();
         }
         catch (Exception ex)
         {
-            _sapi.Logger.Error($"[VintageAtlas] Error serving heatmap: {ex.Message}");
+            sapi.Logger.Error($"[VintageAtlas] Error serving heatmap: {ex.Message}");
             await ServeError(context, "Failed to generate heatmap");
         }
     }
@@ -79,7 +69,7 @@ public class HistoricalController
     /// </summary>
     public async Task ServePlayerPath(HttpListenerContext context)
     {
-        if (_historicalTracker == null)
+        if (historicalTracker == null)
         {
             await ServeError(context, "Historical tracking not enabled", 501);
             return;
@@ -95,7 +85,7 @@ public class HistoricalController
                 return;
             }
 
-            var pathData = _historicalTracker.GetPlayerPath(queryParams);
+            var pathData = historicalTracker.GetPlayerPath(queryParams);
 
             var json = JsonConvert.SerializeObject(new
             {
@@ -110,12 +100,12 @@ public class HistoricalController
             context.Response.ContentType = "application/json";
             context.Response.ContentLength64 = bytes.Length;
 
-            await context.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+            await context.Response.OutputStream.WriteAsync(bytes);
             context.Response.Close();
         }
         catch (Exception ex)
         {
-            _sapi.Logger.Error($"[VintageAtlas] Error serving player path: {ex.Message}");
+            sapi.Logger.Error($"[VintageAtlas] Error serving player path: {ex.Message}");
             await ServeError(context, "Failed to get player path");
         }
     }
@@ -125,7 +115,7 @@ public class HistoricalController
     /// </summary>
     public async Task ServeCensus(HttpListenerContext context)
     {
-        if (_historicalTracker == null)
+        if (historicalTracker == null)
         {
             await ServeError(context, "Historical tracking not enabled", 501);
             return;
@@ -134,7 +124,7 @@ public class HistoricalController
         try
         {
             var queryParams = ParseHistoricalQuery(context);
-            var censusData = _historicalTracker.GetEntityCensus(queryParams);
+            var censusData = historicalTracker.GetEntityCensus(queryParams);
 
             var json = JsonConvert.SerializeObject(new
             {
@@ -148,12 +138,12 @@ public class HistoricalController
             context.Response.ContentType = "application/json";
             context.Response.ContentLength64 = bytes.Length;
 
-            await context.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+            await context.Response.OutputStream.WriteAsync(bytes);
             context.Response.Close();
         }
         catch (Exception ex)
         {
-            _sapi.Logger.Error($"[VintageAtlas] Error serving census: {ex.Message}");
+            sapi.Logger.Error($"[VintageAtlas] Error serving census: {ex.Message}");
             await ServeError(context, "Failed to get census data");
         }
     }
@@ -163,7 +153,7 @@ public class HistoricalController
     /// </summary>
     public async Task ServeStats(HttpListenerContext context)
     {
-        if (_historicalTracker == null)
+        if (historicalTracker == null)
         {
             await ServeError(context, "Historical tracking not enabled", 501);
             return;
@@ -171,7 +161,7 @@ public class HistoricalController
 
         try
         {
-            var stats = _historicalTracker.GetServerStatistics();
+            var stats = historicalTracker.GetServerStatistics();
 
             var json = JsonConvert.SerializeObject(stats, _jsonSettings);
             var bytes = Encoding.UTF8.GetBytes(json);
@@ -180,12 +170,12 @@ public class HistoricalController
             context.Response.ContentType = "application/json";
             context.Response.ContentLength64 = bytes.Length;
 
-            await context.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+            await context.Response.OutputStream.WriteAsync(bytes);
             context.Response.Close();
         }
         catch (Exception ex)
         {
-            _sapi.Logger.Error($"[VintageAtlas] Error serving stats: {ex.Message}");
+            sapi.Logger.Error($"[VintageAtlas] Error serving stats: {ex.Message}");
             await ServeError(context, "Failed to get server statistics");
         }
     }
@@ -250,7 +240,7 @@ public class HistoricalController
             var errorBytes = Encoding.UTF8.GetBytes(errorJson);
             
             context.Response.ContentLength64 = errorBytes.Length;
-            await context.Response.OutputStream.WriteAsync(errorBytes, 0, errorBytes.Length);
+            await context.Response.OutputStream.WriteAsync(errorBytes);
             context.Response.Close();
         }
         catch

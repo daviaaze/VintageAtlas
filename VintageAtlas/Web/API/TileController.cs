@@ -11,23 +11,9 @@ namespace VintageAtlas.Web.API;
 /// <summary>
 /// Serves map tiles with caching and ETag support
 /// </summary>
-public class TileController
+public partial class TileController(ICoreServerAPI sapi, ModConfig config, ITileGenerator tileGenerator)
 {
-    private readonly ICoreServerAPI _sapi;
-    private readonly ModConfig _config;
-    private readonly ITileGenerator _tileGenerator;
-    
-    private static readonly Regex TilePathRegex = new Regex(
-        @"^/tiles/(\d+)/(-?\d+)_(-?\d+)\.png$",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase
-    );
-
-    public TileController(ICoreServerAPI sapi, ModConfig config, ITileGenerator tileGenerator)
-    {
-        _sapi = sapi;
-        _config = config;
-        _tileGenerator = tileGenerator;
-    }
+    private static readonly Regex TilePathRegex = MyRegex();
 
     /// <summary>
     /// Serve a tile with proper caching headers and ETag support
@@ -40,7 +26,7 @@ public class TileController
             var match = TilePathRegex.Match(path);
             if (!match.Success)
             {
-                _sapi.Logger.Warning($"[VintageAtlas] Invalid tile path format: {path}");
+                sapi.Logger.Warning($"[VintageAtlas] Invalid tile path format: {path}");
                 await ServeError(context, "Invalid tile path format", 400);
                 return;
             }
@@ -50,20 +36,20 @@ public class TileController
             var tileZ = int.Parse(match.Groups[3].Value);
             
             // Validate zoom level (0 = fully zoomed out, BaseZoomLevel = fully zoomed in)
-            if (zoom < 0 || zoom > _config.BaseZoomLevel)
+            if (zoom < 0 || zoom > config.BaseZoomLevel)
             {
-                _sapi.Logger.Warning($"[VintageAtlas] Invalid zoom level {zoom}, must be between 0 and {_config.BaseZoomLevel}");
-                await ServeError(context, $"Invalid zoom level. Must be between 0 and {_config.BaseZoomLevel}", 400);
+                sapi.Logger.Warning($"[VintageAtlas] Invalid zoom level {zoom}, must be between 0 and {config.BaseZoomLevel}");
+                await ServeError(context, $"Invalid zoom level. Must be between 0 and {config.BaseZoomLevel}", 400);
                 return;
             }
 
             // Generate or retrieve tile using ITileGenerator interface
-            var result = await _tileGenerator.GetTileDataAsync(zoom, tileX, tileZ);
+            var result = await tileGenerator.GetTileDataAsync(zoom, tileX, tileZ);
             
             // Handle missing tile
             if (result == null)
             {
-                _sapi.Logger.Debug($"[VintageAtlas] Tile not found: zoom={zoom}, x={tileX}, z={tileZ}");
+                sapi.Logger.Debug($"[VintageAtlas] Tile not found: zoom={zoom}, x={tileX}, z={tileZ}");
                 await ServeError(context, "Tile not found", 404);
                 return;
             }
@@ -76,7 +62,7 @@ public class TileController
             if (!string.IsNullOrEmpty(clientETag) && clientETag == etag)
             {
                 // Client has current version - return 304 Not Modified
-                _sapi.Logger.Debug($"[VintageAtlas] Tile not modified (304): zoom={zoom}, x={tileX}, z={tileZ}");
+                sapi.Logger.Debug($"[VintageAtlas] Tile not modified (304): zoom={zoom}, x={tileX}, z={tileZ}");
                 context.Response.StatusCode = 304;
                 context.Response.Headers.Add("ETag", etag);
                 context.Response.Headers.Add("Cache-Control", "public, max-age=3600, immutable");
@@ -95,25 +81,25 @@ public class TileController
             // Add performance hint: this tile won't change unless map is regenerated
             context.Response.Headers.Add("X-Tile-Cache", "static");
             
-            await context.Response.OutputStream.WriteAsync(result, 0, result.Length);
+            await context.Response.OutputStream.WriteAsync(result);
             context.Response.Close();
             
-            _sapi.Logger.Debug($"[VintageAtlas] Served tile: zoom={zoom}, x={tileX}, z={tileZ}, size={result.Length} bytes");
+            sapi.Logger.Debug($"[VintageAtlas] Served tile: zoom={zoom}, x={tileX}, z={tileZ}, size={result.Length} bytes");
         }
         catch (Exception ex)
         {
-            _sapi.Logger.Error($"[VintageAtlas] Error serving tile: {ex.Message}");
-            _sapi.Logger.Error(ex.StackTrace ?? "");
-            await ServeError(context, "Internal server error", 500);
+            sapi.Logger.Error($"[VintageAtlas] Error serving tile: {ex.Message}");
+            sapi.Logger.Error(ex.StackTrace ?? "");
+            await ServeError(context, "Internal server error");
         }
     }
     
     /// <summary>
     /// Generate ETag for tile (based on content hash for cache validation)
     /// </summary>
-    private string GenerateETag(byte[] tileData, int zoom, int tileX, int tileZ)
+    private static string GenerateETag(byte[] tileData, int zoom, int tileX, int tileZ)
     {
-        // For performance, use first 16 bytes + size as fingerprint
+        // For performance, use the first 16 bytes + size as fingerprint
         // (full hash would be expensive for high-volume tile serving)
         var fingerprint = tileData.Length;
         if (tileData.Length >= 16)
@@ -146,7 +132,7 @@ public class TileController
             var errorBytes = System.Text.Encoding.UTF8.GetBytes(errorJson);
             
             context.Response.ContentLength64 = errorBytes.Length;
-            await context.Response.OutputStream.WriteAsync(errorBytes, 0, errorBytes.Length);
+            await context.Response.OutputStream.WriteAsync(errorBytes);
             context.Response.Close();
         }
         catch
@@ -154,5 +140,8 @@ public class TileController
             // Silently fail
         }
     }
+
+    [GeneratedRegex(@"^/tiles/(\d+)/(-?\d+)_(-?\d+)\.png$", RegexOptions.IgnoreCase | RegexOptions.Compiled, "en-US")]
+    private static partial Regex MyRegex();
 }
 

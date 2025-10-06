@@ -3,7 +3,6 @@ using Xunit;
 using FluentAssertions;
 using Moq;
 using VintageAtlas.Export;
-using VintageAtlas.Models;
 
 namespace VintageAtlas.Tests.Unit.Export;
 

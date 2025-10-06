@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using SkiaSharp;
 using Vintagestory.API.Common;
 using Vintagestory.API.Server;
 using VintageAtlas.Core;
@@ -49,7 +48,7 @@ public class BlockColorCache
 
     /// <summary>
     /// Initialize the color cache
-    /// Call this once after server startup, on main thread
+    /// Call this once after server startup, on the main thread
     /// </summary>
     public void Initialize()
     {
@@ -77,11 +76,9 @@ public class BlockColorCache
 
         // Count blocks per palette color for Mode 4 debugging
         var paletteDistribution = new Dictionary<byte, int>();
-        for (var i = 0; i < _blockToColorIndex.Length; i++)
+        foreach (var colorIndex in _blockToColorIndex)
         {
-            var colorIndex = _blockToColorIndex[i];
-            if (!paletteDistribution.ContainsKey(colorIndex))
-                paletteDistribution[colorIndex] = 0;
+            paletteDistribution.TryAdd(colorIndex, 0);
             paletteDistribution[colorIndex]++;
         }
         
@@ -98,14 +95,14 @@ public class BlockColorCache
 
     /// <summary>
     /// Get color variations for a block (for ColorVariations modes)
-    /// Returns null if block has no color variations
+    /// Returns null if the block has no color variations
     /// </summary>
     public List<uint>? GetColorVariations(int blockId)
     {
         if (blockId < 0 || blockId >= _blockToColorIndex.Length)
             return null;
 
-        return _blockColorVariations.TryGetValue(blockId, out var colors) ? colors : null;
+        return _blockColorVariations.GetValueOrDefault(blockId);
     }
 
     /// <summary>
@@ -141,7 +138,7 @@ public class BlockColorCache
     /// <summary>
     /// Get color by material (fallback when block not in cache)
     /// </summary>
-    public uint GetColorByMaterial(EnumBlockMaterial material)
+    public static uint GetColorByMaterial(EnumBlockMaterial material)
     {
         var colorCode = MapColors.GetDefaultMapColorCode(material);
         return MapColors.ColorsByCode.TryGetValue(colorCode, out var color) ? color : MapColors.ColorsByCode["land"];
@@ -200,7 +197,7 @@ public class BlockColorCache
             {
                 // Get color code from block attributes (much more detailed than material type)
                 // This matches the old Extractor.cs behavior for rich color variation
-                var colorCode = "land"; // Default fallback
+                string colorCode; // Default fallback
                 if (block.Attributes != null)
                 {
                     colorCode = block.Attributes["mapColorCode"].AsString() ??
@@ -245,19 +242,13 @@ public class BlockColorCache
             try
             {
                 // Ensure colors have alpha channel set
-                var colors = new List<uint>();
-                foreach (var color in value)
-                {
-                    // Ensure full opacity if alpha is 0
-                    var colorWithAlpha = (color & 0xff000000) == 0 ? color | 0xff000000 : color;
-                    colors.Add(colorWithAlpha);
-                }
+                var colors = value.Select(color => (color & 0xff000000) == 0 ? color | 0xff000000 : color).ToList();
 
                 if (colors.Count == 0) continue;
 
                 // Find block by code (handle wildcards)
 
-                if (blockCode.Contains("*"))
+                if (blockCode.Contains('*'))
                 {
                     // Wildcard matching
                     var pattern = blockCode.Replace("*", ".*");
@@ -267,22 +258,22 @@ public class BlockColorCache
                     {
                         if (block == null || block.Id == 0) continue;
 
-                        if (regex.IsMatch(block.Code.ToString()))
-                        {
-                            _blockColorVariations[block.Id] = colors;
-                            appliedCount++;
-                        }
+                        if (!regex.IsMatch(block.Code.ToString())) 
+                            continue;
+                        
+                        _blockColorVariations[block.Id] = colors;
+                        appliedCount++;
                     }
                 }
                 else
                 {
                     // Exact match
                     var block = _sapi.World.GetBlock(new AssetLocation(blockCode));
-                    if (block != null)
-                    {
-                        _blockColorVariations[block.Id] = colors;
-                        appliedCount++;
-                    }
+                    if (block == null) 
+                        continue;
+                    
+                    _blockColorVariations[block.Id] = colors;
+                    appliedCount++;
                 }
             }
             catch (Exception ex)
@@ -308,10 +299,10 @@ public class BlockColorCache
         var colorIndex = _blockToColorIndex[blockId];
         var baseColor = _colorPalette[colorIndex];
 
-        // If this is a water edge, use darker water edge color
+        // If this is a water edge, use darker water-edge color
         if (isWaterEdge && !IsLake(blockId))
         {
-            return MapColors.ColorsByCode["wateredge"];
+            return MapColors.ColorsByCode["water-edge"];
         }
 
         return baseColor;
@@ -331,7 +322,7 @@ public class BlockColorCache
             var fallback = GetBaseColor(blockId);
             
             // DEBUG: Log fallback for common surface blocks
-            if (blockId < 10 || blockId == 6961 || blockId == 3949 || blockId == 2617)
+            if (blockId is < 10 or 6961 or 3949 or 2617)
             {
                 _sapi.Logger.Warning($"[VintageAtlas] Block {blockId} has NO variations, using palette fallback: 0x{fallback:X8}");
             }
@@ -342,7 +333,7 @@ public class BlockColorCache
         var selectedColor = variations[random.Next(variations.Count)];
         
         // DEBUG: Log successful variation for common surface blocks
-        if (blockId < 10 || blockId == 6961 || blockId == 3949 || blockId == 2617)
+        if (blockId is < 10 or 6961 or 3949 or 2617)
         {
             // _sapi.Logger.Notification($"[VintageAtlas] Block {blockId} using detailed color variation: 0x{selectedColor:X8} ({variations.Count} available)");
         }

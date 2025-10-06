@@ -4,11 +4,8 @@ using Xunit;
 using FluentAssertions;
 using Moq;
 using Vintagestory.API.Server;
-using Vintagestory.API.Common;
 using VintageAtlas.Export;
 using VintageAtlas.Core;
-using VintageAtlas.Models;
-using VintageAtlas.Storage;
 using VintageAtlas.Tests.Mocks;
 
 namespace VintageAtlas.Tests.Integration;

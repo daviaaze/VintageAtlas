@@ -1,11 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 using Vintagestory.Server;
 using VintageAtlas.Core;
-using Vintagestory.API.Config;
 using Vintagestory.Common.Database;
 using Vintagestory.API.Common;
 

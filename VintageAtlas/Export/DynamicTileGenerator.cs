@@ -14,7 +14,7 @@ namespace VintageAtlas.Export;
 /// Alternative implementation using MBTiles database storage instead of file system
 /// This demonstrates how to use SQLite-based tile storage
 /// </summary>
-public class DynamicTileGenerator : ITileGenerator, IDisposable
+public sealed class DynamicTileGenerator : ITileGenerator
 {
     private readonly ICoreServerAPI _sapi;
     private readonly ModConfig _config;
@@ -26,8 +26,8 @@ public class DynamicTileGenerator : ITileGenerator, IDisposable
     // In-memory cache for frequently accessed tiles
     private readonly ConcurrentDictionary<string, CachedTile> _memoryCache = new();
 
-    private const int CHUNK_SIZE = 32;
-    private const int MAX_CACHE_SIZE = 100; // Keep 100 most recent tiles in memory
+    private const int ChunkSize = 32;
+    private const int MaxCacheSize = 100; // Keep 100 most recent tiles in memory
 
     public DynamicTileGenerator(ICoreServerAPI sapi, ModConfig config, BlockColorCache colorCache, MbTilesStorage storage)
     {
@@ -49,14 +49,14 @@ public class DynamicTileGenerator : ITileGenerator, IDisposable
     /// </summary>
     public async Task<byte[]?> GetTileDataAsync(int zoom, int tileX, int tileZ)
     {
-        var result = await GenerateTileAsync(zoom, tileX, tileZ, null);
+        var result = await GenerateTileAsync(zoom, tileX, tileZ);
         return result.NotFound ? null : result.Data;
     }
 
     /// <summary>
     /// Generate or retrieve a tile
     /// </summary>
-    public async Task<TileResult> GenerateTileAsync(int zoom, int tileX, int tileZ, string? ifNoneMatch = null)
+    private async Task<TileResult> GenerateTileAsync(int zoom, int tileX, int tileZ, string? ifNoneMatch = null)
     {
         var tileKey = $"{zoom}_{tileX}_{tileZ}";
         
@@ -109,11 +109,11 @@ public class DynamicTileGenerator : ITileGenerator, IDisposable
         _sapi.Logger.Debug($"[VintageAtlas] Generating new tile: {zoom}/{tileX}_{tileZ}");
         
         // Log coordinate calculation details
-        var chunksPerTile = _config.TileSize / CHUNK_SIZE;
+        var chunksPerTile = _config.TileSize / ChunkSize;
         var startChunkX = tileX * chunksPerTile;
         var startChunkZ = tileZ * chunksPerTile;
-        var startWorldX = startChunkX * CHUNK_SIZE;
-        var startWorldZ = startChunkZ * CHUNK_SIZE;
+        var startWorldX = startChunkX * ChunkSize;
+        var startWorldZ = startChunkZ * ChunkSize;
         _sapi.Logger.Debug($"[VintageAtlas] Tile coords: ({tileX},{tileZ}) -> Chunk coords: ({startChunkX},{startChunkZ}) -> World coords: ({startWorldX},{startWorldZ})");
         
         try
@@ -183,30 +183,9 @@ public class DynamicTileGenerator : ITileGenerator, IDisposable
     }
 
     /// <summary>
-    /// Get storage statistics
-    /// </summary>
-    public async Task<StorageStats> GetStatsAsync()
-    {
-        var stats = new StorageStats
-        {
-            DatabaseSizeBytes = _storage.GetDatabaseSize(),
-            MemoryCachedTiles = _memoryCache.Count,
-            TotalTiles = await _storage.GetTileCountAsync()
-        };
-
-        // Count per zoom level
-        for (var z = 1; z <= _config.BaseZoomLevel; z++)
-        {
-            stats.TilesPerZoom[z] = await _storage.GetTileCountAsync(z);
-        }
-
-        return stats;
-    }
-
-    /// <summary>
     /// Get tile extent (min/max coordinates) for a specific zoom level from the database
     /// </summary>
-    public async Task<Storage.TileExtent?> GetTileExtentAsync(int zoom)
+    public async Task<TileExtent?> GetTileExtentAsync(int zoom)
     {
         return await _storage.GetTileExtentAsync(zoom);
     }
@@ -214,7 +193,7 @@ public class DynamicTileGenerator : ITileGenerator, IDisposable
     private void CacheInMemory(string key, byte[] data, string etag, DateTime lastModified)
     {
         // Implement simple LRU cache by removing oldest entries
-        if (_memoryCache.Count >= MAX_CACHE_SIZE)
+        if (_memoryCache.Count >= MaxCacheSize)
         {
             // Find and remove oldest entry
             var oldest = DateTime.MaxValue;
@@ -222,11 +201,11 @@ public class DynamicTileGenerator : ITileGenerator, IDisposable
             
             foreach (var kvp in _memoryCache)
             {
-                if (kvp.Value.LastModified < oldest)
-                {
-                    oldest = kvp.Value.LastModified;
-                    oldestKey = kvp.Key;
-                }
+                if (kvp.Value.LastModified >= oldest) 
+                    continue;
+                
+                oldest = kvp.Value.LastModified;
+                oldestKey = kvp.Key;
             }
             
             if (oldestKey != null)
@@ -327,7 +306,7 @@ public class DynamicTileGenerator : ITileGenerator, IDisposable
                     }
                     
                     RenderChunkSnapshotToTile(canvas, snapshot, 
-                        offsetX * CHUNK_SIZE, offsetZ * CHUNK_SIZE);
+                        offsetX * ChunkSize, offsetZ * ChunkSize);
                     chunksRendered++;
                 }
             }
@@ -367,11 +346,11 @@ public class DynamicTileGenerator : ITileGenerator, IDisposable
             using var paint = new SKPaint();
             var random = new Random(snapshot.ChunkX * 31 + snapshot.ChunkZ); // Deterministic per-chunk seed
 
-            for (var x = 0; x < CHUNK_SIZE; x++)
+            for (var x = 0; x < ChunkSize; x++)
             {
-                for (var z = 0; z < CHUNK_SIZE; z++)
+                for (var z = 0; z < ChunkSize; z++)
                 {
-                    var heightIndex = z * CHUNK_SIZE + x;
+                    var heightIndex = z * ChunkSize + x;
                     if (heightIndex >= heightMap.Length) continue;
 
                     var height = heightMap[heightIndex];
@@ -379,10 +358,10 @@ public class DynamicTileGenerator : ITileGenerator, IDisposable
 
                     // Get the surface block at this position
                     // Height is absolute Y coordinate, convert to local Y within chunk
-                    var localY = height - (snapshot.ChunkY * CHUNK_SIZE);
+                    var localY = height - snapshot.ChunkY * ChunkSize;
 
                     // Clamp to chunk bounds
-                    if (localY < 0 || localY >= CHUNK_SIZE)
+                    if (localY < 0 || localY >= ChunkSize)
                     {
                         // Surface is in different Y chunk, use default color
                         paint.Color = new SKColor(172, 136, 88); // Default land color
@@ -391,7 +370,7 @@ public class DynamicTileGenerator : ITileGenerator, IDisposable
                     }
 
                     // Get block ID at surface position
-                    var blockIndex = localY * CHUNK_SIZE * CHUNK_SIZE + z * CHUNK_SIZE + x;
+                    var blockIndex = localY * ChunkSize * ChunkSize + z * ChunkSize + x;
                     if (blockIndex < 0 || blockIndex >= blockIds.Length)
                     {
                         paint.Color = new SKColor(172, 136, 88); // Default land color
@@ -460,11 +439,9 @@ public class DynamicTileGenerator : ITileGenerator, IDisposable
                     canvas.DrawLine(0, i, tileSize, i, gridPaint);
                 }
                 
-                using var textPaint = new SKPaint
-                {
-                    Color = SKColors.White,
-                    IsAntialias = true
-                };
+                using var textPaint = new SKPaint();
+                textPaint.Color = SKColors.White;
+                textPaint.IsAntialias = true;
 
                 using var font = new SKFont();
                 font.Size = 12;
@@ -490,7 +467,16 @@ public class DynamicTileGenerator : ITileGenerator, IDisposable
 
     public void Dispose()
     {
-        _storage?.Dispose();
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    private void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _storage?.Dispose();
+        }
     }
 }
 

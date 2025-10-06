@@ -12,6 +12,7 @@ This project contains automated tests for VintageAtlas.
 ## Running Tests
 
 ### All tests
+
 ```bash
 nix develop
 cd VintageAtlas.Tests
@@ -19,16 +20,19 @@ dotnet test
 ```
 
 ### Specific test class
+
 ```bash
 dotnet test --filter "FullyQualifiedName~ConfigValidatorTests"
 ```
 
 ### With coverage
+
 ```bash
 dotnet test --collect:"XPlat Code Coverage"
 ```
 
 ### Verbose output
+
 ```bash
 dotnet test --logger "console;verbosity=detailed"
 ```
@@ -36,6 +40,7 @@ dotnet test --logger "console;verbosity=detailed"
 ## Writing Tests
 
 ### Test Structure (AAA Pattern)
+
 ```csharp
 [Fact]
 public void MethodName_Scenario_ExpectedResult()
@@ -52,6 +57,7 @@ public void MethodName_Scenario_ExpectedResult()
 ```
 
 ### Using Assertions
+
 ```csharp
 // FluentAssertions examples
 result.Should().BeTrue();
@@ -64,6 +70,7 @@ action.Should().Throw<ArgumentException>();
 ```
 
 ### Using Mocks
+
 ```csharp
 var mockLogger = new MockLogger();
 // ... run code that logs
@@ -81,4 +88,3 @@ mockLogger.Notifications.Should().Contain(msg => msg.Contains("Success"));
 
 - [Full Testing Guide](../docs/guides/testing-guide.md)
 - [Contributing Guidelines](../CONTRIBUTING.md)
-

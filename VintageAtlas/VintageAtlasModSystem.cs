@@ -1,12 +1,8 @@
 using System;
 using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
-using Newtonsoft.Json;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
 using Vintagestory.API.Server;
-using Vintagestory.Server;
 using VintageAtlas.Commands;
 using VintageAtlas.Core;
 using VintageAtlas.Export;
@@ -30,7 +26,7 @@ public class VintageAtlasModSystem : ModSystem
     private MapExporter? _mapExporter;
     private DataCollector? _dataCollector;
     private HistoricalTracker? _historicalTracker;
-    private Web.API.MapConfigController? _mapConfigController;
+    private MapConfigController? _mapConfigController;
     // private ChunkChangeTracker? _chunkChangeTracker; // DISABLED for testing
     private ITileGenerator? _tileGenerator;
     private TileGenerationState? _tileState;
@@ -83,7 +79,7 @@ public class VintageAtlasModSystem : ModSystem
         _storage = new MbTilesStorage(dbPath);
         _sapi.Logger.Debug($"[VintageAtlas] Tile storage initialized: {dbPath}");
         
-        // Initialize block color cache (needed for tile rendering)
+        // Initialize the block color cache (needed for tile rendering)
         _colorCache = new BlockColorCache(_sapi, _config);
         _colorCache.Initialize();
         _sapi.Logger.Debug("[VintageAtlas] Block color cache initialized");
@@ -93,7 +89,7 @@ public class VintageAtlasModSystem : ModSystem
         _sapi.Logger.Debug("[VintageAtlas] Unified tile generator initialized");
         
         // Initialize map config controller (needed by exporter for cache invalidation)
-        _mapConfigController = new Web.API.MapConfigController(_sapi, _config, unifiedGenerator);
+        _mapConfigController = new MapConfigController(_sapi, _config, unifiedGenerator);
         _sapi.Logger.Debug("[VintageAtlas] Map config controller initialized");
         
         // Initialize map exporter with unified generator and map config controller
@@ -102,7 +98,7 @@ public class VintageAtlasModSystem : ModSystem
         // Register commands
         ExportCommand.Register(_sapi, _mapExporter);
         
-        // Register network channel for receiving color data from client
+        // Register a network channel for receiving color data from the client
         _serverNetworkChannel = _sapi.Network.RegisterChannel("vintageatlas");
         _serverNetworkChannel.RegisterMessageType(typeof(ExportData));
         _serverNetworkChannel.SetMessageHandler<ExportData>(OnClientData);
@@ -137,10 +133,10 @@ public class VintageAtlasModSystem : ModSystem
             // Initialize data collector
             _dataCollector = new DataCollector(_sapi);
             
-            // Initialize chunk change tracker for dynamic updates (DISABLED for testing)
+            // Initialize the chunk change tracker for dynamic updates (DISABLED for testing)
             // _chunkChangeTracker = new ChunkChangeTracker(_sapi);
             
-            // Initialize historical tracker if enabled (before game tick listener)
+            // Initialize the historical tracker if enabled (before game tick listener)
             if (_config.EnableHistoricalTracking)
             {
                 _historicalTracker = new HistoricalTracker(_sapi);
@@ -229,7 +225,6 @@ public class VintageAtlasModSystem : ModSystem
             var tileController = new TileController(_sapi, _config, _tileGenerator);
             
             var router = new RequestRouter(
-                _sapi,
                 _config,
                 statusController,
                 configController,
@@ -286,7 +281,7 @@ public class VintageAtlasModSystem : ModSystem
         // Note: Historical tracking is also handled by RegisterGameTickListener in SetupLiveServer()
         // Note: Tile regeneration is handled by BackgroundTileService in a separate thread
         
-        // Auto-export full map data if enabled and interval has passed (optional full regeneration)
+        // Auto-export full map data if enabled, and the interval has passed (optional full regeneration)
         if (!_config.AutoExportMap || !_config.EnableLiveServer || _mapExporter == null) return;
         
         var currentTime = _sapi.World.ElapsedMilliseconds;
@@ -337,22 +332,22 @@ public class VintageAtlasModSystem : ModSystem
         
         var config = _sapi.LoadModConfig<ModConfig>("VintageAtlasConfig.json");
 
-        if (config is null)
-        {
-            _sapi.Logger.Warning("[VintageAtlas] No configuration found, creating default config");
+        if (config is not null) 
+            return config ?? throw new InvalidOperationException("Config initialization failed");
+        
+        _sapi.Logger.Warning("[VintageAtlas] No configuration found, creating default config");
 
-            // Use ModData directory for all VintageAtlas data
-            var modDataPath = Path.Combine(GamePaths.DataPath, "ModData", "VintageAtlas");
-            config = new ModConfig
-            {
-                Mode = ImageMode.MedievalStyleWithHillShading,
-                OutputDirectory = modDataPath
-            };
+        // Use ModData directory for all VintageAtlas data
+        var modDataPath = Path.Combine(GamePaths.DataPath, "ModData", "VintageAtlas");
+        config = new ModConfig
+        {
+            Mode = ImageMode.MedievalStyleWithHillShading,
+            OutputDirectory = modDataPath
+        };
             
-            _sapi.StoreModConfig(config, "VintageAtlasConfig.json");
-            _sapi.Logger.Notification($"[VintageAtlas] Created default config at: {Path.Combine(GamePaths.ModConfig, "VintageAtlasConfig.json")}");
-            _sapi.Logger.Notification($"[VintageAtlas] Data will be stored in: {modDataPath}");
-        }
+        _sapi.StoreModConfig(config, "VintageAtlasConfig.json");
+        _sapi.Logger.Notification($"[VintageAtlas] Created default config at: {Path.Combine(GamePaths.ModConfig, "VintageAtlasConfig.json")}");
+        _sapi.Logger.Notification($"[VintageAtlas] Data will be stored in: {modDataPath}");
 
         return config ?? throw new InvalidOperationException("Config initialization failed");
     }

@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using Vintagestory.API.Server;
@@ -14,11 +13,9 @@ namespace VintageAtlas.Web.Server;
 /// <summary>
 /// Serves static files (HTML, CSS, JS, images) with async I/O and ETag caching
 /// </summary>
-public class StaticFileServer
+public class StaticFileServer(ICoreServerAPI sapi, string webRoot, ModConfig config)
 {
-    private readonly ICoreServerAPI _sapi;
-    private readonly string _webRoot;
-    private readonly string _basePath;
+    private readonly string _basePath = config.BasePath.EndsWith('/') ? config.BasePath : $"{config.BasePath}/";
     
     // ETag cache for static files (file path -> ETag)
     private readonly ConcurrentDictionary<string, string> _etagCache = new();
@@ -44,29 +41,22 @@ public class StaticFileServer
         { ".otf", "font/otf" }
     };
 
-    public StaticFileServer(ICoreServerAPI sapi, string webRoot, ModConfig config)
-    {
-        _sapi = sapi;
-        _webRoot = webRoot;
-        _basePath = config.BasePath.EndsWith("/") ? config.BasePath : config.BasePath + "/";
-    }
-
     /// <summary>
     /// Try to serve a static file from the web root with async I/O and ETag support
     /// </summary>
-    public async Task<bool> TryServeFileAsync(HttpListenerContext context, string requestPath)
+    private async Task<bool> TryServeFileAsync(HttpListenerContext context, string requestPath)
     {
         try
         {
-            // Default to index.html for root path
-            if (requestPath == "/" || requestPath == "")
+            // Default to index.html for a root path
+            if (requestPath is "/" or "")
             {
                 requestPath = "/index.html";
             }
 
             // Security: prevent directory traversal
             var safePath = requestPath.TrimStart('/').Replace("..", "");
-            var filePath = Path.Combine(_webRoot, safePath);
+            var filePath = Path.Combine(webRoot, safePath);
 
             if (!File.Exists(filePath))
             {
@@ -74,17 +64,17 @@ public class StaticFileServer
             }
 
             var extension = Path.GetExtension(filePath).ToLowerInvariant();
-            var mimeType = MimeTypes.ContainsKey(extension) ? MimeTypes[extension] : "application/octet-stream";
+            var mimeType = MimeTypes.GetValueOrDefault(extension, "application/octet-stream");
 
             // Get or compute ETag for this file
             var fileInfo = new FileInfo(filePath);
             var etag = GetOrComputeETag(filePath, fileInfo);
             
-            // Check If-None-Match header for conditional requests
+            // Check the If-None-Match header for conditional requests
             var ifNoneMatch = context.Request.Headers["If-None-Match"];
             if (!string.IsNullOrEmpty(ifNoneMatch) && ifNoneMatch == etag)
             {
-                // Client has current version - return 304 Not Modified
+                // Client has the current version, return 304 Not Modified
                 context.Response.StatusCode = 304;
                 context.Response.Headers.Add("ETag", etag);
                 context.Response.Close();
@@ -93,13 +83,13 @@ public class StaticFileServer
 
             // Read file asynchronously
             byte[] buffer;
-            using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true))
+            await using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true))
             {
                 buffer = new byte[fs.Length];
-                await fs.ReadAsync(buffer, 0, buffer.Length);
+                await fs.ReadExactlyAsync(buffer, 0, buffer.Length);
             }
             
-            // Inject base path into HTML files for nginx sub-path support
+            // Inject a base path into HTML files for nginx sub-path support
             if (extension == ".html")
             {
                 var html = Encoding.UTF8.GetString(buffer);
@@ -115,9 +105,9 @@ public class StaticFileServer
 
             // Cache control strategy:
             // - HTML/JS/JSON: No cache (always fresh for updates) but with ETag
-            // - Map data: 5 minute cache (updates on export)
-            // - Static assets (CSS/fonts/images): 1 hour cache (rarely change)
-            if (extension == ".html" || extension == ".js" || extension == ".json")
+            // - Map data: 5-minute cache (updates on export)
+            // - Static assets (CSS/fonts/images): 1-hour cache (rarely change)
+            if (extension is ".html" or ".js" or ".json")
             {
                 // Use ETag validation instead of no-cache for better performance
                 context.Response.Headers.Add("Cache-Control", "no-cache, must-revalidate");
@@ -133,13 +123,13 @@ public class StaticFileServer
                 context.Response.Headers.Add("Cache-Control", "public, max-age=3600, immutable");  // 1 hour
             }
 
-            await context.Response.OutputStream.WriteAsync(buffer, 0, buffer.Length);
+            await context.Response.OutputStream.WriteAsync(buffer);
             
             return true;
         }
         catch (Exception ex)
         {
-            _sapi.Logger.Error($"[VintageAtlas] Error serving static file {requestPath}: {ex.Message}");
+            sapi.Logger.Error($"[VintageAtlas] Error serving static file {requestPath}: {ex.Message}");
             return false;
         }
     }
@@ -178,7 +168,7 @@ public class StaticFileServer
     {
         context.Response.StatusCode = 404;
         context.Response.ContentType = "text/plain";
-        var message = Encoding.UTF8.GetBytes("404 - Not Found");
+        var message = "404 - Not Found"u8.ToArray();
         context.Response.ContentLength64 = message.Length;
         context.Response.OutputStream.Write(message, 0, message.Length);
     }

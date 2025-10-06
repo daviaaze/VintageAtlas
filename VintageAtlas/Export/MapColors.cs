@@ -4,7 +4,7 @@ using Vintagestory.API.Datastructures;
 
 namespace VintageAtlas.Export;
 
-public class MapColors
+public static class MapColors
 {
     public static string GetDefaultMapColorCode(EnumBlockMaterial material)
     {
@@ -25,11 +25,12 @@ public class MapColors
             _ => "land"
         };
     }
-    public static OrderedDictionary<string, string> HexColorsByCode = new()
+
+    private static readonly OrderedDictionary<string, string> HexColorsByCode = new()
     {
         { "ink", "#483018" },
         { "settlement", "#856844" },
-        { "wateredge", "#483018" },
+        { "water-edge", "#483018" },
         { "land", "#AC8858" },
         { "desert", "#C4A468" },
         { "forest", "#98844C" },
@@ -40,7 +41,7 @@ public class MapColors
         { "glacier", "#E0E0C0" },
         { "devastation", "#755c3c" }
     };
-    
+
     public static readonly OrderedDictionary<string, uint> ColorsByCode = new();
 
     static MapColors()

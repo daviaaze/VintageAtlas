@@ -9,6 +9,7 @@ All notable changes to VintageAtlas will be documented in this file.
 This is the first production release of **VintageAtlas** (formerly WebCartographer).
 
 ### Added
+
 - **Clean Architecture**: Refactored into modular components (Core, Web, Export, Tracking)
 - **Production-Ready Configuration**: Comprehensive validation and auto-fixes
 - **Enhanced Web Server**: Separated concerns with proper routing and controllers
@@ -17,6 +18,7 @@ This is the first production release of **VintageAtlas** (formerly WebCartograph
 - **Better Error Handling**: Graceful failures with helpful error messages
 
 ### Changed
+
 - **Renamed**: `WebCartographer` → `VintageAtlas`
 - **Namespace**: `WebCartographer.*` → `VintageAtlas.*`
 - **Config File**: `WebCartographerConfig.json` → `VintageAtlasConfig.json`
@@ -24,6 +26,7 @@ This is the first production release of **VintageAtlas** (formerly WebCartograph
 - **Commands**: `/webcartographer` or `/webc` → `/atlas` or `/va`
 
 ### Architecture Improvements
+
 - Separated web server logic into `WebServer`, `RequestRouter`, and controllers
 - Implemented dependency injection patterns with interfaces
 - Created `IDataCollector`, `IHistoricalTracker`, and `IMapExporter` interfaces
@@ -37,6 +40,7 @@ This is the first production release of **VintageAtlas** (formerly WebCartograph
   - `VintageAtlas.Commands` - Chat commands
 
 ### Technical Details
+
 - Built with .NET 8.0
 - Compatible with Vintage Story 1.20.1+
 - Server-side only mod
@@ -45,6 +49,7 @@ This is the first production release of **VintageAtlas** (formerly WebCartograph
 ### Migration from WebCartographer
 
 If migrating from WebCartographer:
+
 1. Remove old `webcartographer` mod
 2. Install `vintageatlas` mod
 3. Rename `WebCartographerConfig.json` to `VintageAtlasConfig.json`
@@ -62,4 +67,3 @@ For WebCartographer v0.8.0 and earlier changelog, see the [original repository](
 ---
 
 **Note**: Version 1.0.0 represents a complete refactoring for production use. While functionally equivalent to WebCartographer 0.8.0, the internal architecture has been completely redesigned for maintainability, extensibility, and production deployment.
-

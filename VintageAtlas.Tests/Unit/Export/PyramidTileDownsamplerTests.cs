@@ -9,7 +9,6 @@ using Vintagestory.API.Server;
 using VintageAtlas.Export;
 using VintageAtlas.Core;
 using VintageAtlas.Tests.Mocks;
-using VintageAtlas.Storage;
 
 namespace VintageAtlas.Tests.Unit.Export;
 
@@ -32,7 +31,7 @@ public class PyramidTileDownsamplerTests
         _config = new ModConfig
         {
             TileSize = 256,
-            BaseZoomLevel = 7
+            BaseZoomLevel = 10  // Set high enough so our test zooms (6-7) are below base
         };
     }
 

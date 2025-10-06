@@ -12,25 +12,16 @@ namespace VintageAtlas.Export;
 /// <summary>
 /// Chunk data source that reads directly from the savegame database.
 /// Used for full map exports where we need to access all chunks, even unloaded ones.
-/// Does NOT require main thread access (reads from database directly).
+/// Does NOT require main thread access (reads from the database directly).
 /// </summary>
-public class SavegameDataSource : IChunkDataSource, IDisposable
+public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILogger logger)
+    : IChunkDataSource, IDisposable
 {
-    private readonly SavegameDataLoader _loader;
-    private readonly ModConfig _config;
-    private readonly ILogger _logger;
-    private readonly int _chunkSize;
+    private readonly SavegameDataLoader _loader = new(server, config.MaxDegreeOfParallelism, logger);
+    private readonly int _chunkSize = MagicNum.ServerChunkSize;
 
     public string SourceName => "SavegameDatabase";
     public bool RequiresMainThread => false;
-
-    public SavegameDataSource(ServerMain server, ModConfig config, ILogger logger)
-    {
-        _config = config;
-        _logger = logger;
-        _chunkSize = MagicNum.ServerChunkSize;
-        _loader = new SavegameDataLoader(server, config.MaxDegreeOfParallelism, logger);
-    }
 
     /// <summary>
     /// Get all map chunk positions that exist in the savegame database.
@@ -47,13 +38,13 @@ public class SavegameDataSource : IChunkDataSource, IDisposable
         }
         
         sqliteConn.Free();
-        _logger.Notification($"[VintageAtlas] Found {positions.Count} map chunks in savegame database");
+        logger.Notification($"[VintageAtlas] Found {positions.Count} map chunks in savegame database");
         return positions;
     }
 
     /// <summary>
     /// Get chunks for a tile from the savegame database.
-    /// This can be called from any thread (does not require main thread).
+    /// This can be called from any thread (does not require the main thread).
     /// </summary>
     public async Task<TileChunkData?> GetTileChunksAsync(int zoom, int tileX, int tileZ)
     {
@@ -61,7 +52,7 @@ public class SavegameDataSource : IChunkDataSource, IDisposable
         {
             try
             {
-                var chunksPerTile = _config.TileSize / _chunkSize;
+                var chunksPerTile = config.TileSize / _chunkSize;
                 var startChunkX = tileX * chunksPerTile;
                 var startChunkZ = tileZ * chunksPerTile;
                 
@@ -70,7 +61,7 @@ public class SavegameDataSource : IChunkDataSource, IDisposable
                     Zoom = zoom,
                     TileX = tileX,
                     TileZ = tileZ,
-                    TileSize = _config.TileSize,
+                    TileSize = config.TileSize,
                     ChunksPerTileEdge = chunksPerTile
                 };
 
@@ -90,21 +81,22 @@ public class SavegameDataSource : IChunkDataSource, IDisposable
                                 
                                 // We need to determine the chunk Y coordinate
                                 // For map tiles, we typically want the surface (Y=0 in map chunk coords)
-                                var chunkY = 0;
+                                // TODO: Check why this is always 0
+                                const int chunkY = 0;
                                 
                                 var chunkPos = new ChunkPos(chunkX, chunkY, chunkZ);
                                 
                                 // Get ServerMapChunk (contains height map and top block IDs)
                                 var mapChunk = _loader.GetServerMapChunk(sqliteConn, chunkPos);
+
+                                if (mapChunk is null) 
+                                    continue;
                                 
-                                if (mapChunk != null)
+                                // Create a snapshot from ServerMapChunk
+                                var snapshot = CreateSnapshotFromMapChunk(mapChunk, chunkX, chunkY, chunkZ, sqliteConn);
+                                if (snapshot != null)
                                 {
-                                    // Create snapshot from ServerMapChunk
-                                    var snapshot = CreateSnapshotFromMapChunk(mapChunk, chunkX, chunkY, chunkZ, sqliteConn);
-                                    if (snapshot != null)
-                                    {
-                                        tileData.AddChunk(snapshot);
-                                    }
+                                    tileData.AddChunk(snapshot);
                                 }
                             }
                         }
@@ -114,18 +106,16 @@ public class SavegameDataSource : IChunkDataSource, IDisposable
                 {
                     sqliteConn.Free();
                 }
+
+                if (tileData.Chunks.Count != 0)
+                    return tileData;
                 
-                if (tileData.Chunks.Count == 0)
-                {
-                    _logger.VerboseDebug($"[VintageAtlas] SavegameDataSource: No chunks found for tile {zoom}/{tileX}_{tileZ}");
-                    return null;
-                }
-                
-                return tileData;
+                logger.VerboseDebug($"[VintageAtlas] SavegameDataSource: No chunks found for tile {zoom}/{tileX}_{tileZ}");
+                return null;
             }
             catch (Exception ex)
             {
-                _logger.Error($"[VintageAtlas] SavegameDataSource: Failed to load tile data: {ex.Message}");
+                logger.Error($"[VintageAtlas] SavegameDataSource: Failed to load tile data: {ex.Message}");
                 return null;
             }
         });
@@ -133,7 +123,7 @@ public class SavegameDataSource : IChunkDataSource, IDisposable
     
     /// <summary>
     /// Create a ChunkSnapshot from ServerMapChunk data.
-    /// ServerMapChunk contains RainHeightMap with surface heights.
+    /// ServerMapChunk contains a RainHeightMap with surface heights.
     /// </summary>
     private ChunkSnapshot? CreateSnapshotFromMapChunk(ServerMapChunk mapChunk, int chunkX, int chunkY, int chunkZ, SqliteThreadCon sqliteConn)
     {
@@ -144,19 +134,18 @@ public class SavegameDataSource : IChunkDataSource, IDisposable
             {
                 return null;
             }
-            
-            var size = _chunkSize;
-            var heightMap = new int[size * size];
+
+            var heightMap = new int[_chunkSize * _chunkSize];
             
             // For full rendering, we'd need to load ServerChunk data for block IDs
             // For now, we'll just populate the height map
             // The rendering code will need access to actual ServerChunks for block colors
             
-            for (var x = 0; x < size; x++)
+            for (var x = 0; x < _chunkSize; x++)
             {
-                for (var z = 0; z < size; z++)
+                for (var z = 0; z < _chunkSize; z++)
                 {
-                    var index = z * size + x;
+                    var index = z * _chunkSize + x;
                     if (index < mapChunk.RainHeightMap.Length)
                     {
                         heightMap[index] = mapChunk.RainHeightMap[index];
@@ -174,61 +163,61 @@ public class SavegameDataSource : IChunkDataSource, IDisposable
             // This matches how Extractor.cs does it in ExtractWorldMap()
             // ═══════════════════════════════════════════════════════════════
             
-            var blockIds = new int[size * size * size];
+            var blockIds = new int[_chunkSize * _chunkSize * _chunkSize];
             
             // Determine which vertical chunks we need to load
-            var chunksToLoad = new System.Collections.Generic.HashSet<int>();
-            for (var x = 0; x < size; x++)
+            var chunksToLoad = new HashSet<int>();
+            for (var x = 0; x < _chunkSize; x++)
             {
-                for (var z = 0; z < size; z++)
+                for (var z = 0; z < _chunkSize; z++)
                 {
-                    var mapIndex = z * size + x;
-                    if (mapIndex < heightMap.Length && heightMap[mapIndex] > 0)
-                    {
-                        var height = heightMap[mapIndex];
-                        var chunkYForHeight = height / size;
-                        chunksToLoad.Add(chunkYForHeight);
-                    }
+                    var mapIndex = z * _chunkSize + x;
+                    if (mapIndex >= heightMap.Length || heightMap[mapIndex] <= 0) 
+                        continue;
+                    
+                    var height = heightMap[mapIndex];
+                    var chunkYForHeight = height / _chunkSize;
+                    chunksToLoad.Add(chunkYForHeight);
                 }
             }
             
             // Load the required ServerChunks
-            var loadedChunks = new System.Collections.Generic.Dictionary<int, ServerChunk>();
+            var loadedChunks = new Dictionary<int, ServerChunk>();
             foreach (var y in chunksToLoad)
             {
                 var chunkPos = new ChunkPos(chunkX, y, chunkZ);
                 var serverChunk = _loader.GetServerChunk(sqliteConn, chunkPos.ToChunkIndex());
-                if (serverChunk != null)
-                {
-                    serverChunk.Unpack_ReadOnly();
-                    loadedChunks[y] = serverChunk;
-                }
+                if (serverChunk == null) 
+                    continue;
+                
+                serverChunk.Unpack_ReadOnly();
+                loadedChunks[y] = serverChunk;
             }
             
             // Extract block IDs at surface positions
-            for (var x = 0; x < size; x++)
+            for (var x = 0; x < _chunkSize; x++)
             {
-                for (var z = 0; z < size; z++)
+                for (var z = 0; z < _chunkSize; z++)
                 {
-                    var mapIndex = z * size + x;
-                    if (mapIndex < heightMap.Length && heightMap[mapIndex] > 0)
-                    {
-                        var height = heightMap[mapIndex];
-                        var chunkYForHeight = height / size;
+                    var mapIndex = z * _chunkSize + x;
+                    if (mapIndex >= heightMap.Length || heightMap[mapIndex] <= 0) 
+                        continue;
+                    
+                    var height = heightMap[mapIndex];
+                    var chunkYForHeight = height / _chunkSize;
+
+                    if (!loadedChunks.TryGetValue(chunkYForHeight, out var serverChunk)) 
+                        continue;
                         
-                        if (loadedChunks.TryGetValue(chunkYForHeight, out var serverChunk))
-                        {
-                            var localY = height % size; // Y within the chunk
-                            var chunkDataIndex = (localY * size + z) * size + x;
-                            var blockId = serverChunk.Data[chunkDataIndex];
+                    var localY = height % _chunkSize; // Y within the chunk
+                    var chunkDataIndex = (localY * _chunkSize + z) * _chunkSize + x;
+                    var blockId = serverChunk.Data[chunkDataIndex];
                             
-                            // Store in our BlockIds array at the same local Y position
-                            var blockIndex = localY * size * size + z * size + x;
-                            if (blockIndex >= 0 && blockIndex < blockIds.Length)
-                            {
-                                blockIds[blockIndex] = blockId;
-                            }
-                        }
+                    // Store in our BlockIds array at the same local Y position
+                    var blockIndex = localY * _chunkSize * _chunkSize + z * _chunkSize + x;
+                    if (blockIndex >= 0 && blockIndex < blockIds.Length)
+                    {
+                        blockIds[blockIndex] = blockId;
                     }
                 }
             }
@@ -245,14 +234,23 @@ public class SavegameDataSource : IChunkDataSource, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.Error($"[VintageAtlas] Failed to create snapshot from map chunk: {ex.Message}");
+            logger.Error($"[VintageAtlas] Failed to create snapshot from map chunk: {ex.Message}");
             return null;
         }
     }
 
     public void Dispose()
     {
-        _loader?.Dispose();
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    private void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _loader.Dispose();
+        }
     }
 }
 

@@ -11,7 +11,7 @@ namespace VintageAtlas.Storage;
 /// https://github.com/mapbox/mbtiles-spec
 /// Thread-safe implementation using connection string instead of shared connection
 /// </summary>
-public class MbTilesStorage : IDisposable
+public sealed class MbTilesStorage : IDisposable
 {
     private readonly string _connectionString;
     private readonly string _dbPath;
@@ -45,7 +45,7 @@ public class MbTilesStorage : IDisposable
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
         
-        // Set busy timeout to 30 seconds (30000ms) to wait for locks
+        // Set a busy timeout to 30 seconds (30000ms) to wait for locks
         using var cmd = connection.CreateCommand();
         cmd.CommandText = "PRAGMA busy_timeout=30000;";
         cmd.ExecuteNonQuery();
@@ -101,24 +101,26 @@ public class MbTilesStorage : IDisposable
             cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;";
             cmd.ExecuteNonQuery();
             
-            // Create tiles table
-            cmd.CommandText = @"
-                CREATE TABLE IF NOT EXISTS tiles (
-                    zoom_level INTEGER NOT NULL,
-                    tile_column INTEGER NOT NULL,
-                    tile_row INTEGER NOT NULL,
-                    tile_data BLOB NOT NULL,
-                    PRIMARY KEY (zoom_level, tile_column, tile_row)
-                );
-                
-                CREATE INDEX IF NOT EXISTS tiles_zoom_idx ON tiles(zoom_level);
-                
-                -- Metadata table (optional but recommended)
-                CREATE TABLE IF NOT EXISTS metadata (
-                    name TEXT PRIMARY KEY,
-                    value TEXT
-                );
-            ";
+            // Create a tile table
+            cmd.CommandText = """
+
+                                              CREATE TABLE IF NOT EXISTS tiles (
+                                                  zoom_level INTEGER NOT NULL,
+                                                  tile_column INTEGER NOT NULL,
+                                                  tile_row INTEGER NOT NULL,
+                                                  tile_data BLOB NOT NULL,
+                                                  PRIMARY KEY (zoom_level, tile_column, tile_row)
+                                              );
+                                              
+                                              CREATE INDEX IF NOT EXISTS tiles_zoom_idx ON tiles(zoom_level);
+                                              
+                                              -- Metadata table (optional but recommended)
+                                              CREATE TABLE IF NOT EXISTS metadata (
+                                                  name TEXT PRIMARY KEY,
+                                                  value TEXT
+                                              );
+                                          
+                              """;
             
             cmd.ExecuteNonQuery();
             
@@ -146,10 +148,12 @@ public class MbTilesStorage : IDisposable
         await Task.CompletedTask; // Already opened in CreateConnection()
         
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = @"
-            INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data)
-            VALUES (@zoom, @x, @y, @data)
-        ";
+        cmd.CommandText = """
+
+                                      INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data)
+                                      VALUES (@zoom, @x, @y, @data)
+                                  
+                          """;
         
         cmd.Parameters.AddWithValue("@zoom", zoom);
         cmd.Parameters.AddWithValue("@x", x);
@@ -169,10 +173,12 @@ public class MbTilesStorage : IDisposable
         await Task.CompletedTask; // Already opened in CreateConnection()
         
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = @"
-            SELECT tile_data FROM tiles
-            WHERE zoom_level = @zoom AND tile_column = @x AND tile_row = @y
-        ";
+        cmd.CommandText = """
+
+                                      SELECT tile_data FROM tiles
+                                      WHERE zoom_level = @zoom AND tile_column = @x AND tile_row = @y
+                                  
+                          """;
         
         cmd.Parameters.AddWithValue("@zoom", zoom);
         cmd.Parameters.AddWithValue("@x", x);
@@ -192,10 +198,12 @@ public class MbTilesStorage : IDisposable
         await Task.CompletedTask; // Already opened in CreateConnection()
         
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = @"
-            SELECT COUNT(*) FROM tiles
-            WHERE zoom_level = @zoom AND tile_column = @x AND tile_row = @y
-        ";
+        cmd.CommandText = """
+
+                                      SELECT COUNT(*) FROM tiles
+                                      WHERE zoom_level = @zoom AND tile_column = @x AND tile_row = @y
+                                  
+                          """;
         
         cmd.Parameters.AddWithValue("@zoom", zoom);
         cmd.Parameters.AddWithValue("@x", x);
@@ -215,10 +223,12 @@ public class MbTilesStorage : IDisposable
         await Task.CompletedTask; // Already opened in CreateConnection()
         
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = @"
-            DELETE FROM tiles
-            WHERE zoom_level = @zoom AND tile_column = @x AND tile_row = @y
-        ";
+        cmd.CommandText = """
+
+                                      DELETE FROM tiles
+                                      WHERE zoom_level = @zoom AND tile_column = @x AND tile_row = @y
+                                  
+                          """;
         
         cmd.Parameters.AddWithValue("@zoom", zoom);
         cmd.Parameters.AddWithValue("@x", x);
@@ -261,15 +271,17 @@ public class MbTilesStorage : IDisposable
             await connection.OpenAsync();
             
             await using var cmd = connection.CreateCommand();
-            cmd.CommandText = @"
-                SELECT 
-                    MIN(tile_column) as minX,
-                    MAX(tile_column) as maxX,
-                    MIN(tile_row) as minY,
-                    MAX(tile_row) as maxY
-                FROM tiles 
-                WHERE zoom_level = @zoom
-            ";
+            cmd.CommandText = """
+
+                                              SELECT 
+                                                  MIN(tile_column) as minX,
+                                                  MAX(tile_column) as maxX,
+                                                  MIN(tile_row) as minY,
+                                                  MAX(tile_row) as maxY
+                                              FROM tiles 
+                                              WHERE zoom_level = @zoom
+                                          
+                              """;
             cmd.Parameters.AddWithValue("@zoom", zoom);
             
             await using var reader = await cmd.ExecuteReaderAsync();
@@ -277,7 +289,7 @@ public class MbTilesStorage : IDisposable
             if (await reader.ReadAsync())
             {
                 // Check if the result is NULL (no tiles for this zoom level)
-                if (reader.IsDBNull(0))
+                if (await reader.IsDBNullAsync(0))
                 {
                     Console.WriteLine($"[MBTilesStorage] No tiles found for zoom level {zoom} (NULL result)");
                     return null;
@@ -326,10 +338,12 @@ public class MbTilesStorage : IDisposable
     private static void SetMetadataInternal(SqliteConnection connection, string name, string value)
     {
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = @"
-            INSERT OR REPLACE INTO metadata (name, value)
-            VALUES (@name, @value)
-        ";
+        cmd.CommandText = """
+
+                                      INSERT OR REPLACE INTO metadata (name, value)
+                                      VALUES (@name, @value)
+                                  
+                          """;
         cmd.Parameters.AddWithValue("@name", name);
         cmd.Parameters.AddWithValue("@value", value);
         cmd.ExecuteNonQuery();
@@ -347,14 +361,14 @@ public class MbTilesStorage : IDisposable
     /// Manually checkpoint the WAL to commit all pending writes to the main database file.
     /// Call this after batch operations (e.g., full export) to ensure data is persisted.
     /// </summary>
-    public void CheckpointWAL()
+    public void CheckpointWal()
     {
         try
         {
             using var connection = CreateConnection();
             using var cmd = connection.CreateCommand();
             cmd.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";
-            var result = cmd.ExecuteNonQuery();
+            cmd.ExecuteNonQuery();
             // Result: 0 = success, busy = database locked
         }
         catch (Exception)
@@ -364,14 +378,23 @@ public class MbTilesStorage : IDisposable
     }
 
     /// <summary>
-    /// Checkpoint the WAL and dispose resources.
+    /// Checkpoint the WAL and dispose of resources.
     /// This ensures all data is written to the main database file.
     /// </summary>
     public void Dispose()
     {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    private void Dispose(bool disposing)
+    {
+        if (!disposing) 
+            return;
+        
         try
         {
-            // Checkpoint WAL to ensure all data is committed to main DB
+            // Checkpoint WAL to ensure all data is committed to the main DB
             using var connection = CreateConnection();
             using var cmd = connection.CreateCommand();
             cmd.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";

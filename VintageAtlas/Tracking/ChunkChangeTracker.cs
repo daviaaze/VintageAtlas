@@ -3,16 +3,15 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using Vintagestory.API.Common;
-using Vintagestory.API.Common.Entities;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 
 namespace VintageAtlas.Tracking;
 
 /// <summary>
-/// Tracks chunk modifications to enable incremental map updates
+/// Track chunk modifications to enable incremental map updates
 /// </summary>
-public class ChunkChangeTracker : IDisposable
+public abstract class ChunkChangeTracker : IDisposable
 {
     private readonly ICoreServerAPI _sapi;
     private readonly ConcurrentDictionary<Vec2i, long> _modifiedChunks;
@@ -23,7 +22,7 @@ public class ChunkChangeTracker : IDisposable
     private readonly ConcurrentDictionary<string, long> _structureChanges;
     private bool _geoJsonInvalidated;
 
-    public ChunkChangeTracker(ICoreServerAPI sapi)
+    protected ChunkChangeTracker(ICoreServerAPI sapi)
     {
         _sapi = sapi;
         _modifiedChunks = new ConcurrentDictionary<Vec2i, long>();
@@ -63,7 +62,7 @@ public class ChunkChangeTracker : IDisposable
     // Note: Parameters required by Vintage Story API event signature
     private void OnBlockBreaking(IServerPlayer byPlayer, BlockSelection blockSel, ref float dropQuantityMultiplier, ref EnumHandling handled)
     {
-        // Called when block is about to be broken (more stable than DidBreakBlock)
+        // Called when a block is about to be broken (more stable than DidBreakBlock)
         TrackBlockChange(blockSel.Position, ChunkChangeType.BlockModified);
         
         // Check if a structure block was removed
@@ -96,13 +95,13 @@ public class ChunkChangeTracker : IDisposable
     {
         var now = _sapi.World.ElapsedMilliseconds;
         
-        _modifiedChunks.AddOrUpdate(chunkCoord, now, (key, oldValue) => now);
+        _modifiedChunks.AddOrUpdate(chunkCoord, now, (_, _) => now);
         
         // Track the type of change
         _chunkChangeTypes.AddOrUpdate(
             chunkCoord,
             [changeType],
-            (key, existing) =>
+            (_, existing) =>
             {
                 lock (_lock)
                 {
@@ -112,9 +111,9 @@ public class ChunkChangeTracker : IDisposable
             });
     }
 
-    private bool IsStructureBlock(Block block)
+    private static bool IsStructureBlock(Block block)
     {
-        if (block?.Code == null) return false;
+        if (block.Code == null) return false;
         
         var path = block.Code.Path;
         return path.Contains("sign") || 
@@ -125,7 +124,7 @@ public class ChunkChangeTracker : IDisposable
 
     private void InvalidateGeoJson(string type)
     {
-        _structureChanges.AddOrUpdate(type, _sapi.World.ElapsedMilliseconds, (k, v) => _sapi.World.ElapsedMilliseconds);
+        _structureChanges.AddOrUpdate(type, _sapi.World.ElapsedMilliseconds, (_, _) => _sapi.World.ElapsedMilliseconds);
         _geoJsonInvalidated = true;
     }
 
@@ -157,7 +156,7 @@ public class ChunkChangeTracker : IDisposable
     }
 
     /// <summary>
-    /// Get structure changes since timestamp
+    /// Get structure has changed since timestamp
     /// </summary>
     public Dictionary<string, long> GetStructureChangesSince(long timestamp)
     {
@@ -167,7 +166,7 @@ public class ChunkChangeTracker : IDisposable
     }
 
     /// <summary>
-    /// Clear tracked changes for a chunk after it's been processed
+    /// Clearly tracked changes for a chunk after it's been processed
     /// </summary>
     public void ClearChunkChanges(Vec2i chunkCoord)
     {
@@ -202,16 +201,25 @@ public class ChunkChangeTracker : IDisposable
 
     public void Dispose()
     {
-        // Unregister event handlers
-        _sapi.Event.BreakBlock -= OnBlockBreaking;
-        _sapi.Event.DidPlaceBlock -= OnBlockPlaced;
-        _sapi.Event.ChunkColumnLoaded -= OnChunkColumnLoaded;
-        
-        _modifiedChunks.Clear();
-        _chunkChangeTypes.Clear();
-        _structureChanges.Clear();
-        
-        _sapi.Logger.Notification("[VintageAtlas] Chunk change tracker disposed");
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            // Unregister event handlers
+            _sapi.Event.BreakBlock -= OnBlockBreaking;
+            _sapi.Event.DidPlaceBlock -= OnBlockPlaced;
+            _sapi.Event.ChunkColumnLoaded -= OnChunkColumnLoaded;
+            
+            _modifiedChunks.Clear();
+            _chunkChangeTypes.Clear();
+            _structureChanges.Clear();
+            
+            _sapi.Logger.Notification("[VintageAtlas] Chunk change tracker disposed");
+        }
     }
 }
 

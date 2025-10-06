@@ -16,7 +16,7 @@ namespace VintageAtlas.Export;
 
 public class SqliteThreadCon
 {
-    public bool InUse = false;
+    public bool InUse;
     public SqliteConnection Con;
     public readonly DbCommand GetMapChunk;
     public readonly DbCommand GetChunk;
@@ -51,34 +51,34 @@ public class SqliteThreadCon
     }
 }
 
-internal class SavegameDataLoader
+internal class SavegameDataLoader: IDisposable
 {
-    private readonly SqliteThreadCon[] _sqliteConns;
+    private readonly SqliteThreadCon[] _sqliteConnections;
 
     private readonly ChunkDataPool _chunkDataPool;
 
     private readonly ServerMain _server;
     private readonly object _chunkTable = new();
     private readonly object _mapChunkTable = new();
-    public readonly ILogger _logger;
+    private readonly ILogger _logger;
 
     public SavegameDataLoader(ServerMain server, int workers, ILogger modLogger)
     {
         _logger = modLogger;
         _chunkDataPool = new ChunkDataPool(MagicNum.ServerChunkSize, server);
         _server = server;
-        _sqliteConns = GetSqlite(_server, workers);
+        _sqliteConnections = GetSqlite(_server, workers);
     }
 
     internal SqliteThreadCon SqliteThreadConn
     {
         get
         {
-            lock (_sqliteConns)
+            lock (_sqliteConnections)
             {
                 while (true)
                 {
-                    foreach (var conn in _sqliteConns)
+                    foreach (var conn in _sqliteConnections)
                     {
                         if (conn.InUse) continue;
                         conn.InUse = true;
@@ -103,18 +103,18 @@ internal class SavegameDataLoader
 
         // + 1 for extract structures where SavegameDataLoader.GetAllServerMapRegions needs one since it does yield return the entire time
         workers++;
-        var sqliteConns = new SqliteThreadCon[workers];
-        for (var i = 0; i < sqliteConns.Length; i++)
+        var sqliteConnections = new SqliteThreadCon[workers];
+        for (var i = 0; i < sqliteConnections.Length; i++)
         {
             var sqliteConnection = new SqliteConnection(
                 connectionString
             );
             sqliteConnection.Open();
-            sqliteConns[i] = new SqliteThreadCon(sqliteConnection);
+            sqliteConnections[i] = new SqliteThreadCon(sqliteConnection);
         }
 
-        _logger.Notification($"Created {sqliteConns.Length} sqlite connections.");
-        return sqliteConns;
+        _logger.Notification($"Created {sqliteConnections.Length} sqlite connections.");
+        return sqliteConnections;
     }
 
     public IEnumerable<ChunkPos> GetAllMapChunkPositions(SqliteThreadCon sqliteConn)
@@ -279,7 +279,7 @@ internal class SavegameDataLoader
         return null;
     }
 
-    public ServerChunk? GetServerChunkT(SqliteThreadCon sqliteConn, ChunkPos position)
+    public ServerChunk? GetServerChunk(SqliteThreadCon sqliteConn, ChunkPos position)
     {
         var pos = ChunkPos.ToChunkIndex(position.X, position.Y, position.Z);
         lock (_chunkTable)
@@ -301,16 +301,15 @@ internal class SavegameDataLoader
             using var cmd = sqliteConn.Con.CreateCommand();
             cmd.CommandText = "SELECT data FROM gamedata LIMIT 1";
             using var sqliteDataReader = cmd.ExecuteReader();
-            if (sqliteDataReader.Read())
-            {
-                if (sqliteDataReader["data"] is byte[] data)
-                {
-                    var saveGame = Serializer.Deserialize<SaveGame>(new MemoryStream(data));
-                    return saveGame;
-                }
-            }
+            if (!sqliteDataReader.Read()) 
+                return null;
+            
+            if (sqliteDataReader["data"] is not byte[] data) 
+                return null;
+                
+            var saveGame = Serializer.Deserialize<SaveGame>(new MemoryStream(data));
+            return saveGame;
 
-            return null;
         }
         catch (Exception e)
         {
@@ -331,7 +330,13 @@ internal class SavegameDataLoader
 
     public void Dispose()
     {
-        foreach (var con in _sqliteConns)
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+    
+    protected virtual void Dispose(bool disposing)
+    {
+        foreach (var con in _sqliteConnections)
         {
             con.Con.Dispose();
         }
