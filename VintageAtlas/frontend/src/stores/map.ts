@@ -19,12 +19,46 @@ export const useMapStore = defineStore('map', () => {
     biomes: false,
     traders: true,
     translocators: true,
+    landmarks: true,
     signs: true,
+    exploredChunks: false,
     chunks: false,
+    chunkVersions: false,
     players: true,
     animals: true,
     custom: true
   });
+  
+  // Sub-layer visibility for filtering by feature type (spec lines 379-399)
+  // Controls opacity: 1 = visible, 0 = hidden
+  const subLayerVisibility = ref({
+    traders: {
+      'Artisan trader': true,
+      'Building materials trader': true,
+      'Clothing trader': true,
+      'Commodities trader': true,
+      'Agriculture trader': true,
+      'Furniture trader': true,
+      'Luxuries trader': true,
+      'Survival goods trader': true,
+      'Treasure hunter trader': true,
+      'unknown': true
+    },
+    translocators: {
+      'Translocator': true,
+      'Named Translocator': true,
+      'Spawn Translocator': true,
+      'Teleporter': true
+    },
+    landmarks: {
+      'Server': true,
+      'Base': true,
+      'Misc': true
+    }
+  });
+  
+  // Label size for landmarks (spec line 326)
+  const labelSize = ref(10);
   
   // Map markers/features
   const features = ref<GeoJsonFeature[]>([]);
@@ -83,6 +117,38 @@ export const useMapStore = defineStore('map', () => {
     layerVisibility.value[layerName] = visible;
   }
   
+  function toggleSubLayer(
+    layerName: keyof typeof subLayerVisibility.value,
+    subLayerName: string
+  ) {
+    const layer = subLayerVisibility.value[layerName] as Record<string, boolean>;
+    if (layer[subLayerName] !== undefined) {
+      layer[subLayerName] = !layer[subLayerName];
+      // Force refresh of layer styling
+      refreshLayers();
+    }
+  }
+  
+  function setSubLayerVisibility(
+    layerName: keyof typeof subLayerVisibility.value,
+    subLayerName: string,
+    visible: boolean
+  ) {
+    const layer = subLayerVisibility.value[layerName] as Record<string, boolean>;
+    if (layer[subLayerName] !== undefined) {
+      layer[subLayerName] = visible;
+      // Force refresh of layer styling
+      refreshLayers();
+    }
+  }
+  
+  function setLabelSize(size: number) {
+    // Clamp between 8-144px (spec line 326)
+    labelSize.value = Math.max(8, Math.min(144, size));
+    // Force refresh of layers to update label styling
+    refreshLayers();
+  }
+  
   function selectFeature(feature: GeoJsonFeature | null) {
     selectedFeature.value = feature;
   }
@@ -130,8 +196,8 @@ export const useMapStore = defineStore('map', () => {
   function resetView() {
     // Import the default values from mapConfig
     import('@/utils/mapConfig').then(({ defaultCenter, defaultZoom }) => {
-      setCenter(defaultCenter);
-      setZoom(defaultZoom);
+      setCenter(defaultCenter());
+      setZoom(defaultZoom());
     }).catch(() => {
       // Fallback if import fails
       setCenter([0, 0]);
@@ -158,6 +224,8 @@ export const useMapStore = defineStore('map', () => {
     loading,
     error,
     layerVisibility,
+    subLayerVisibility,
+    labelSize,
     features,
     selectedFeature,
     center,
@@ -168,6 +236,9 @@ export const useMapStore = defineStore('map', () => {
     setMap,
     toggleLayer,
     setLayerVisibility,
+    toggleSubLayer,
+    setSubLayerVisibility,
+    setLabelSize,
     selectFeature,
     setCenter,
     setZoom,

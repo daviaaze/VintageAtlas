@@ -13,9 +13,8 @@ export async function initializeMapConfig(): Promise<void> {
   try {
     dynamicConfig = await fetchMapConfig();
     console.log('✅ [MapConfig] Configuration loaded from server:', dynamicConfig);
-    console.log('   Tile offset:', dynamicConfig?.tileOffset);
-    console.log('   World extent:', dynamicConfig?.worldExtent);
-    console.log('   Absolute positions:', dynamicConfig?.absolutePositions);
+    console.log('   World extent (blocks):', dynamicConfig?.worldExtent);
+    console.log('   World origin (blocks):', dynamicConfig?.worldOrigin);
   } catch (error) {
     console.error('❌ [MapConfig] Failed to load map config from server:', error);
     throw new Error(`Cannot initialize map without server configuration: ${error}`);
@@ -46,11 +45,6 @@ export function isConfigLoaded(): boolean {
   return dynamicConfig !== null;
 }
 
-/**
- * Get if using absolute position coordinates
- */
-export const isAbsolutePositions = (): boolean => 
-  getConfig('absolutePositions');
 
 /**
  * Get spawn position
@@ -60,17 +54,6 @@ export const getSpawnPosition = (): [number, number] => {
   return [spawn[0], spawn[1]];
 };
 
-/**
- * Get tile coordinate offset for spawn-relative mode
- * This offset must be added to display tile coords to get absolute tile coords
- */
-export const getTileOffset = (): [number, number] => {
-  const offset = getConfig('tileOffset');
-  if (!offset || offset.length < 2) {
-    throw new Error('❌ Invalid tileOffset from server: must be [x, z] array');
-  }
-  return [offset[0], offset[1]];
-};
 
 /**
  * Configuration for the Vintage Story world map
@@ -147,14 +130,12 @@ export const maxZoom = (): number =>
 
 /**
  * Format coordinates for display to user
- * @param x X coordinate from map (already transformed by backend)
- * @param z Z coordinate from map (already transformed and flipped by backend)
+ * @param x X coordinate from map (tile grid coordinate)
+ * @param z Z coordinate from map (tile grid coordinate)
  * @returns Formatted string suitable for display
  *
- * COORDINATE SYSTEM:
- * - Backend sends worldExtent already transformed based on AbsolutePositions setting
- * - In absolute mode: coordinates are actual world coordinates
- * - In relative mode: coordinates are spawn-relative with Z-axis flipped (North is negative)
+ * CLEAN ARCHITECTURE: Backend provides tile-space coordinates directly.
+ * These match the tile storage coordinates exactly.
  */
 export const formatCoordinates = (x: number, z: number): string => {
   // Handle invalid coordinates
@@ -162,27 +143,15 @@ export const formatCoordinates = (x: number, z: number): string => {
     return 'Loading...';
   }
 
-  if (isAbsolutePositions()) {
-    // Show absolute world coordinates
-    return `${Math.round(x)}, ${Math.round(z)}`;
-  } else {
-    // Show spawn-relative coordinates with directional indicators
-    // Backend already transformed: spawn is at (0, 0) and Z is flipped
-    const ew = x >= 0 ? 'E' : 'W';
-    const ns = z <= 0 ? 'N' : 'S'; // Z is negative = North, positive = South
-    return `${Math.abs(Math.round(x))}${ew}, ${Math.abs(Math.round(z))}${ns} from spawn`;
-  }
+  // Display tile coordinates (matching backend tile grid)
+  return `Tile: ${Math.round(x)}, ${Math.round(z)}`;
 };
 
 /**
  * Get coordinate system info for display
  */
 export const getCoordinateSystemInfo = (): string => {
-  if (isAbsolutePositions()) {
-    return 'Using absolute world coordinates';
-  } else {
-    return 'Using spawn-relative coordinates (spawn at 0, 0)';
-  }
+  return 'Showing tile coordinates (matches backend tile storage)';
 };
 
 /**

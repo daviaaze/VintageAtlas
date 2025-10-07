@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Xunit;
 using FluentAssertions;
 using Moq;
+using SkiaSharp;
 using Vintagestory.API.Common;
 using Vintagestory.API.Server;
 using VintageAtlas.Export;
@@ -261,28 +262,22 @@ public class PyramidTileDownsamplerTests
     }
 
     /// <summary>
-    /// Create a minimal valid PNG tile for testing
-    /// Just enough to be recognized as PNG data
+    /// Create a real valid PNG tile for testing using SkiaSharp
+    /// This ensures the PNG can be properly decoded and downsampled
     /// </summary>
-    private static byte[] CreateMinimalPngTile()
+    private byte[] CreateMinimalPngTile()
     {
-        // PNG header + IHDR chunk (minimal valid PNG)
-        return new byte[]
-        {
-            // PNG signature
-            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-            // IHDR chunk (13 bytes of data)
-            0x00, 0x00, 0x00, 0x0D, // Length: 13
-            0x49, 0x48, 0x44, 0x52, // Type: IHDR
-            0x00, 0x00, 0x00, 0x01, // Width: 1
-            0x00, 0x00, 0x00, 0x01, // Height: 1
-            0x08, 0x02, 0x00, 0x00, 0x00, // Bit depth: 8, Color type: 2 (RGB)
-            0x90, 0x77, 0x53, 0xDE, // CRC
-            // IEND chunk
-            0x00, 0x00, 0x00, 0x00, // Length: 0
-            0x49, 0x45, 0x4E, 0x44, // Type: IEND
-            0xAE, 0x42, 0x60, 0x82  // CRC
-        };
+        // Create a 256x256 bitmap (standard tile size) with a solid color
+        using var bitmap = new SKBitmap(_config.TileSize, _config.TileSize);
+        using var canvas = new SKCanvas(bitmap);
+        
+        // Fill with a test color (light blue)
+        canvas.Clear(new SKColor(100, 150, 200));
+        
+        // Encode to PNG
+        using var image = SKImage.FromBitmap(bitmap);
+        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+        return data.ToArray();
     }
 }
 

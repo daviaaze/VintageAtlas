@@ -51,7 +51,7 @@ public class SqliteThreadCon
     }
 }
 
-internal class SavegameDataLoader: IDisposable
+public class SavegameDataLoader: IDisposable
 {
     private readonly SqliteThreadCon[] _sqliteConnections;
 

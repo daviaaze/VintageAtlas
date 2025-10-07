@@ -365,7 +365,7 @@ public sealed class UnifiedTileGenerator : ITileGenerator
             };
         }
 
-        //  // Generate on-demand from loaded chunks
+        // // Generate on-demand from loaded chunks
         // _sapi.Logger.Debug($"[VintageAtlas] Generating tile on-demand: {zoom}/{tileX}_{tileZ}");
 
         // try
@@ -387,31 +387,27 @@ public sealed class UnifiedTileGenerator : ITileGenerator
         //     // Fallback to placeholder
         //     if (newTileData == null)
         //     {
-        //         _sapi.Logger.Warning($"[VintageAtlas] ⚠️ Tile generation returned null, creating placeholder: {zoom}/{tileX}_{tileZ}");
-        //         newTileData = await GeneratePlaceholderTileAsync(zoom, tileX, tileZ);
+        //         return new TileResult { NotFound = true };
         //     }
 
-        //     if (newTileData != null)
+        //     // Store in database
+        //     await _storage.PutTileAsync(zoom, tileX, tileZ, newTileData);
+
+        //     var lastModified = DateTime.UtcNow;
+        //     var etag = GenerateETag(newTileData, lastModified);
+
+        //     // Cache in memory
+        //     CacheInMemory(tileKey, newTileData, etag, lastModified);
+
+        //     _sapi.Logger.Debug($"[VintageAtlas] Generated and stored tile: {zoom}/{tileX}_{tileZ}");
+
+        //     return new TileResult
         //     {
-        //         // Store in database
-        //         await _storage.PutTileAsync(zoom, tileX, tileZ, newTileData);
-
-        //         var lastModified = DateTime.UtcNow;
-        //         var etag = GenerateETag(newTileData, lastModified);
-
-        //         // Cache in memory
-        //         CacheInMemory(tileKey, newTileData, etag, lastModified);
-
-        //         _sapi.Logger.Debug($"[VintageAtlas] Generated and stored tile: {zoom}/{tileX}_{tileZ}");
-
-        //         return new TileResult
-        //         {
-        //             Data = newTileData,
-        //             ETag = etag,
-        //             LastModified = lastModified,
-        //             ContentType = "image/png"
-        //         };
-        //     }
+        //         Data = newTileData,
+        //         ETag = etag,
+        //         LastModified = lastModified,
+        //         ContentType = "image/png"
+        //     };
         // }
         // catch (Exception ex)
         // {
@@ -423,8 +419,6 @@ public sealed class UnifiedTileGenerator : ITileGenerator
         // Tiles are ONLY generated during /atlas export
         // This ensures we're testing the full export system properly
         // ═══════════════════════════════════════════════════════════════
-
-        _sapi.Logger.Debug($"[VintageAtlas] ❌ Tile not in database (on-demand generation disabled): {zoom}/{tileX}_{tileZ}");
 
         // Return 404 - tile must be generated via /atlas export
         return new TileResult { NotFound = true };
@@ -446,8 +440,6 @@ public sealed class UnifiedTileGenerator : ITileGenerator
     {
         try
         {
-            _sapi.Logger.Debug($"[VintageAtlas] RenderTile: z{zoom} t({tileX},{tileZ}) from {dataSource.SourceName}");
-
             // Get chunk data from the source
             var tileData = await dataSource.GetTileChunksAsync(zoom, tileX, tileZ);
 
@@ -462,8 +454,6 @@ public sealed class UnifiedTileGenerator : ITileGenerator
                 _sapi.Logger.Warning($"[VintageAtlas] ⚠️  No chunks found for tile {zoom}/{tileX}_{tileZ}");
                 return null;
             }
-
-            _sapi.Logger.Debug($"[VintageAtlas] Extracted {tileData.Chunks.Count} chunks for tile {zoom}/{tileX}_{tileZ}");
 
             // Render tile on the background thread
             return await Task.Run(() => RenderTileImage(tileData));
@@ -504,10 +494,6 @@ public sealed class UnifiedTileGenerator : ITileGenerator
             var startChunkX = tileData.TileX * chunksPerTile;
             var startChunkZ = tileData.TileZ * chunksPerTile;
 
-            _sapi.Logger.Debug(
-                $"[VintageAtlas] Rendering tile z{tileData.Zoom} t({tileData.TileX},{tileData.TileZ}), " +
-                $"start chunk=({startChunkX},{startChunkZ}), chunks={tileData.Chunks.Count}");
-
             for (var offsetX = 0; offsetX < chunksPerTile; offsetX++)
             {
                 for (var offsetZ = 0; offsetZ < chunksPerTile; offsetZ++)
@@ -532,8 +518,6 @@ public sealed class UnifiedTileGenerator : ITileGenerator
                     chunksRendered++;
                 }
             }
-
-            _sapi.Logger.Debug($"[VintageAtlas] Rendered {chunksRendered}/{tileData.Chunks.Count} chunks");
 
             if (chunksRendered == 0)
             {
@@ -565,9 +549,6 @@ public sealed class UnifiedTileGenerator : ITileGenerator
     private void RenderChunkToCanvas(SKCanvas canvas, ChunkSnapshot snapshot, int offsetX, int offsetZ,
         Span<byte> shadowMap, int tileSize)
     {
-        // DEBUG: Log that we're entering this method
-        _sapi.Logger.Notification($"[VintageAtlas] 🖌️ RenderChunkToCanvas called! Mode={_config.Mode}");
-
         try
         {
             var heightMap = snapshot.HeightMap;
@@ -579,8 +560,6 @@ public sealed class UnifiedTileGenerator : ITileGenerator
                 return;
             }
 
-            _sapi.Logger.Notification($"[VintageAtlas] ✅ Starting pixel loop: heightMap={heightMap.Length}, blockIds={blockIds.Length}, mode={_config.Mode}");
-
             using var paint = new SKPaint();
             var random = new Random(snapshot.ChunkX * 31 + snapshot.ChunkZ); // Deterministic seed
 
@@ -590,29 +569,13 @@ public sealed class UnifiedTileGenerator : ITileGenerator
             {
                 for (var z = 0; z < ChunkSize; z++)
                 {
-                    // DEBUG: Log first pixel
-                    if (x == 0 && z == 0)
-                    {
-                        _sapi.Logger.Notification($"[VintageAtlas] 🔍 First pixel: CHUNK_SIZE={ChunkSize}, heightMap.Length={heightMap.Length}");
-                    }
-
                     var heightIndex = z * ChunkSize + x;
                     if (heightIndex >= heightMap.Length) continue;
 
                     var height = heightMap[heightIndex];
 
-                    // DEBUG: Log first pixel's height
-                    if (x == 0 && z == 0)
-                    {
-                        _sapi.Logger.Notification($"[VintageAtlas] 📏 First pixel height: {height}, chunkY={snapshot.ChunkY}");
-                    }
-
                     if (height == 0)
                     {
-                        if (x == 0 && z == 0)
-                        {
-                            _sapi.Logger.Warning($"[VintageAtlas] ⚠️  First pixel height is ZERO! Skipping.");
-                        }
                         continue;
                     }
 
@@ -623,26 +586,12 @@ public sealed class UnifiedTileGenerator : ITileGenerator
                     // ═══════════════════════════════════════════════════════════════
                     var localY = height % ChunkSize; // Local Y within 32-block range
 
-                    // DEBUG: Log first pixel's localY
-                    if (x == 0 && z == 0)
-                    {
-                        _sapi.Logger.Notification($"[VintageAtlas] 📐 First pixel localY: {localY} (height%CHUNK_SIZE)");
-                    }
 
                     var blockIndex = localY * ChunkSize * ChunkSize + z * ChunkSize + x;
 
-                    // DEBUG: Log first pixel's blockIndex
-                    if (x == 0 && z == 0)
-                    {
-                        _sapi.Logger.Notification($"[VintageAtlas] 🔢 First pixel blockIndex: {blockIndex} (blockIds.Length={blockIds.Length})");
-                    }
 
                     if (blockIndex < 0 || blockIndex >= blockIds.Length)
                     {
-                        if (x == 0 && z == 0)
-                        {
-                            _sapi.Logger.Warning($"[VintageAtlas] ⚠️  First pixel blockIndex OUT OF RANGE! Drawing fallback.");
-                        }
                         paint.Color = new SKColor(172, 136, 88);
                         canvas.DrawPoint(offsetX + x, offsetZ + z, paint);
                         continue;
@@ -650,22 +599,10 @@ public sealed class UnifiedTileGenerator : ITileGenerator
 
                     var blockId = blockIds[blockIndex];
 
-                    // DEBUG: Log first pixel's blockId
-                    if (x == 0 && z == 0)
-                    {
-                        _sapi.Logger.Notification($"[VintageAtlas] 🧱 First pixel blockId: {blockId}");
-                    }
-
                     // Get color based on render mode
                     uint color;
                     var imgX = offsetX + x;
                     var imgZ = offsetZ + z;
-
-                    // DEBUG: Log mode ONCE per tile
-                    if (x == 0 && z == 0 && offsetX == 0 && offsetZ == 0)
-                    {
-                        _sapi.Logger.Notification($"[VintageAtlas] 🎨 RENDERING MODE: {_config.Mode} ({(int)_config.Mode})");
-                    }
 
                     switch (_config.Mode)
                     {
@@ -685,12 +622,6 @@ public sealed class UnifiedTileGenerator : ITileGenerator
 
                         case ImageMode.ColorVariationsWithHillShading:
                             color = _colorCache.GetRandomColorVariation(blockId, random);
-
-                            // DEBUG: Log first pixel of first tile only
-                            if (x == 0 && z == 0 && imgX == 0 && imgZ == 0)
-                            {
-                                _sapi.Logger.Notification($"[VintageAtlas] MODE 3 RENDERING: blockId={blockId}, color=0x{color:X8}");
-                            }
 
                             // Calculate slope and populate shadow map
                             if (shadowMap != null)
@@ -797,11 +728,9 @@ public sealed class UnifiedTileGenerator : ITileGenerator
 
             foreach (var kvp in _memoryCache)
             {
-                if (kvp.Value.LastModified < oldest)
-                {
-                    oldest = kvp.Value.LastModified;
-                    oldestKey = kvp.Key;
-                }
+                if (kvp.Value.LastModified >= oldest) continue;
+                oldest = kvp.Value.LastModified;
+                oldestKey = kvp.Key;
             }
 
             if (oldestKey != null)
@@ -956,7 +885,7 @@ public sealed class UnifiedTileGenerator : ITileGenerator
             var shadowEffect = (int)(blurredValue * 5) / 5f;
             shadowEffect += originalValue * 5 % 1 / 5f;
 
-            if (shadowEffect is 0) 
+            if (shadowEffect is 0)
                 continue;
 
             var imgX = i % size;
@@ -984,6 +913,27 @@ public sealed class UnifiedTileGenerator : ITileGenerator
             _storage.Dispose();
         }
     }
+}
+
+/// <summary>
+/// Storage statistics for tile generation
+/// </summary>
+public class StorageStats
+{
+    public long DatabaseSizeBytes { get; set; }
+    public int MemoryCachedTiles { get; set; }
+    public long TotalTiles { get; set; }
+    public Dictionary<int, long> TilesPerZoom { get; set; } = new();
+}
+
+/// <summary>
+/// Cached tile data for in-memory storage
+/// </summary>
+public class CachedTile
+{
+    public byte[] Data { get; set; } = [];
+    public DateTime LastModified { get; set; }
+    public string ETag { get; set; } = "";
 }
 
 #endregion

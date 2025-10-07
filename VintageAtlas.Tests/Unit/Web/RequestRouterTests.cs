@@ -39,7 +39,6 @@ public class RequestRouterTests
     [InlineData("/api/census")]
     [InlineData("/api/stats")]
     [InlineData("/api/map/config")]
-    [InlineData("/api/map/extent")]
     [InlineData("/api/geojson/signs")]
     [InlineData("/api/geojson/signposts")]
     [InlineData("/api/geojson/traders")]

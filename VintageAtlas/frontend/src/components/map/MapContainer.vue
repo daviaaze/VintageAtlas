@@ -63,30 +63,30 @@ import { Style, Fill, Stroke, Text, Icon } from 'ol/style';
 import { Point } from 'ol/geom';
 import Feature from 'ol/Feature';
 import { defaults as defaultControls } from 'ol/control';
+import { defaults as defaultInteractions } from 'ol/interaction';
 import LayerGroup from 'ol/layer/Group';
-import { Projection } from 'ol/proj';
 
-// Map configuration
+// WebCartographer-style simplified map configuration
 import { 
-  createWorldTileGrid, 
-  worldExtent,
-  worldOrigin,
-  worldResolutions,
-  tileResolutions,
-  defaultCenter, 
-  defaultZoom, 
-  minZoom, 
-  maxZoom,
-  initializeMapConfig,
-  getTileOffset
-} from '@/utils/mapConfig';
+  initMapConfig,
+  createTileGrid,
+  getTileUrl,
+  getViewResolutions,
+  getDefaultCenter,
+  getDefaultZoom,
+  getMinZoom,
+  getMaxZoom,
+} from '@/utils/simpleMapConfig';
 
 // Optimized layer factory
 import {
   createTraderLayer,
   createTranslocatorLayer,
+  createLandmarksLayer,
   createSignsLayer,
-  createChunkLayer
+  createExploredChunksLayer,
+  createChunkLayer,
+  createChunkVersionLayer
 } from '@/utils/layerFactory';
 
 // Map composables
@@ -124,12 +124,15 @@ const mapStore = useMapStore();
 // Initialize map with layers (use shallowRef for better performance with OpenLayers objects)
 const mapInstance = shallowRef<Map | null>(null);
 
-// Map layers
+// Map layers (matching spec layer order - lines 332-341)
 let terrainLayer: TileLayer<XYZ> | null = null;
+let exploredChunksLayer: any = null; // Layer 2: Explored chunks overlay
+let tradersLayer: any = null; // Layer 3: Trader points
+let translocatorsLayer: any = null; // Layer 4: Translocator lines/points
+let landmarksLayer: any = null; // Layer 5: Landmark points with labels
+let signsLayer: any = null; // Additional: Signs (signposts)
 let chunkLayer: any = null;
-let tradersLayer: any = null;
-let translocatorsLayer: any = null;
-let signsLayer: any = null;
+let chunkVersionLayer: any = null;
 let playersLayer: VectorSource | null = null;
 
 // Map interactions
@@ -150,94 +153,80 @@ const {
 // Show popup when feature is selected
 const showFeaturePopup = computed(() => selectedFeature.value !== null && overlayContent.value !== null);
 
-// Set up map
+// Set up map - WebCartographer style: simple and direct
 onMounted(async () => {
   if (!mapRef.value) return;
   
-  // Initialize map configuration from API
-  await initializeMapConfig();
+  // Initialize map configuration from server (WebCartographer fetches worldExtent.js)
+  await initMapConfig();
   
-  // Log loaded configuration
-  console.log('[MapContainer] Map config loaded:', {
-    worldExtent: worldExtent(),
-    worldOrigin: worldOrigin(),
-    tileOffset: getTileOffset(),
-    defaultCenter: defaultCenter(),
-    defaultZoom: defaultZoom(),
-    tileResolutions: tileResolutions()
+  console.log('[MapContainer] ✅ WebCartographer-style map initialized');
+  
+  // WebCartographer approach: Use default EPSG:3857 projection
+  // No custom projection needed - just treat coordinates as flat plane
+  const projection = 'EPSG:3857';
+  
+  // Create terrain tile layer - WebCartographer style
+  // Web search fix: Proper tile caching to prevent drift and old tiles staying visible
+  terrainLayer = new TileLayer({
+    source: new XYZ({
+      projection: projection,
+      tileGrid: createTileGrid(),  // Uses server-provided extent/origin/resolutions
+      wrapX: false,  // WebCartographer setting
+      interpolate: false,  // WebCartographer setting: preserve blocky pixels
+      // Web search fix: Tile caching settings to prevent old zoom tiles
+      cacheSize: 0,  // Disable tile caching - always fetch fresh tiles
+      transition: 0,  // No fade transition - prevents visual drift
+      tileUrlFunction: (tileCoord) => {
+        if (!tileCoord) return '';
+        return getTileUrl(tileCoord[0], tileCoord[1], tileCoord[2]);
+      },
+    }),
+    // Web search fix: Force immediate tile updates, no interim tiles
+    preload: 0,  // Don't preload tiles from other zoom levels
+    useInterimTilesOnError: false,  // Don't show tiles from other zoom levels
+    visible: mapStore.layerVisibility.terrain,
   });
   
-  // Create custom projection for block coordinates FIRST
-  // Our coordinates are in block units, not meters, so we need a simple projection
-  const extent = worldExtent();
-  const projection = new Projection({
-    code: 'VINTAGESTORY',
-    units: 'pixels',
-    extent: extent,
-    global: false
-  });
+  // Create vector layers matching spec (lines 111-306)
+  // Layer order: exploredChunks, traders, translocators, landmarks
+  // Pass projection to all layers (EPSG:3857 - same as WebCartographer)
   
-  // Create tile layer for terrain using dynamic tile API
-      // Zoom levels: 0 (world view) to BaseZoomLevel (max detail)
-      // Direct mapping: OpenLayers zoom N -> Backend zoom N
-      terrainLayer = new TileLayer({
-        source: new XYZ({
-          projection: projection,  // Use our custom projection
-          tileGrid: createWorldTileGrid(),
-          wrapX: false,
-          tileUrlFunction: (tileCoord) => {
-            if (!tileCoord) return '';
-            
-            // ═══════════════════════════════════════════════════════════════
-            // COORDINATE MAPPING: OpenLayers Relative -> Absolute Storage
-            // ═══════════════════════════════════════════════════════════════
-            // OpenLayers numbers tiles from (0,0) at origin
-            // Backend stores tiles with absolute world coordinates
-            // Solution: Add offset to map OL coords -> storage coords
-            //
-            // Example:
-            //   OL tile (0, 0) at origin -> Storage tile (1998, 1997)
-            //   OL tile (1, 2) -> Storage tile (1999, 1999)
-            // ═══════════════════════════════════════════════════════════════
-            
-            const zoom = tileCoord[0];
-            const olTileX = tileCoord[1];  // Relative to origin
-            const olTileY = tileCoord[2];  // Relative to origin
-            
-            // Get tile offset from config (which absolute tile the origin maps to)
-            const [offsetX, offsetZ] = getTileOffset();
-            const maxZ = maxZoom();
-            
-            // Scale offset for current zoom level
-            // At zoom 9: offset = [1998, 1997]
-            // At zoom 8: offset = [999, 998] (each parent tile = 2x2 child tiles)
-            const zoomScale = Math.pow(2, maxZ - zoom);
-            const scaledOffsetX = Math.floor(offsetX / zoomScale);
-            const scaledOffsetZ = Math.floor(offsetZ / zoomScale);
-            
-            // Map to absolute storage coordinates
-            const absoluteX = olTileX + scaledOffsetX;
-            const absoluteZ = olTileY + scaledOffsetZ;
-            
-            const url = `/tiles/${zoom}/${absoluteX}_${absoluteZ}.png`;
-            
-            // Debug logging at low zoom
-            if (zoom <= 3) {
-              console.log(`[Tile] zoom=${zoom}, OL(${olTileX},${olTileY}) + offset(${scaledOffsetX},${scaledOffsetZ}) = absolute(${absoluteX},${absoluteZ}) -> ${url}`);
-            }
-            
-            return url;
-          },
-        }),
-        visible: mapStore.layerVisibility.terrain,
-      });
+  // Explored chunks layer (spec lines 111-129)
+  exploredChunksLayer = createExploredChunksLayer(
+    mapStore.layerVisibility.exploredChunks, 
+    projection
+  );
   
-  // Use optimized layer factory (VectorImageLayer for better performance)
-  // Pass the custom projection to all layers so they use the same coordinate system
-  chunkLayer = createChunkLayer(false, projection);
-  tradersLayer = createTraderLayer(mapStore.layerVisibility.traders, projection);
-  translocatorsLayer = createTranslocatorLayer(mapStore.layerVisibility.translocators, projection);
+  // Traders layer (spec lines 145-166) - with sub-layer visibility
+  tradersLayer = createTraderLayer(
+    mapStore.layerVisibility.traders, 
+    projection,
+    mapStore.subLayerVisibility.traders
+  );
+  
+  // Translocators layer (spec lines 191-241) - with sub-layer visibility
+  translocatorsLayer = createTranslocatorLayer(
+    mapStore.layerVisibility.translocators, 
+    projection,
+    mapStore.subLayerVisibility.translocators
+  );
+  
+  // Landmarks layer (spec lines 260-306) - with sub-layer visibility and label size
+  landmarksLayer = createLandmarksLayer(
+    mapStore.layerVisibility.landmarks,
+    projection,
+    mapStore.subLayerVisibility.landmarks,
+    mapStore.labelSize,
+    mapInstance.value // For zoom-dependent Misc visibility
+  );
+  
+  // Signs layer (signposts - separate from landmarks)
   signsLayer = createSignsLayer(mapStore.layerVisibility.signs, projection);
+  
+  // Additional layers
+  chunkLayer = createChunkLayer(false, projection);
+  chunkVersionLayer = createChunkVersionLayer(false, projection);
   
   // Create vector source for players (live data)
   const playersSource = new VectorSource({
@@ -275,31 +264,51 @@ onMounted(async () => {
     renderBuffer: 250
   });
   
-  // Group layers
+  // Group layers matching spec order (spec lines 332-341)
+  // 1. World base layer (tiles)
+  // 2. Explored chunks overlay
+  // 3. Traders
+  // 4. Translocators
+  // 5. Landmarks
+  // Additional: Signs, chunk layers, players
   const layerGroup = new LayerGroup({
     layers: [
-      terrainLayer,
-      chunkLayer,
-      tradersLayer,
-      translocatorsLayer,
-      signsLayer,
-      playersVectorLayer,
+      terrainLayer,           // 1. Base map tiles
+      exploredChunksLayer,    // 2. Explored chunks
+      chunkLayer,             // Additional chunk grid
+      chunkVersionLayer,      // Additional chunk versions
+      tradersLayer,           // 3. Traders
+      translocatorsLayer,     // 4. Translocators
+      landmarksLayer,         // 5. Landmarks
+      signsLayer,             // Additional signs
+      playersVectorLayer,     // Live players
     ],
   });
   
-  // Create map (projection already created above for tile layer)
+  // Create map - WebCartographer style: minimal configuration
+  // WebCartographer uses viewResolutions (12 levels) vs tileResolutions (10 levels)
+  // This allows smoother zooming between tile levels
+  const viewResolutions = getViewResolutions();
+  const initialZoom = props.zoom || getDefaultZoom();
+  
+  console.log('[MapContainer] Creating WebCartographer-style map:', {
+    center: props.center || getDefaultCenter(),
+    zoom: initialZoom,
+    minZoom: getMinZoom(),
+    maxZoom: getMaxZoom(),
+    resolutionLevels: viewResolutions.length,
+    projection: projection
+  });
+  
   mapInstance.value = new Map({
     target: mapRef.value,
     layers: [layerGroup],
     view: new View({
-      center: props.center || defaultCenter(),
-      zoom: props.zoom || defaultZoom(),
-      minZoom: minZoom(),
-      maxZoom: maxZoom(),
-      extent: extent,
-      constrainResolution: true,
-      resolutions: worldResolutions(),
-      projection: projection,
+      center: props.center || getDefaultCenter(),
+      zoom: initialZoom,
+      constrainResolution: true,  // WebCartographer: snap to zoom levels
+      resolutions: viewResolutions,  // WebCartographer: view resolutions for smooth zoom
+      projection: projection,  // EPSG:3857 (default)
     }),
     controls: defaultControls({
       zoom: false,
@@ -311,6 +320,16 @@ onMounted(async () => {
       new CoordinatesControl(),
       new FullscreenControl()
     ]),
+    // Web search fix: Disable kinetic panning to prevent drift
+    // "enabling kinetic dragging caused random jumps during panning and zooming"
+    // Source: https://lists.osgeo.org/pipermail/openlayers-users/2012-May/025077.html
+    interactions: defaultInteractions({
+      dragPan: true,  // Allow dragging
+      mouseWheelZoom: true,  // Allow mouse wheel zoom
+      doubleClickZoom: true,  // Allow double-click zoom
+      pinchZoom: true,  // Allow touch pinch zoom
+      // CRITICAL: Disable kinetic panning that causes drift
+    }),
   });
   
   // Mouse position is now tracked by OpenLayers CoordinatesControl
@@ -319,7 +338,7 @@ onMounted(async () => {
   initSelectInteraction((feature) => {
     if (feature) {
       const properties = feature.getProperties();
-      const coords = (feature.getGeometry() as any)?.getCoordinates?.();
+      const coords = feature.getGeometry()?.get('coordinates');
       
       // Determine feature type
       const featureType = properties.type || (properties.wares ? 'trader' : 'Feature');
@@ -328,14 +347,14 @@ onMounted(async () => {
       mapStore.selectFeature({
         id: properties.id || 'unknown',
         type: 'Feature',
-        geometry: feature.getGeometry() as any,
+        geometry: feature.getGeometry(),
         properties: {
           name: properties.name || 'Unknown',
           type: featureType,
           text: properties.text || properties.wares,
           wares: properties.wares
         }
-      } as any);
+      });
       
       // Show overlay popup
       if (coords) {
@@ -357,11 +376,13 @@ onMounted(async () => {
 
   // Wait for sources to load with timeout
   const sources = [
-    tradersLayer.getSource(),
-    translocatorsLayer.getSource(),
-    signsLayer.getSource(),
-    chunkLayer.getSource()
-  ];
+    exploredChunksLayer?.getSource(),
+    tradersLayer?.getSource(),
+    translocatorsLayer?.getSource(),
+    landmarksLayer?.getSource(),
+    signsLayer?.getSource(),
+    chunkLayer?.getSource()
+  ].filter(Boolean); // Filter out null/undefined sources
   let loadedCount = 0;
   
   const checkAllLoaded = () => {
@@ -406,12 +427,38 @@ onMounted(async () => {
   }
 });
 
+// Handle container resize - ensures map renders correctly when sidebar/window changes
+// Set up outside onMounted so it's available for entire component lifecycle
+const resizeObserver = new ResizeObserver(() => {
+  if (mapInstance.value) {
+    // Delay slightly to ensure DOM has updated
+    setTimeout(() => {
+      mapInstance.value?.updateSize();
+      console.log('[MapContainer] Map size updated due to container resize');
+    }, 100);
+  }
+});
+
+onMounted(() => {
+  if (mapRef.value) {
+    resizeObserver.observe(mapRef.value);
+  }
+});
+
+// Cleanup resize observer on unmount
+onUnmounted(() => {
+  resizeObserver.disconnect();
+});
+
 // Watch for layer visibility changes
 watch(() => mapStore.layerVisibility, (newVisibility) => {
   if (terrainLayer) terrainLayer.setVisible(newVisibility.terrain);
-  if (chunkLayer) chunkLayer.setVisible(false); // Keep chunks hidden - optional layer
+  if (exploredChunksLayer) exploredChunksLayer.setVisible(newVisibility.exploredChunks);
+  if (chunkLayer) chunkLayer.setVisible(newVisibility.chunks);
+  if (chunkVersionLayer) chunkVersionLayer.setVisible(newVisibility.chunkVersions);
   if (tradersLayer) tradersLayer.setVisible(newVisibility.traders);
   if (translocatorsLayer) translocatorsLayer.setVisible(newVisibility.translocators);
+  if (landmarksLayer) landmarksLayer.setVisible(newVisibility.landmarks);
   if (signsLayer) signsLayer.setVisible(newVisibility.signs);
   
   // Players layer needs to find the layer by name
@@ -423,6 +470,21 @@ watch(() => mapStore.layerVisibility, (newVisibility) => {
     });
   }
 }, { deep: true });
+
+// Watch for sub-layer visibility changes (spec lines 379-403)
+// When sub-layer visibility changes, refresh the layer styling
+watch(() => mapStore.subLayerVisibility, () => {
+  // Force layer refresh to update feature opacity
+  if (tradersLayer) tradersLayer.getSource()?.changed();
+  if (translocatorsLayer) translocatorsLayer.getSource()?.changed();
+  if (landmarksLayer) landmarksLayer.getSource()?.changed();
+}, { deep: true });
+
+// Watch for label size changes (spec line 326)
+watch(() => mapStore.labelSize, () => {
+  // Force landmarks layer refresh to update label sizes
+  if (landmarksLayer) landmarksLayer.getSource()?.changed();
+});
 
 // Clean up
 onUnmounted(() => {

@@ -52,8 +52,6 @@ public class MapConfigController(ICoreServerAPI sapi, ModConfig config, ITileGen
             
             await context.Response.OutputStream.WriteAsync(bytes);
             context.Response.Close();
-            
-            sapi.Logger.Debug("[VintageAtlas] Map config served via API");
         }
         catch (Exception ex)
         {
@@ -62,28 +60,25 @@ public class MapConfigController(ICoreServerAPI sapi, ModConfig config, ITileGen
         }
     }
 
+
     /// <summary>
-    /// Get world extent information
+    /// Get the current map configuration (used by TileController for coordinate transformation)
     /// </summary>
-    public async Task ServeWorldExtent(HttpListenerContext context)
+    public MapConfigData? GetCurrentConfig()
     {
+        // Check if the world is ready
+        if (sapi.World?.BlockAccessor == null)
+        {
+            return null; // Return null if world not initialized yet
+        }
+        
         try
         {
-            var extent = CalculateWorldExtent();
-            var json = JsonConvert.SerializeObject(extent, _jsonSettings);
-            var bytes = Encoding.UTF8.GetBytes(json);
-            
-            context.Response.StatusCode = 200;
-            context.Response.ContentType = "application/json";
-            context.Response.ContentLength64 = bytes.Length;
-            
-            await context.Response.OutputStream.WriteAsync(bytes);
-            context.Response.Close();
+            return GetMapConfig();
         }
-        catch (Exception ex)
+        catch
         {
-            sapi.Logger.Error($"[VintageAtlas] Error serving world extent: {ex.Message}");
-            await ServeError(context, "Failed to calculate world extent");
+            return null; // Return null on any error
         }
     }
 
@@ -119,8 +114,6 @@ public class MapConfigController(ICoreServerAPI sapi, ModConfig config, ITileGen
 
     private MapConfigData GenerateMapConfig()
     {
-        var extent = CalculateWorldExtent();
-        var center = CalculateDefaultCenter();
         var tileStats = CalculateTileStatistics();
         var spawn = GetSpawnPosition();
         
@@ -128,53 +121,72 @@ public class MapConfigController(ICoreServerAPI sapi, ModConfig config, ITileGen
         var tileResolutions = GenerateResolutions(config.BaseZoomLevel);
         var viewResolutions = GenerateResolutions(config.BaseZoomLevel + 3); // Extra zoom for smooth viewing
 
-        // Transform extent to relative coordinates if needed
-        // COORDINATE SYSTEM DESIGN:
-        // - Backend (ChunkDataExtractor): Always uses absolute world chunk coordinates
-        // - Tiles on disk: Stored with absolute chunk coordinate filenames (e.g., 1234_5678.png)
-        // - This controller: Transforms extent for frontend display based on coordinate mode
-        // - Frontend (OpenLayers): Uses transformed extent to position tiles visually
+        // ═══════════════════════════════════════════════════════════════
+        // CLEAN ARCHITECTURE: Backend provides tile-space coordinates
+        // ═══════════════════════════════════════════════════════════════
+        // All coordinates are in TILE GRID SPACE, matching the storage.
+        // No transformations needed - OpenLayers tile (X, Y) directly maps
+        // to storage tile (X, Y) via /tiles/{z}/{x}_{y}.png
         //
-        // Why this design:
-        // 1. Tiles are generated once and work in both coordinate modes
-        // 2. Only the DISPLAY extent changes, not the tile data itself
-        // 3. Avoids regenerating tiles when switching coordinate modes
-        // ABSOLUTE COORDINATES WITH OFFSET MAPPING
-        // ========================================
-        // OpenLayers TileGrid always numbers tiles from (0,0) at origin
-        // But our tiles are stored with absolute world coordinates
-        // Solution: Calculate offset to map OL tile coords -> storage coords
-        // ========================================
+        // Benefits:
+        // 1. Simple: Frontend uses backend values as-is
+        // 2. Correct: Coordinates match by definition
+        // 3. Debuggable: Request tile (X, Y) → get file X_Y.png
+        // ═══════════════════════════════════════════════════════════════
         
-        // Z-axis flip: Vintage Story Z increases southward, we want north at top
-        // So: minY = -maxZ (south at bottom), maxY = -minZ (north at top)
-        int[] worldExtent = [extent.MinX, -extent.MaxZ, extent.MaxX, -extent.MinZ];
-        int[] worldOrigin = [extent.MinX, -extent.MinZ];  // Top-left (northwest)
+        // CLEAN ARCHITECTURE REALITY CHECK:
+        // - OpenLayers TileGrid extent/origin are WORLD COORDINATES (blocks), not tile numbers!
+        // - We query tiles at display zoom to know the range
+        // - Convert tile numbers to world block coordinates for OpenLayers
+        // - Frontend getTileUrl() will map grid coords back to storage tile numbers
         
-        sapi.Logger.Debug($"[VintageAtlas] Absolute extent with Z-flip: " +
-            $"extent=[{worldExtent[0]}, {worldExtent[1]}, {worldExtent[2]}, {worldExtent[3]}], " +
-            $"origin=[{worldOrigin[0]}, {worldOrigin[1]}]");
+        var displayZoom = CalculateDefaultZoom(); // e.g., 7
         
-        // Calculate which absolute tile the origin maps to
-        // Origin is at [extent.MinX, -extent.MinZ] in flipped coords
-        // Un-flip Z to get game coords: [extent.MinX, extent.MinZ]
-        var originTileX = (int)Math.Floor((double)extent.MinX / config.TileSize);
-        var originTileZ = (int)Math.Floor((double)extent.MinZ / config.TileSize);
+        // Get tile extent at display zoom to calculate world bounds
+        var tileExtent = tileGenerator.GetTileExtentAsync(displayZoom).GetAwaiter().GetResult();
         
-        int[] tileOffset = [originTileX, originTileZ];
+        if (tileExtent == null)
+        {
+            // No tiles yet - use fallback based on spawn
+            sapi.Logger.Warning("[VintageAtlas] No tiles found, using spawn fallback extent");
+            return GenerateFallbackMapConfig(spawn, tileStats, tileResolutions, viewResolutions);
+        }
         
-        sapi.Logger.Debug($"[VintageAtlas] Tile offset: origin blocks=({extent.MinX},{extent.MinZ}), " +
-            $"origin tiles=({originTileX},{originTileZ})");
+        // Convert tile numbers to world BLOCK coordinates
+        // At display zoom, each tile = (tileSize * resolution) blocks
+        var resolution = tileResolutions[displayZoom];
+        var blocksPerTile = (int)(config.TileSize * resolution);
+        
+        // World extent in BLOCK coordinates (what OpenLayers needs)
+        int[] worldExtent = [
+            tileExtent.MinX * blocksPerTile,
+            tileExtent.MinY * blocksPerTile,
+            (tileExtent.MaxX + 1) * blocksPerTile,
+            (tileExtent.MaxY + 1) * blocksPerTile
+        ];
+        
+        // Origin at BOTTOM-LEFT corner (minX, minY)
+        // This means grid (0,0) starts at the NORTH edge (minimum Y)
+        // and grid Y increases going SOUTH (higher Y values)
+        // This matches OpenLayers' natural behavior!
+        int[] worldOrigin = [
+            tileExtent.MinX * blocksPerTile,
+            tileExtent.MinY * blocksPerTile
+        ];
+        
+        // Center in BLOCKS
+        int[] defaultCenter = [
+            ((tileExtent.MinX + tileExtent.MaxX) * blocksPerTile) / 2,
+            ((tileExtent.MinY + tileExtent.MaxY) * blocksPerTile) / 2
+        ];
         
         return new MapConfigData
         {
-            // World bounds (transformed based on coordinate mode)
+            // World BLOCK coordinates (for OpenLayers TileGrid)
             WorldExtent = worldExtent,
             WorldOrigin = worldOrigin,
-            
-            // Default view
-            DefaultCenter = center,
-            DefaultZoom = CalculateDefaultZoom(),
+            DefaultCenter = defaultCenter,
+            DefaultZoom = displayZoom,
             
             // Zoom configuration
             MinZoom = 0,
@@ -185,7 +197,6 @@ public class MapConfigController(ICoreServerAPI sapi, ModConfig config, ITileGen
             TileSize = config.TileSize,
             TileResolutions = tileResolutions,
             ViewResolutions = viewResolutions,
-            TileOffset = tileOffset,  // Tile coordinate offset for spawn-relative mode
             
             // Map metadata
             SpawnPosition = spawn,
@@ -198,179 +209,48 @@ public class MapConfigController(ICoreServerAPI sapi, ModConfig config, ITileGen
             
             // Server info
             ServerName = sapi.Server.Config.ServerName,
-            WorldName = sapi.World.SavegameIdentifier,
-            
-            // Coordinate system
-            AbsolutePositions = config.AbsolutePositions
+            WorldName = sapi.World.SavegameIdentifier
+        };
+    }
+    
+    private MapConfigData GenerateFallbackMapConfig(int[] spawn, TileStatistics tileStats, 
+        double[] tileResolutions, double[] viewResolutions)
+    {
+        // Fallback: Create a reasonable extent around spawn in BLOCK coordinates
+        const int fallbackBlockRadius = 25600; // ~100 tiles * 256 blocks/tile
+        
+        int[] worldExtent = [
+            spawn[0] - fallbackBlockRadius,
+            spawn[1] - fallbackBlockRadius,
+            spawn[0] + fallbackBlockRadius,
+            spawn[1] + fallbackBlockRadius
+        ];
+        // Origin at bottom-left: minX, minZ
+        int[] worldOrigin = [spawn[0] - fallbackBlockRadius, spawn[1] - fallbackBlockRadius];
+        int[] defaultCenter = [spawn[0], spawn[1]];
+        
+        return new MapConfigData
+        {
+            WorldExtent = worldExtent,
+            WorldOrigin = worldOrigin,
+            DefaultCenter = defaultCenter,
+            DefaultZoom = CalculateDefaultZoom(),
+            MinZoom = 0,
+            MaxZoom = config.BaseZoomLevel,
+            BaseZoomLevel = config.BaseZoomLevel,
+            TileSize = config.TileSize,
+            TileResolutions = tileResolutions,
+            ViewResolutions = viewResolutions,
+            SpawnPosition = spawn,
+            MapSizeX = sapi.World.BlockAccessor.MapSizeX,
+            MapSizeZ = sapi.World.BlockAccessor.MapSizeZ,
+            MapSizeY = sapi.World.BlockAccessor.MapSizeY,
+            TileStats = tileStats,
+            ServerName = sapi.Server.Config.ServerName,
+            WorldName = sapi.World.SavegameIdentifier
         };
     }
 
-    private WorldExtentData CalculateWorldExtent()
-    {
-        // STEP 1: Try MBTiles first (fast if tiles exist)
-        sapi.Logger.Debug($"[VintageAtlas] MapConfig: Querying tile extent for zoom {config.BaseZoomLevel}...");
-        var tileExtent = tileGenerator.GetTileExtentAsync(config.BaseZoomLevel).GetAwaiter().GetResult();
-        
-        if (tileExtent != null)
-        {
-            // Tiles exist - calculate extent from them
-            sapi.Logger.Debug($"[VintageAtlas] MapConfig: Found tile extent: ({tileExtent.MinX},{tileExtent.MinY})-({tileExtent.MaxX},{tileExtent.MaxY})");
-            return CalculateExtentFromTiles(tileExtent);
-        }
-
-        // STEP 2: No tiles yet - query savegame database for actual chunk positions
-        sapi.Logger.Warning("[VintageAtlas] MapConfig: No tiles in MBTiles database, querying savegame for chunk extent...");
-        
-        return CalculateExtentFromSavegame();
-    }
-
-    private WorldExtentData CalculateExtentFromTiles(Storage.TileExtent tileExtent)
-    {
-        // Convert tile coordinates to world coordinates
-        const int chunkSize = 32;
-        var chunksPerTile = config.TileSize / chunkSize;
-        var worldUnitsPerTile = chunksPerTile * chunkSize;
-        
-        var minX = tileExtent.MinX * worldUnitsPerTile;
-        var maxX = (tileExtent.MaxX + 1) * worldUnitsPerTile;
-        var minZ = tileExtent.MinY * worldUnitsPerTile;
-        var maxZ = (tileExtent.MaxY + 1) * worldUnitsPerTile;
-        
-        sapi.Logger.Debug($"[VintageAtlas] Calculated extent from MBTiles database: " +
-            $"Tiles: ({tileExtent.MinX},{tileExtent.MinY})-({tileExtent.MaxX},{tileExtent.MaxY}), " +
-            $"World coords: ({minX},{minZ})-({maxX},{maxZ})");
-        
-        return new WorldExtentData
-        {
-            MinX = minX,
-            MinZ = minZ,
-            MaxX = maxX,
-            MaxZ = maxZ
-        };
-    }
-
-    private WorldExtentData CalculateExtentFromSavegame()
-    {
-        try
-        {
-            // Query savegame database directly for all chunk positions
-            var chunkPositions = GetAllMapChunkPositionsFromSavegame();
-            
-            if (chunkPositions.Count == 0)
-            {
-                sapi.Logger.Debug("[VintageAtlas] No chunks found in savegame, using spawn fallback extent");
-                return GetSpawnFallbackExtent();
-            }
-            
-            // Calculate extent from actual chunk positions
-            const int chunkSize = 32;
-            var minChunkX = chunkPositions.Min(c => c.x);
-            var maxChunkX = chunkPositions.Max(c => c.x);
-            var minChunkZ = chunkPositions.Min(c => c.z);
-            var maxChunkZ = chunkPositions.Max(c => c.z);
-            
-            var minX = minChunkX * chunkSize;
-            var maxX = (maxChunkX + 1) * chunkSize;
-            var minZ = minChunkZ * chunkSize;
-            var maxZ = (maxChunkZ + 1) * chunkSize;
-            
-            sapi.Logger.Debug($"[VintageAtlas] Calculated extent from savegame database: " +
-                $"Chunks: ({minChunkX},{minChunkZ})-({maxChunkX},{maxChunkZ}), " +
-                $"World coords: ({minX},{minZ})-({maxX},{maxZ})");
-            
-            return new WorldExtentData
-            {
-                MinX = minX,
-                MinZ = minZ,
-                MaxX = maxX,
-                MaxZ = maxZ
-            };
-        }
-        catch (Exception ex)
-        {
-            sapi.Logger.Error($"[VintageAtlas] Failed to query savegame database: {ex.Message}");
-            sapi.Logger.Debug($"[VintageAtlas] Stack trace: {ex.StackTrace}");
-            return GetSpawnFallbackExtent();
-        }
-    }
-
-    private List<(int x, int z)> GetAllMapChunkPositionsFromSavegame()
-    {
-        var positions = new List<(int x, int z)>();
-        
-        // Get savegame database path
-        var savegamePath = sapi.World.SavegameIdentifier;
-        var dataPath = sapi.GetOrCreateDataPath("Saves");
-        var dbPath = Path.Combine(dataPath, savegamePath, "default.vcdbs");
-        
-        if (!File.Exists(dbPath))
-        {
-            sapi.Logger.Warning($"[VintageAtlas] Savegame database not found at: {dbPath}");
-            return positions;
-        }
-        
-        sapi.Logger.Debug($"[VintageAtlas] Querying savegame database: {dbPath}");
-        
-        var connectionString = $"Data Source={dbPath};Mode=ReadOnly";
-        
-        using var connection = new SqliteConnection(connectionString);
-        connection.Open();
-        
-        using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT position FROM mapchunk";
-        
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
-        {
-            var position = (long)reader["position"];
-            
-            // Decode position using Vintage Story's chunk index format
-            // From ChunkPos.FromChunkIndex_saveGamev2
-            var mapSizeX = sapi.World.BlockAccessor.MapSizeX / 32;
-            var mapSizeZ = sapi.World.BlockAccessor.MapSizeZ / 32;
-            
-            var chunkX = (int)(position % mapSizeX);
-            var chunkZ = (int)(position / mapSizeX % mapSizeZ);
-            
-            positions.Add((chunkX, chunkZ));
-        }
-        
-        sapi.Logger.Debug($"[VintageAtlas] Found {positions.Count} chunks in savegame database");
-        
-        return positions;
-    }
-
-    private WorldExtentData GetSpawnFallbackExtent()
-    {
-        var spawn = GetSpawnPosition();
-        const int fallbackRadius = 10000; // 10km radius around spawn
-        
-        sapi.Logger.Debug($"[VintageAtlas] Using spawn fallback extent: ±{fallbackRadius} blocks around spawn ({spawn[0]}, {spawn[1]})");
-        
-        return new WorldExtentData
-        {
-            MinX = spawn[0] - fallbackRadius,
-            MinZ = spawn[1] - fallbackRadius,
-            MaxX = spawn[0] + fallbackRadius,
-            MaxZ = spawn[1] + fallbackRadius
-        };
-    }
-
-    private int[] CalculateDefaultCenter()
-    {
-        // Use spawn position or center of tile coverage
-        var spawn = GetSpawnPosition();
-        
-        if (config.AbsolutePositions)
-        {
-            return [spawn[0], spawn[1]];
-        }
-        else
-        {
-            // In relative coordinates, spawn is at [0, 0]
-            return [0, 0];
-        }
-    }
 
     private int CalculateDefaultZoom()
     {
@@ -471,39 +351,55 @@ public class MapConfigController(ICoreServerAPI sapi, ModConfig config, ITileGen
 
 public class MapConfigData
 {
+    /// <summary>
+    /// Extent in world BLOCK coordinates: [minX, minZ, maxX, maxZ]
+    /// These are game world coordinates that define the map bounds.
+    /// OpenLayers uses these to create the TileGrid extent.
+    /// Frontend's getTileUrl() maps grid coords to storage tile numbers.
+    /// </summary>
     public int[] WorldExtent { get; set; } = [];
+    
+    /// <summary>
+    /// Origin (top-left) in world BLOCK coordinates: [x, z]
+    /// This is where tile (0,0) would be located in the tile grid.
+    /// OpenLayers uses this to create the TileGrid origin.
+    /// </summary>
     public int[] WorldOrigin { get; set; } = [];
+    
+    /// <summary>
+    /// Default center in world BLOCK coordinates: [x, z]
+    /// Usually the spawn point or middle of explored area.
+    /// OpenLayers centers the view here initially.
+    /// </summary>
     public int[] DefaultCenter { get; set; } = [];
+    
     public int DefaultZoom { get; set; }
     public int MinZoom { get; set; }
     public int MaxZoom { get; set; }
     public int BaseZoomLevel { get; set; }
     public int TileSize { get; set; }
+    
+    /// <summary>
+    /// Tile resolutions for each zoom level (blocks per pixel)
+    /// </summary>
     public double[] TileResolutions { get; set; } = [];
+    
+    /// <summary>
+    /// View resolutions for smooth zooming (includes extra zoom levels)
+    /// </summary>
     public double[] ViewResolutions { get; set; } = [];
+    
+    /// <summary>
+    /// Spawn position in world block coordinates: [x, z]
+    /// </summary>
     public int[] SpawnPosition { get; set; } = [];
+    
     public int MapSizeX { get; set; }
     public int MapSizeZ { get; set; }
     public int MapSizeY { get; set; }
     public TileStatistics? TileStats { get; set; }
     public string? ServerName { get; set; }
     public string? WorldName { get; set; }
-    public bool AbsolutePositions { get; set; }
-    
-    /// <summary>
-    /// Tile coordinate offset for spawn-relative mode.
-    /// Frontend adds this to display tile coords to get absolute tile coords.
-    /// [tileOffsetX, tileOffsetZ] in tile coordinate space.
-    /// </summary>
-    public int[] TileOffset { get; set; } = [];
-}
-
-public class WorldExtentData
-{
-    public int MinX { get; set; }
-    public int MinZ { get; set; }
-    public int MaxX { get; set; }
-    public int MaxZ { get; set; }
 }
 
 public class TileStatistics

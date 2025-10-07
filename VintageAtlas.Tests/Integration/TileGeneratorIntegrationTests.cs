@@ -36,11 +36,9 @@ public class TileGeneratorIntegrationTests
     }
 
     [Fact]
-    public void ITileGenerator_BothImplementations_ShareSameInterface()
+    public void ITileGenerator_UnifiedImplementation_ImplementsInterface()
     {
-        // Assert - Verify both generators implement the same interface
-        typeof(DynamicTileGenerator).Should().Implement<ITileGenerator>(
-            "DynamicTileGenerator must implement ITileGenerator");
+        // Assert - Verify UnifiedTileGenerator implements ITileGenerator
         typeof(UnifiedTileGenerator).Should().Implement<ITileGenerator>(
             "UnifiedTileGenerator must implement ITileGenerator");
     }
@@ -185,13 +183,11 @@ public class TileGeneratorIntegrationTests
         // if (config.UseUnifiedGenerator) generator = new UnifiedTileGenerator(...);
         // else generator = new DynamicTileGenerator(...);
 
-        // Act - Both can be assigned to ITileGenerator
+        // Act - UnifiedTileGenerator can be assigned to ITileGenerator
         // (Can't actually instantiate without full dependencies, but verifying type compatibility)
-        var dynamicType = typeof(DynamicTileGenerator);
         var unifiedType = typeof(UnifiedTileGenerator);
 
         // Assert
-        typeof(ITileGenerator).IsAssignableFrom(dynamicType).Should().BeTrue();
         typeof(ITileGenerator).IsAssignableFrom(unifiedType).Should().BeTrue();
     }
 

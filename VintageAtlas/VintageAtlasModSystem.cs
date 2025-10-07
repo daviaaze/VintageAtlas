@@ -222,7 +222,7 @@ public class VintageAtlasModSystem : ModSystem
             var geoJsonController = new GeoJsonController(_sapi, _config);
             // Use the existing mapConfigController instance (created earlier)
             var mapConfigController = _mapConfigController ?? new MapConfigController(_sapi, _config, _tileGenerator);
-            var tileController = new TileController(_sapi, _config, _tileGenerator);
+            var tileController = new TileController(_sapi, _config, _tileGenerator, mapConfigController);
             
             var router = new RequestRouter(
                 _config,

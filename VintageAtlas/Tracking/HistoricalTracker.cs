@@ -232,7 +232,6 @@ namespace VintageAtlas.Tracking
                 }
 
                 transaction.Commit();
-                sapi.Logger.Debug($"[VintageAtlas] Recorded {recorded} player positions");
             }
             catch (Exception ex)
             {
@@ -312,7 +311,6 @@ namespace VintageAtlas.Tracking
                 }
 
                 transaction.Commit();
-                sapi.Logger.Debug($"[VintageAtlas] Recorded census for {entityGroups.Count} entity types");
             }
             catch (Exception ex)
             {
@@ -348,7 +346,6 @@ namespace VintageAtlas.Tracking
                 cmd.Parameters.AddWithValue("@uptime", sapi.World.ElapsedMilliseconds / 1000);
 
                 cmd.ExecuteNonQuery();
-                sapi.Logger.Debug("[VintageAtlas] Recorded server stats");
             }
             catch (Exception ex)
             {
@@ -381,7 +378,6 @@ namespace VintageAtlas.Tracking
                 cmd.Parameters.AddWithValue("@source", (object?)damageSource ?? DBNull.Value);
 
                 cmd.ExecuteNonQuery();
-                sapi.Logger.Notification($"[VintageAtlas] Recorded death for {player.PlayerName}");
             }
             catch (Exception ex)
             {

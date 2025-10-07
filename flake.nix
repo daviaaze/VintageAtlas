@@ -275,7 +275,7 @@
           set -e
 
           # Use absolute paths to avoid issues
-          TEST_DATA="$(realpath "$(pwd)/test_server")"
+          TEST_DATA="$(realpath "$(pwd)/test_server_2")"
           MOD_PATH="$(realpath "$(pwd)/VintageAtlas/bin/Release/Mods")"
           PORT="''${VS_TEST_PORT:-42421}"  # Default test port
 

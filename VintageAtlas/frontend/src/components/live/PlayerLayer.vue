@@ -14,7 +14,7 @@ import VectorSource from 'ol/source/Vector';
 import Feature from 'ol/Feature';
 import Point from 'ol/geom/Point';
 import { Style, Circle, Fill, Stroke, Text } from 'ol/style';
-import { formatCoordinates, isAbsolutePositions, getSpawnPosition } from '@/utils/mapConfig';
+import { formatCoordinates, getSpawnPosition } from '@/utils/mapConfig';
 
 // Stores
 const liveStore = useLiveStore();
@@ -161,18 +161,8 @@ function createPlayerLayer() {
       
       // Coordinates if enabled
       if (showCoords.value && rx !== undefined && ry !== undefined && rz !== undefined) {
-        // Convert absolute world coords to map display coords
-        let displayX = rx;
-        let displayZ = rz;
-        
-        if (!isAbsolutePositions()) {
-          // Convert to spawn-relative
-          const [spawnX, spawnZ] = getSpawnPosition();
-          displayX = rx - spawnX;
-          displayZ = rz - spawnZ;
-        }
-        
-        const coordText = `${formatCoordinates(displayX, -displayZ)} Y: ${Math.round(ry)}`;
+        // Display world block coordinates directly
+        const coordText = `Pos: ${Math.round(rx)}, ${Math.round(ry)}, ${Math.round(rz)}`;
         
         styles.push(new Style({
           text: new Text({

@@ -135,7 +135,7 @@ public class TileChunkData
     public ChunkSnapshot? GetChunk(int chunkX, int chunkZ, int chunkY = 0)
     {
         var key = $"{chunkX}_{chunkZ}_{chunkY}";
-        return Chunks.TryGetValue(key, out var chunk) ? chunk : null;
+        return Chunks.GetValueOrDefault(key);
     }
     
     /// <summary>

@@ -45,12 +45,6 @@ public class ModConfig
     public bool ExtractStructures { get; set; } = true;
     
     /// <summary>
-    /// Use absolute positions instead of in-game coordinates
-    /// Default: false
-    /// </summary>
-    public bool AbsolutePositions { get; set; } = false;
-    
-    /// <summary>
     /// Export the heightmap along with the world map
     /// Default: false
     /// </summary>

@@ -3,17 +3,20 @@
  */
 
 export interface MapConfigData {
-  worldExtent: number[];
-  worldOrigin: number[];
-  defaultCenter: number[];
+  // All coordinates in world BLOCK coordinate space
+  // Backend provides block coordinates for OpenLayers TileGrid
+  // Frontend's getTileUrl() converts grid coords to storage tile numbers
+  worldExtent: number[]; // [minX, minZ, maxX, maxZ] in world blocks
+  worldOrigin: number[]; // [x, z] origin in world blocks  
+  defaultCenter: number[]; // [x, z] center in world blocks
   defaultZoom: number;
   minZoom: number;
   maxZoom: number;
   baseZoomLevel: number;
-  tileSize: number;
-  tileResolutions: number[];
-  viewResolutions: number[];
-  spawnPosition: number[];
+  tileSize: number; // Tile size in pixels
+  tileResolutions: number[]; // Blocks per pixel at each zoom
+  viewResolutions: number[]; // View resolutions for smooth zooming
+  spawnPosition: number[]; // [x, z] in world block coordinates
   mapSizeX: number;
   mapSizeZ: number;
   mapSizeY: number;
@@ -27,8 +30,6 @@ export interface MapConfigData {
   };
   serverName?: string;
   worldName?: string;
-  absolutePositions: boolean;
-  tileOffset?: number[]; // Tile coordinate offset for spawn-relative mode
 }
 
 export interface WorldExtentData {
@@ -76,7 +77,7 @@ export async function fetchMapConfig(): Promise<MapConfigData> {
       const requiredFields: (keyof MapConfigData)[] = [
         'worldExtent', 'worldOrigin', 'defaultCenter', 'defaultZoom',
         'minZoom', 'maxZoom', 'tileSize', 'tileResolutions', 'viewResolutions',
-        'spawnPosition', 'absolutePositions'
+        'spawnPosition'
       ];
       
       const missingFields = requiredFields.filter(field => 

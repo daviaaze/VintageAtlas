@@ -2,7 +2,7 @@ using System;
 
 namespace VintageAtlas.Export;
 
-public class BlurTool
+public static class BlurTool
     {
         public static void Blur(Span<byte> data, int sizeX, int sizeZ, int range)
         {
@@ -11,7 +11,7 @@ public class BlurTool
         }
 
 
-        internal static unsafe void BoxBlurHorizontal(Span<byte> map, int range, int xStart, int yStart, int xEnd, int yEnd)
+        private static unsafe void BoxBlurHorizontal(Span<byte> map, int range, int xStart, int yStart, int xEnd, int yEnd)
         {
             fixed (byte* pixels = map)
             {
@@ -67,7 +67,7 @@ public class BlurTool
             }
         }
 
-        internal static unsafe void BoxBlurVertical(Span<byte> map, int range, int xStart, int yStart, int xEnd, int yEnd)
+        private static unsafe void BoxBlurVertical(Span<byte> map, int range, int xStart, int yStart, int xEnd, int yEnd)
         {
             fixed (byte* pixels = map)
             {

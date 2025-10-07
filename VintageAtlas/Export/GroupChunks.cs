@@ -171,21 +171,35 @@ public class GroupChunks
     
     public void GenerateGradient(List<GroupedPosition> groupedPositions)
     {
-        var startColor = new Vector3(255,106,0);
-        var endColor = new Vector3(0,78,255);
+        var startColor = new Vector3(255,106,0); // Orange (oldest)
+        var endColor = new Vector3(0,78,255);     // Blue (newest)
         var gradientColors = new List<string>();
 
         var versions = groupedPositions.Select(g=>g.Version).Distinct().Select(s => ProperVersion.SemVer.Parse(s)).OrderDescending().ToList();
-        var num = versions.Count - 1;
-        for (var i = 0; i <= num; i++)
+        
+        // Handle single version (avoid division by zero)
+        if (versions.Count == 1)
         {
-            var ratio = i / (float)num;
-
-            var r = (int)(startColor.X + ratio * (endColor.X - startColor.X));
-            var g = (int)(startColor.Y + ratio * (endColor.Y - startColor.Y));
-            var b = (int)(startColor.Z + ratio * (endColor.Z - startColor.Z));
-
+            // Use start color (orange) for single version
+            var r = (int)startColor.X;
+            var g = (int)startColor.Y;
+            var b = (int)startColor.Z;
             gradientColors.Add($"#{r:X2}{g:X2}{b:X2}");
+        }
+        else
+        {
+            // Generate gradient for multiple versions
+            var num = versions.Count - 1;
+            for (var i = 0; i <= num; i++)
+            {
+                var ratio = i / (float)num;
+
+                var r = (int)(startColor.X + ratio * (endColor.X - startColor.X));
+                var g = (int)(startColor.Y + ratio * (endColor.Y - startColor.Y));
+                var b = (int)(startColor.Z + ratio * (endColor.Z - startColor.Z));
+
+                gradientColors.Add($"#{r:X2}{g:X2}{b:X2}");
+            }
         }
 
         for (var index = 0; index < versions.Count; index++)

@@ -120,7 +120,9 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
                 var semaphore = GetSemaphoreForRequestType(requestType);
                 
                 // Request throttling with type-specific limits
-                if (semaphore != null && await semaphore.WaitAsync(0))
+                // Wait up to 100ms for a slot (better than immediate rejection)
+                var timeout = requestType == RequestType.Tile ? 50 : 100; // Shorter for tiles
+                if (semaphore != null && await semaphore.WaitAsync(TimeSpan.FromMilliseconds(timeout)))
                 {
                     // Slot acquired - process request
                     _ = Task.Run(async () =>
@@ -138,7 +140,7 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
                 }
                 else
                 {
-                    // Server too busy for this request type
+                    // Server too busy for this request type - waited but no slot available
                     await RejectRequest(context, requestType);
                 }
             }
@@ -194,8 +196,32 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
                 return;
             }
 
-            // Route the request
-            await router.RouteRequest(context);
+            // Add timeout to prevent requests from hanging indefinitely
+            using var cts = new CancellationTokenSource();
+            cts.CancelAfter(TimeSpan.FromSeconds(30)); // 30 second timeout
+            
+            try
+            {
+                // Route the request with timeout
+                await router.RouteRequest(context).WaitAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // Timeout - try to send error response if not already closed
+                try
+                {
+                    if (!context.Response.SendChunked) // Check if response hasn't started
+                    {
+                        context.Response.StatusCode = 504; // Gateway Timeout
+                        context.Response.Close();
+                    }
+                }
+                catch
+                {
+                    // Response already closed/disposed - ignore
+                }
+                sapi.Logger.Warning($"[VintageAtlas] Request timeout: {context.Request.Url?.PathAndQuery}");
+            }
         }
         catch (Exception ex)
         {

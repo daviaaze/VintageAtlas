@@ -9,7 +9,9 @@ using Newtonsoft.Json.Serialization;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 using Vintagestory.GameContent;
+using Vintagestory.Server;
 using VintageAtlas.Core;
+using VintageAtlas.Export;
 using VintageAtlas.GeoJson;
 using VintageAtlas.GeoJson.Sign;
 using VintageAtlas.GeoJson.SignPost;
@@ -40,10 +42,12 @@ public class GeoJsonController(ICoreServerAPI sapi, ModConfig config)
     private TraderGeoJson? _cachedTraders;
     private TranslocatorGeoJson? _cachedTranslocators;
     private ChunkversionGeoJson? _cachedChunks;
+    private ChunkversionGeoJson? _cachedChunkVersions;
     private long _lastSignUpdate;
     private long _lastTraderUpdate;
     private long _lastTranslocatorUpdate;
     private long _lastChunkUpdate;
+    private long _lastChunkVersionUpdate;
     
     private readonly object _cacheLock = new();
     
@@ -52,6 +56,7 @@ public class GeoJsonController(ICoreServerAPI sapi, ModConfig config)
     private const int TraderCacheMs = 60000; // 1 minute - traders can move/spawn
     private const int TranslocatorCacheMs = 120000; // 2 minutes - translocators are semi-static
     private const int ChunkCacheMs = 600000; // 10 minutes - chunks change very rarely
+    private const int ChunkVersionCacheMs = 1800000; // 30 minutes - chunk versions NEVER change
     
     // Scan radius in chunks around players
     private const int ScanRadiusChunks = 16; // ~512 blocks radius (16 * 32)
@@ -209,6 +214,36 @@ public class GeoJsonController(ICoreServerAPI sapi, ModConfig config)
         }
     }
 
+    /// <summary>
+    /// Get chunk versions as GeoJSON with colored polygons for each version
+    /// </summary>
+    public async Task ServeChunkVersions(HttpListenerContext context)
+    {
+        try
+        {
+            var ifNoneMatch = context.Request.Headers["If-None-Match"];
+            var geoJson = await GetChunkVersionsGeoJsonAsync();
+            
+            var json = JsonConvert.SerializeObject(geoJson, _jsonSettings);
+            var etag = GenerateETag(json);
+            
+            if (ifNoneMatch == etag)
+            {
+                context.Response.StatusCode = 304;
+                context.Response.Headers.Add("ETag", etag);
+                context.Response.Close();
+                return;
+            }
+            
+            await ServeGeoJson(context, json, etag);
+        }
+        catch (Exception ex)
+        {
+            sapi.Logger.Error($"[VintageAtlas] Error serving chunk versions GeoJSON: {ex.Message}");
+            await ServeError(context, "Failed to generate chunk version data");
+        }
+    }
+
     private async Task<SingGeoJson> GetSignsGeoJsonAsync()
     {
         // Check if world is ready (can be null during early startup)
@@ -239,14 +274,10 @@ public class GeoJsonController(ICoreServerAPI sapi, ModConfig config)
                 // Get chunks to scan (around players and spawn)
                 var chunksToScan = GetChunksToScan();
                 
-                sapi.Logger.Debug($"[VintageAtlas] Scanning {chunksToScan.Count} chunks for signs");
-                
                 foreach (var chunkPos in chunksToScan)
                 {
                     ScanChunkForSigns(chunkPos, signs, signPosts);
                 }
-                
-                sapi.Logger.Debug($"[VintageAtlas] Found {signs.Features.Count} signs and {signPosts.Features.Count} signposts");
             }
             catch (Exception ex)
             {
@@ -316,8 +347,6 @@ public class GeoJsonController(ICoreServerAPI sapi, ModConfig config)
                         traders.Features.Add(feature);
                     }
                 }
-                
-                sapi.Logger.Debug($"[VintageAtlas] Found {traders.Features.Count} traders");
             }
             catch (Exception ex)
             {
@@ -361,15 +390,10 @@ public class GeoJsonController(ICoreServerAPI sapi, ModConfig config)
                 // Get chunks to scan (around players and spawn)
                 var chunksToScan = GetChunksToScan();
                 var processedPairs = new HashSet<string>();
-                
-                sapi.Logger.Debug($"[VintageAtlas] Scanning {chunksToScan.Count} chunks for translocators");
-                
                 foreach (var chunkPos in chunksToScan)
                 {
                     ScanChunkForTranslocators(chunkPos, translocators, processedPairs);
                 }
-                
-                sapi.Logger.Debug($"[VintageAtlas] Found {translocators.Features.Count} translocators");
             }
             catch (Exception ex)
             {
@@ -433,6 +457,83 @@ public class GeoJsonController(ICoreServerAPI sapi, ModConfig config)
         }
 
         return chunks;
+    }
+
+    private async Task<ChunkversionGeoJson> GetChunkVersionsGeoJsonAsync()
+    {
+        var now = sapi.World.ElapsedMilliseconds;
+        
+        lock (_cacheLock)
+        {
+            if (_cachedChunkVersions != null && now - _lastChunkVersionUpdate < ChunkVersionCacheMs)
+            {
+                return _cachedChunkVersions;
+            }
+        }
+
+        var chunkVersions = new ChunkversionGeoJson { Name = "chunk_versions" };
+        
+        await Task.Run(() =>
+        {
+            try
+            {
+                sapi.Logger.Notification("[VintageAtlas] Generating chunk version visualization...");
+                
+                // Extract chunk version data from savegame
+                var server = (ServerMain)sapi.World;
+                var dataLoader = new SavegameDataLoader(server, config.MaxDegreeOfParallelism, sapi.Logger);
+                var extractor = new ChunkVersionExtractor(dataLoader, sapi.Logger);
+                
+                var chunkData = extractor.ExtractChunkVersions();
+                
+                if (chunkData.Count == 0)
+                {
+                    sapi.Logger.Warning("[VintageAtlas] No chunk version data available");
+                    return;
+                }
+                
+                // Group chunks by version using GroupChunks
+                var grouper = new GroupChunks(chunkData, server);
+                var grouped = grouper.GroupPositions();
+                
+                sapi.Logger.Notification($"[VintageAtlas] Found {grouped.Count} version groups");
+                
+                // Generate gradient colors for versions
+                grouper.GenerateGradient(grouped);
+                
+                // Create GeoJSON features for each version group
+                foreach (var group in grouped)
+                {
+                    try
+                    {
+                        var feature = grouper.GetShape(group);
+                        chunkVersions.Features.Add(feature);
+                    }
+                    catch (Exception ex)
+                    {
+                        sapi.Logger.Warning($"[VintageAtlas] Error creating shape for version {group.Version}: {ex.Message}");
+                    }
+                }
+                
+                sapi.Logger.Notification($"[VintageAtlas] Generated {chunkVersions.Features.Count} chunk version features");
+                
+                // Cleanup
+                dataLoader.Dispose();
+            }
+            catch (Exception ex)
+            {
+                sapi.Logger.Error($"[VintageAtlas] Error generating chunk versions: {ex.Message}");
+                sapi.Logger.Error(ex.StackTrace ?? "");
+            }
+        });
+
+        lock (_cacheLock)
+        {
+            _cachedChunkVersions = chunkVersions;
+            _lastChunkVersionUpdate = now;
+        }
+
+        return chunkVersions;
     }
 
     /// <summary>

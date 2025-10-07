@@ -8,7 +8,6 @@ export interface Config {
   extractWorldMap?: boolean;
   fixWhiteLines?: boolean;
   extractStructures?: boolean;
-  absolutePositions?: boolean;
   exportHeightmap?: boolean;
   exportSigns?: boolean;
   exportUntaggedSigns?: boolean;

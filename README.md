@@ -144,7 +144,7 @@ dotnet build
 
 - **Original WebCartographer**: [Th3Dilli](https://gitlab.com/th3dilli_vintagestory/WebCartographer)
 - **Webmap Base**: [vs-webmap by Drakker](https://bitbucket.org/vs-webmap/aurafury-webmap/)
-- **Server Status Query**: []
+- **Server Status Query**: [Simple Server status query](https://mods.vintagestory.at/show/mod/27202)
 - **Refactored Architecture**: daviaaze
 
 ## 📄 License

@@ -38,7 +38,7 @@ archive/
 # Mod config (user-specific)
 ModConfig/
 VintagestoryData/
-test_server/
+test_server*/
 
 # Built Vue.js frontend (keep source in frontend/, built output ignored)
 VintageAtlas/html/index.html

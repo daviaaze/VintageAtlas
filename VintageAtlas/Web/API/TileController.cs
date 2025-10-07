@@ -9,20 +9,22 @@ using VintageAtlas.Export;
 namespace VintageAtlas.Web.API;
 
 /// <summary>
-/// Serves map tiles with caching and ETag support
+/// Serves map tiles with caching and ETag support.
+/// Accepts OpenLayers grid coordinates and transforms them to storage coordinates internally.
 /// </summary>
-public partial class TileController(ICoreServerAPI sapi, ModConfig config, ITileGenerator tileGenerator)
+public partial class TileController(ICoreServerAPI sapi, ModConfig config, ITileGenerator tileGenerator, MapConfigController mapConfigController)
 {
     private static readonly Regex TilePathRegex = MyRegex();
 
     /// <summary>
-    /// Serve a tile with proper caching headers and ETag support
+    /// Serve a tile with proper caching headers and ETag support.
+    /// Accepts OpenLayers grid coordinates (0-based from origin) and transforms to storage coordinates.
     /// </summary>
     public async Task ServeTile(HttpListenerContext context, string path)
     {
         try
         {
-            // Parse tile coordinates from path: /tiles/{zoom}/{x}_{z}.png
+            // Parse OpenLayers grid coordinates from path: /tiles/{zoom}/{gridX}_{gridY}.png
             var match = TilePathRegex.Match(path);
             if (!match.Success)
             {
@@ -32,8 +34,8 @@ public partial class TileController(ICoreServerAPI sapi, ModConfig config, ITile
             }
 
             var zoom = int.Parse(match.Groups[1].Value);
-            var tileX = int.Parse(match.Groups[2].Value);
-            var tileZ = int.Parse(match.Groups[3].Value);
+            var gridX = int.Parse(match.Groups[2].Value);
+            var gridY = int.Parse(match.Groups[3].Value);
             
             // Validate zoom level (0 = fully zoomed out, BaseZoomLevel = fully zoomed in)
             if (zoom < 0 || zoom > config.BaseZoomLevel)
@@ -43,26 +45,27 @@ public partial class TileController(ICoreServerAPI sapi, ModConfig config, ITile
                 return;
             }
 
-            // Generate or retrieve tile using ITileGenerator interface
-            var result = await tileGenerator.GetTileDataAsync(zoom, tileX, tileZ);
+            // Transform OpenLayers grid coordinates to storage tile coordinates
+            var (storageTileX, storageTileZ) = TransformGridToStorage(zoom, gridX, gridY);
+
+            // Generate or retrieve tile using storage coordinates
+            var result = await tileGenerator.GetTileDataAsync(zoom, storageTileX, storageTileZ);
             
             // Handle missing tile
             if (result == null)
             {
-                sapi.Logger.Debug($"[VintageAtlas] Tile not found: zoom={zoom}, x={tileX}, z={tileZ}");
                 await ServeError(context, "Tile not found", 404);
                 return;
             }
 
             // Generate ETag based on tile content hash (first 16 bytes for performance)
-            var etag = GenerateETag(result, zoom, tileX, tileZ);
+            var etag = GenerateETag(result, zoom, storageTileX, storageTileZ);
             
             // Check If-None-Match header for conditional requests (ETag-based caching)
             var clientETag = context.Request.Headers["If-None-Match"];
             if (!string.IsNullOrEmpty(clientETag) && clientETag == etag)
             {
                 // Client has current version - return 304 Not Modified
-                sapi.Logger.Debug($"[VintageAtlas] Tile not modified (304): zoom={zoom}, x={tileX}, z={tileZ}");
                 context.Response.StatusCode = 304;
                 context.Response.Headers.Add("ETag", etag);
                 context.Response.Headers.Add("Cache-Control", "public, max-age=3600, immutable");
@@ -83,8 +86,6 @@ public partial class TileController(ICoreServerAPI sapi, ModConfig config, ITile
             
             await context.Response.OutputStream.WriteAsync(result);
             context.Response.Close();
-            
-            sapi.Logger.Debug($"[VintageAtlas] Served tile: zoom={zoom}, x={tileX}, z={tileZ}, size={result.Length} bytes");
         }
         catch (Exception ex)
         {
@@ -92,6 +93,41 @@ public partial class TileController(ICoreServerAPI sapi, ModConfig config, ITile
             sapi.Logger.Error(ex.StackTrace ?? "");
             await ServeError(context, "Internal server error");
         }
+    }
+    
+    /// <summary>
+    /// Transform OpenLayers grid coordinates (0-based from origin) to storage tile coordinates (absolute world position).
+    /// OpenLayers uses: (0,0) at origin, positive X = east, negative Y = north
+    /// Storage uses: absolute tile numbers based on world block position
+    /// </summary>
+    private (int storageTileX, int storageTileZ) TransformGridToStorage(int zoom, int gridX, int gridY)
+    {
+        // Get map configuration to access world origin and resolutions
+        var mapConfig = mapConfigController.GetCurrentConfig();
+        
+        if (mapConfig == null)
+        {
+            sapi.Logger.Warning("[VintageAtlas] Map config not available, using fallback tile coordinates");
+            // Fallback: assume grid coordinates ARE storage coordinates (legacy behavior)
+            return (gridX, gridY);
+        }
+        
+        // Calculate blocks per tile at this zoom level
+        var resolution = mapConfig.TileResolutions[zoom];
+        var blocksPerTile = config.TileSize * resolution;
+        
+        // Calculate the origin tile numbers (where OpenLayers grid 0,0 maps to)
+        // worldOrigin is in world block coordinates, we convert to tile numbers
+        var originTileX = (int)Math.Floor(mapConfig.WorldOrigin[0] / blocksPerTile);
+        var originTileY = (int)Math.Floor(mapConfig.WorldOrigin[1] / blocksPerTile);
+        
+        // Transform grid coordinates to storage coordinates
+        // Simple addition: OpenLayers uses bottom-left origin by default
+        // Grid (0,0) = origin tile, positive X = east, positive Y = south
+        var storageTileX = originTileX + gridX;
+        var storageTileZ = originTileY + gridY;
+        
+        return (storageTileX, storageTileZ);
     }
     
     /// <summary>

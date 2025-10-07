@@ -130,12 +130,6 @@ public class RequestRouter(
             return;
         }
 
-        if (apiPath.StartsWith("map/extent") || apiPath == "map-extent")
-        {
-            await mapConfigController.ServeWorldExtent(context);
-            return;
-        }
-
         // GeoJSON endpoints
         if (apiPath.StartsWith("geojson/signs") || apiPath == "signs.geojson")
         {
@@ -164,6 +158,12 @@ public class RequestRouter(
         if (apiPath.StartsWith("geojson/chunks") || apiPath == "chunks.geojson")
         {
             await geoJsonController.ServeChunks(context);
+            return;
+        }
+
+        if (apiPath.StartsWith("geojson/chunk-versions") || apiPath == "chunk-versions.geojson")
+        {
+            await geoJsonController.ServeChunkVersions(context);
             return;
         }
 
