@@ -152,7 +152,8 @@ public class MapConfigController(ICoreServerAPI sapi, ITileGenerator? tileGenera
                 }
             }
 
-            originTiles[zoom] = new[] { originTileX, originTileY };
+            originTiles[zoom] = [originTileX, originTileY];
+            sapi.Logger.Debug($"[MapConfig] Zoom {zoom} origin offset: ({originTileX},{originTileY})");
         }
 
         return new MapConfigData

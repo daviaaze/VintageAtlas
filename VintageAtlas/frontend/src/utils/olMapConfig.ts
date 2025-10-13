@@ -23,9 +23,9 @@ export function createTileGrid(): TileGrid {
   if (!serverConfig) throw new Error('Config not initialized');
   
   const extent = serverConfig.worldExtent as [number, number, number, number];
-  // OpenLayers uses Y up; our map uses Z down. Flip Z to Y for OL coords.
-  const olExtent: [number, number, number, number] = [extent[0], -extent[3], extent[2], -extent[1]];
-  const olOrigin: [number, number] = [extent[0], -extent[1]];
+  const origin = serverConfig.worldOrigin as [number, number];
+  const olExtent: [number, number, number, number] = [extent[0], extent[1], extent[2], extent[3]];
+  const olOrigin: [number, number] = [origin[0], origin[1]];
   const resolutions = serverConfig.tileResolutions;
   const tileSize = serverConfig.tileSize;
 
@@ -36,12 +36,11 @@ export function createTileGrid(): TileGrid {
     tileSize,
   });
 
-  // WebCartographer-style tile grid: fixed extent and origin (in OL coords)
   const grid = new TileGrid({
     extent: olExtent,
-    origin: olOrigin,     // top-left of extent in OL coords
-    resolutions, // [512, 256, 128, 64, 32, 16, 8, 4, 2, 1]
-    tileSize: [tileSize, tileSize] // [256, 256]
+    origin: olOrigin,
+    resolutions,
+    tileSize: [tileSize, tileSize]
   });
   
   return grid;
@@ -69,7 +68,7 @@ export function getViewCenter(): [number, number] {
 
   console.log('[getViewCenter] Using default center:', center);
   
-  return [center[0], -center[1]];
+  return [center[0], center[1]];
 }
 
 /**
@@ -88,7 +87,7 @@ export function getViewZoom(): number {
 export function getViewExtent(): [number, number, number, number] {
   if (!serverConfig) throw new Error('Config not initialized');
   const e = serverConfig.worldExtent as [number, number, number, number];
-  return [e[0], -e[3], e[2], -e[1]];
+  return [e[0], e[1], e[2], e[3]];
 }
 
 /**
@@ -112,6 +111,6 @@ export function getTileUrl(z: number, x: number, y: number): string {
  */
 export function formatCoords(coord: [number, number]): string {
   const x = Math.round(coord[0]);
-  const z = Math.round(-coord[1]); // Negate Y to show as positive Z like in game
+  const z = Math.round(coord[1]);
   return `${x}, ${z}`;
 }

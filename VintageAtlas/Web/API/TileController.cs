@@ -54,33 +54,50 @@ public partial class TileController(
                 return;
             }
 
+            var extent = await tileGenerator.GetTileExtentAsync(zoom);
+
             // Adjust grid coordinates using backend origin offsets for absolute storage tiles
             var originTiles = mapConfig?.OriginTilesPerZoom;
-            var offsetX = originTiles != null && zoom < originTiles.Length ? originTiles[zoom][0] : 0;
-            var offsetZ = originTiles != null && zoom < originTiles.Length ? originTiles[zoom][1] : 0;
+            int offsetX = 0;
+            int offsetZ = 0;
+
+            var hasOrigin = originTiles != null && zoom < originTiles.Length && originTiles[zoom] != null;
+
+            if (hasOrigin)
+            {
+                offsetX = originTiles![zoom][0];
+                offsetZ = originTiles![zoom][1];
+            }
+
+            if (extent != null)
+            {
+                if (!hasOrigin || offsetX != extent.MinX || offsetZ != extent.MinY)
+                {
+                    offsetX = extent.MinX;
+                    offsetZ = extent.MinY;
+
+                    // Cached config is outdated; refresh so future requests use latest offsets
+                    mapConfigController.InvalidateCache();
+                }
+            }
 
             var storageTileX = gridX + offsetX;
             var storageTileZ = gridY + offsetZ;
 
-            sapi.Logger.Notification($"[TileController] 🎯 Tile Request: zoom={zoom}, z/x/y=({zoom},{storageTileX},{storageTileZ})");
+            sapi.Logger.Notification($"[TileController] 🎯 Tile Request: zoom={zoom}, grid=({gridX},{gridY}) → storage=({storageTileX},{storageTileZ}) with offset ({offsetX},{offsetZ})");
 
-            // Optional clamp to existing extents to avoid 404 seams
-            var extent = await tileGenerator.GetTileExtentAsync(zoom);
-            if (extent != null)
+            if (extent != null && (storageTileX < extent.MinX || storageTileX > extent.MaxX ||
+                    storageTileZ < extent.MinY || storageTileZ > extent.MaxY))
             {
-                if (storageTileX < extent.MinX || storageTileX > extent.MaxX ||
-                    storageTileZ < extent.MinY || storageTileZ > extent.MaxY)
-                {
-                    // Serve a transparent PNG placeholder rather than 404 to prevent visual cuts
-                    var transparentPng = CreateTransparentPng(config.TileSize);
-                    context.Response.StatusCode = 200;
-                    context.Response.ContentType = "image/png";
-                    context.Response.ContentLength64 = transparentPng.Length;
-                    context.Response.Headers.Add("Cache-Control", "public, max-age=60");
-                    await context.Response.OutputStream.WriteAsync(transparentPng);
-                    context.Response.Close();
-                    return;
-                }
+                // Serve a transparent PNG placeholder rather than 404 to prevent visual cuts
+                var transparentPng = CreateTransparentPng(config.TileSize);
+                context.Response.StatusCode = 200;
+                context.Response.ContentType = "image/png";
+                context.Response.ContentLength64 = transparentPng.Length;
+                context.Response.Headers.Add("Cache-Control", "public, max-age=60");
+                await context.Response.OutputStream.WriteAsync(transparentPng);
+                context.Response.Close();
+                return;
             }
 
             var result = await tileGenerator.GetTileDataAsync(zoom, storageTileX, storageTileZ);
