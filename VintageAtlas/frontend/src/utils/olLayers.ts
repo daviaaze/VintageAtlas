@@ -25,18 +25,12 @@ export function createWorldLayer(): TileLayer<XYZ> {
     tileGrid: tileGrid,
     wrapX: false,
     interpolate: false,
-    // No projection needed - EPSG:3857 is default
-    // No custom tileUrlFunction - let OpenLayers handle it!
+    zDirection: -1,
     url: '/tiles/{z}/{x}_{y}.png'
   });
   
-  // Debug: Log when tiles are loaded
-  source.on('tileloadstart', (evt: any) => {
-    console.log('[Tile Load Start]', evt.tile?.tileCoord);
-  });
-  
   source.on('tileloaderror', (evt: any) => {
-    console.error('[Tile Load Error]', evt.tile?.src);
+    console.error('[Tile Load Error]', evt);
   });
   
   return new TileLayer({

@@ -365,22 +365,12 @@ watch(showCoords, () => {
 // Watch for map becoming available
 watch(() => mapStore.map, (newMap) => {
   if (newMap && !animalLayer) {
-    console.log('[AnimalLayer] Map now available, creating layer');
     createAnimalLayer();
     updateAnimals();
   }
 }, { immediate: true });
 
-// Lifecycle hooks
-onMounted(() => {
-  console.log('[AnimalLayer] Mounted', {
-    hasMap: !!mapStore.map,
-    animalCount: liveStore.animals.length
-  });
-});
-
 onUnmounted(() => {
-  console.log('[AnimalLayer] Unmounting...');
   if (mapStore.map && animalLayer) {
     mapStore.map.removeLayer(animalLayer);
   }

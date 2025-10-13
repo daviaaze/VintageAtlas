@@ -74,7 +74,6 @@ export const useLiveStore = defineStore('live', () => {
       if (retryCount.value < maxRetries) {
         retryCount.value++;
         const backoffTime = Math.min(1000 * Math.pow(2, retryCount.value), 30000); // Max 30s
-        console.log(`[LiveStore] Retry ${retryCount.value}/${maxRetries} in ${backoffTime}ms`);
         
         connectionStatus.value = 'reconnecting';
         connectionMessage.value = `Retrying in ${Math.round(backoffTime/1000)}s... (${retryCount.value}/${maxRetries})`;

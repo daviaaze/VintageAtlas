@@ -273,49 +273,14 @@ function updatePlayers() {
   // Clear existing features
   playerSource.clear();
   
-  console.log('[PlayerLayer] Updating players:', liveStore.players.length);
-  
   // Add players using world block coordinates (same as tiles)
   for (const player of liveStore.players) {
     const coords = player.coordinates;
-    
-    // Get map extents first
-    const mapExtent = mapStore.map?.getView().calculateExtent();
-    const worldLayer = mapStore.map?.getLayers().getArray().find((l: any) => l.get('name') === 'world');
-    const tileGrid = worldLayer?.getSource()?.getTileGrid();
-    const worldExtent = tileGrid?.getExtent();
     
     // Use coordinates directly - the TileGrid origin handles the coordinate system
     const worldX = coords.x;
     const worldZ = coords.z;  // Use Z directly
     
-    const inViewX = mapExtent ? (worldX >= mapExtent[0] && worldX <= mapExtent[2]) : 'unknown';
-    const inViewZ = mapExtent ? (worldZ >= mapExtent[1] && worldZ <= mapExtent[3]) : 'unknown';
-    const inWorldX = worldExtent ? (worldX >= worldExtent[0] && worldX <= worldExtent[2]) : 'unknown';
-    const inWorldZ = worldExtent ? (worldZ >= worldExtent[1] && worldZ <= worldExtent[3]) : 'unknown';
-
-    console.log('[PlayerLayer] Adding player:', {
-      name: player.name,
-      worldX,
-      worldZ,
-      coords,
-      viewExtent: mapExtent,
-      worldExtent: worldExtent,
-      tileOrigin: tileGrid?.getOrigin(0),
-      inView: inViewX && inViewZ,
-      inWorld: inWorldX && inWorldZ
-    });
-
-    // If player is not in view, fly to player position
-    if (!inViewX || !inViewZ) {
-      console.log('[PlayerLayer] Player not in view, flying to player position...');
-      mapStore.map?.getView().animate({
-        center: [worldX, worldZ],
-        zoom: mapStore.map.getView().getZoom(),
-        duration: 1000
-      });
-    }
-
     const feature = new Feature({
       geometry: new Point([worldX, worldZ]),
       name: player.name,
@@ -332,8 +297,6 @@ function updatePlayers() {
     
     playerSource.addFeature(feature);
   }
-  
-  console.log('[PlayerLayer] Total features in source:', playerSource.getFeatures().length);
 }
 
 // Watch for changes in live data
@@ -363,7 +326,6 @@ watch(showCoords, () => {
 // Watch for map becoming available
 watch(() => mapStore.map, (newMap) => {
   if (newMap && !playerLayer) {
-    console.log('[PlayerLayer] Map now available, creating layer');
     createPlayerLayer();
     updatePlayers();
     
@@ -372,16 +334,7 @@ watch(() => mapStore.map, (newMap) => {
   }
 }, { immediate: true });
 
-// Lifecycle hooks
-onMounted(() => {
-  console.log('[PlayerLayer] Mounted', {
-    hasMap: !!mapStore.map,
-    playerCount: liveStore.players.length
-  });
-});
-
 onUnmounted(() => {
-  console.log('[PlayerLayer] Unmounting...');
   if (mapStore.map && playerLayer) {
     mapStore.map.removeLayer(playerLayer);
   }

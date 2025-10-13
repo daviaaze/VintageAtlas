@@ -10,7 +10,6 @@ export async function getHistoricalData(options = {}) {
     return await apiClient.get('/historical', { params: options });
   } catch (error) {
     // If API fails, load from local JSON file
-    console.log('Loading historical data from local file');
     const response = await fetch('/data/historical-snapshots.json');
     if (!response.ok) {
       throw new Error('Failed to load historical data');
@@ -32,7 +31,6 @@ export async function getHistoricalRange(startDate: string, endDate: string) {
     });
   } catch (error) {
     // If API fails, load from local JSON file and filter by date
-    console.log('Loading historical range data from local file');
     const response = await fetch('/data/historical-snapshots.json');
     if (!response.ok) {
       throw new Error('Failed to load historical data');

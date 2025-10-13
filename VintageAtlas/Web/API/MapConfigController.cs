@@ -1,15 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.Data.Sqlite;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using Vintagestory.API.Server;
-using VintageAtlas.Core;
 
 namespace VintageAtlas.Web.API;
 
@@ -115,22 +111,19 @@ public class MapConfigController(ICoreServerAPI sapi)
     private MapConfigData GenerateMapConfig()
     {
         var tileStats = CalculateTileStatistics();
-        var spawn = GetSpawnPosition();
-        
-        // ═══════════════════════════════════════════════════════════════
-        // WEBCARTOGRAPHER APPROACH: Simple Fixed Coordinate System
-        // ═══════════════════════════════════════════════════════════════
-        // Use EXACTLY the same approach as WebCartographer for perfect compatibility
-        // Fixed extent and origin - no dynamic calculations!
+        var spawn = sapi.World.DefaultSpawnPosition.AsBlockPos;
+
+        var mapSizeX = sapi.World.BlockAccessor.MapSizeX / 2;
+        var mapSizeZ = sapi.World.BlockAccessor.MapSizeZ / 2;
         
         // Fixed extent: [-512000, -512000, 512000, 512000] - same as WebCartographer
-        int[] worldExtent = [-512000, -512000, 512000, 512000];
+        int[] worldExtent = [-mapSizeX, -mapSizeZ, mapSizeX, mapSizeZ];
         
         // Fixed origin: [-512000, 512000] - same as WebCartographer  
-        int[] worldOrigin = [-512000, 512000];
+        int[] worldOrigin = [-mapSizeX, mapSizeZ];
         
         // Center at spawn (but use fixed coordinate system)
-        int[] defaultCenter = [spawn[0], spawn[1]];
+        int[] defaultCenter = [spawn.X, spawn.Z];
         
         // WebCartographer's exact resolution pattern
         double[] webCartographerResolutions = [512, 256, 128, 64, 32, 16, 8, 4, 2, 1];
@@ -146,7 +139,7 @@ public class MapConfigController(ICoreServerAPI sapi)
             // Fixed zoom configuration - exactly like WebCartographer
             MinZoom = 0,
             MaxZoom = 9, // WebCartographer has 10 levels (0-9)
-            BaseZoomLevel = 9,
+            BaseZoomLevel = 6,
             
             // Tile configuration  
             TileSize = 256, // WebCartographer standard
@@ -159,7 +152,7 @@ public class MapConfigController(ICoreServerAPI sapi)
             MapSizeY = sapi.World.BlockAccessor.MapSizeY,
             
             // Position data
-            SpawnPosition = spawn,
+            SpawnPosition = [spawn.X, spawn.Z],
             
             // Tile availability
             TileStats = tileStats,
@@ -170,21 +163,11 @@ public class MapConfigController(ICoreServerAPI sapi)
         };
     }
 
-
-    private int[] GetSpawnPosition()
-    {
-        var spawnPos = sapi.World.DefaultSpawnPosition?.AsBlockPos;
-        var spawnX = spawnPos?.X ?? sapi.World.BlockAccessor.MapSizeX / 2;
-        var spawnZ = spawnPos?.Z ?? sapi.World.BlockAccessor.MapSizeZ / 2;
-        
-        return [spawnX, spawnZ];
-    }
-
     private TileStatistics CalculateTileStatistics()
     {
         var stats = new TileStatistics
         {
-            ZoomLevels = new Dictionary<int, ZoomLevelStats>()
+            ZoomLevels = []
         };
 
         // Note: VintageAtlas stores tiles in MBTiles database, not as files

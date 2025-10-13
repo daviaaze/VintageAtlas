@@ -72,17 +72,6 @@ onMounted(async () => {
     const tradersLayer = createTradersLayer();
     const translocatorsLayer = createTranslocatorsLayer();
     
-    // Create map with tile grid resolutions (must match for tiles to load)
-    const tileResolutions = worldLayer.getSource()?.getTileGrid()?.getResolutions() || getViewResolutions();
-    const viewResolutions = getViewResolutions();
-
-    console.log('[CleanMap] Resolution check:', {
-      tileResolutions: tileResolutions,
-      viewResolutions: viewResolutions,
-      tileGridResolutions: worldLayer.getSource()?.getTileGrid()?.getResolutions(),
-      match: tileResolutions.length === viewResolutions.length && tileResolutions.every((r, i) => Math.abs(r - viewResolutions[i]) < 0.001)
-    });
-    
     mapInstance.value = new Map({
       target: mapElement.value,
       controls: [
@@ -109,7 +98,7 @@ onMounted(async () => {
         center: getViewCenter(),
         constrainResolution: true, // Snap to zoom levels - same as WebCartographer
         zoom: getViewZoom(), // WebCartographer default zoom level
-        resolutions: viewResolutions, // WebCartographer-style fixed resolutions
+        resolutions: [256, 128, 64, 32, 16, 8, 4, 2, 1, 0.5, 0.25, 0.125], // WebCartographer-style fixed resolutions
       })
     });
 
@@ -128,47 +117,6 @@ onMounted(async () => {
       mapStore.setZoom(overrides.zoom);
     }
     startDeepLinkSync(mapInstance.value!);
-    
-    console.log('[CleanMap] Map created with:', {
-      center: getViewCenter(),
-      zoom: getViewZoom(),
-      resolutions: tileResolutions.length + ' levels',
-      viewZoomRange: `0-${tileResolutions.length - 1}`
-    });
-    
-    // Debug view state
-    const view = mapInstance.value.getView();
-    const currentResolution = view.getResolution();
-    const currentZoom = view.getZoom();
-    const viewCenter = view.getCenter();
-    const viewExtent = view.calculateExtent();
-    const tileGridExtent = worldLayer.getSource()?.getTileGrid()?.getExtent();
-    
-    console.log('[CleanMap] View state:', {
-      center: viewCenter,
-      resolution: currentResolution,
-      zoom: currentZoom,
-      viewExtent: viewExtent
-    });
-    
-    console.log('[CleanMap] Extent comparison:', {
-      tileGrid: tileGridExtent,
-      view: viewExtent,
-      centerInGrid: tileGridExtent && viewCenter ? 
-        (viewCenter[0] >= tileGridExtent[0] && 
-         viewCenter[0] <= tileGridExtent[2] && 
-         viewCenter[1] >= tileGridExtent[1] && 
-         viewCenter[1] <= tileGridExtent[3]) : 'unknown'
-    });
-    
-    // Check if tile layer is visible and has tiles
-    setTimeout(() => {
-      const tileSource = worldLayer.getSource();
-      console.log('[CleanMap] Tile source state:', {
-        tileGrid: tileSource?.getTileGrid(),
-        projection: tileSource?.getProjection()
-      });
-    }, 1000);
     
     // Add landmarks layer after map is created (needs map instance for zoom)
     const landmarksLayer = createLandmarksLayer(mapInstance.value);
@@ -195,7 +143,6 @@ onMounted(async () => {
     });
     
     loading.value = false;
-    console.log('[CleanMap] ✅ Map initialized');
     
     // Store map instance for child components
     // (PlayerLayer and AnimalLayer will access it via mapStore)

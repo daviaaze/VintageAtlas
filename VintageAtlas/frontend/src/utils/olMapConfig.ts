@@ -32,12 +32,11 @@ export function createTileGrid(): TileGrid {
     origin,
     resolutions,
     tileSize,
-    note: 'Using fixed coordinates like WebCartographer'
   });
   
   // WebCartographer-style tile grid: fixed extent and origin
   const grid = new TileGrid({
-    extent,     // [-512000, -512000, 512000, 512000]
+    extent,
     origin,     // [-512000, 512000]  
     resolutions, // [512, 256, 128, 64, 32, 16, 8, 4, 2, 1]
     tileSize: [tileSize, tileSize] // [256, 256]
@@ -65,14 +64,10 @@ export function getViewCenter(): [number, number] {
   if (!serverConfig) throw new Error('Config not initialized');
   
   const center = serverConfig.defaultCenter;
+
+  console.log('[getViewCenter] Using default center:', center);
   
-  console.log('[getViewCenter] Using backend world block coordinates:', {
-    center,
-    extent: serverConfig.worldExtent,
-    origin: serverConfig.worldOrigin
-  });
-  
-  return [center[0], center[1]];
+  return [center[0], -center[1]];
 }
 
 /**

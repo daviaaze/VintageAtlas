@@ -180,8 +180,6 @@ class TileCache {
       return;
     }
 
-    console.log(`[TileCache] Cache size ${stats.sizeBytes} exceeds limit, cleaning up...`);
-
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction([this.storeName], 'readwrite');
       const store = transaction.objectStore(this.storeName);
@@ -201,7 +199,6 @@ class TileCache {
           cursor.delete();
           cursor.continue();
         } else {
-          console.log(`[TileCache] Deleted ${deletedSize} bytes`);
           resolve();
         }
       };
@@ -222,7 +219,6 @@ class TileCache {
       const request = store.clear();
 
       request.onsuccess = () => {
-        console.log('[TileCache] Cache cleared');
         resolve();
       };
       request.onerror = () => reject(request.error);
@@ -305,6 +301,5 @@ export async function preloadArea(
   }
 
   await Promise.all(promises);
-  console.log(`[TileCache] Preloaded ${promises.length} tiles for zoom ${zoom}`);
 }
 
