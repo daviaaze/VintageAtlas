@@ -148,22 +148,6 @@
             ls -lh VintageAtlas/bin/Release/Mods/vintageatlas/ | grep -E '\.(dll|json)$' || true
             echo ""
             
-            # Create zip package
-            echo "📦 Creating zip package..."
-            VERSION=$(date +%Y%m%d-%H%M%S)
-            ZIP_NAME="VintageAtlas-v$VERSION.zip"
-            
-            cd VintageAtlas/bin/Release/Mods/vintageatlas/
-            ${pkgs.zip}/bin/zip -r "../../../../$ZIP_NAME" *
-            cd ../../../../
-            
-            if [ -f "$ZIP_NAME" ]; then
-              echo ""
-              echo "✅ Package created successfully!"
-              echo "📦 $ZIP_NAME ($(du -h "$ZIP_NAME" | cut -f1))"
-              echo ""
-            fi
-            
             echo "📁 To install manually, copy to:"
             echo "  ~/.config/VintagestoryData/Mods/"
             echo ""

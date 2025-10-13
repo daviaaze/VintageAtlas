@@ -43,10 +43,10 @@ public sealed class UnifiedTileGenerator : ITileGenerator
         BlockColorCache colorCache,
         MbTilesStorage storage)
     {
-        _sapi = sapi;
-        _config = config;
-        _colorCache = colorCache;
-        _storage = storage;
+        _sapi = sapi ?? throw new ArgumentNullException(nameof(sapi));
+        _config = config ?? throw new ArgumentNullException(nameof(config));
+        _colorCache = colorCache ?? throw new ArgumentNullException(nameof(colorCache));
+        _storage = storage ?? throw new ArgumentNullException(nameof(storage));
 
         // Initialize downsampler for lower zoom levels
         _downsampler = new PyramidTileDownsampler(sapi, config, this);

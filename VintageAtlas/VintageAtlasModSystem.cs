@@ -184,17 +184,8 @@ public class VintageAtlasModSystem : ModSystem
             
             _sapi.Logger.Notification("[VintageAtlas] ⚠️  Background tile generation DISABLED - tiles only generated via /atlas export");
             
-            // Setup web root directory
-            var webRoot = FindWebRoot();
-            if (webRoot == null)
-            {
-                _sapi.Logger.Error("[VintageAtlas] Could not find web files! Live server disabled.");
-                _sapi.Logger.Error("[VintageAtlas] Please ensure the mod was built correctly with embedded HTML files.");
-                return;
-            }
-            
             // Create web server components
-            var staticFileServer = new StaticFileServer(_sapi, webRoot, _config);
+            var staticFileServer = new StaticFileServer(_sapi, _config);
             var statusController = new StatusController(_sapi, _dataCollector);
             var configController = new ConfigController(_sapi, _config, _mapExporter);
             var historicalController = new HistoricalController(_sapi, _historicalTracker);
@@ -235,26 +226,6 @@ public class VintageAtlasModSystem : ModSystem
             _sapi.Logger.Error($"[VintageAtlas] Failed to setup live server: {ex.Message}");
             _sapi.Logger.Error(ex.StackTrace ?? "");
         }
-    }
-
-    private string? FindWebRoot()
-    {
-        if (_config == null || _sapi == null) return null;
-        
-        // Serve HTML directly from the mod's bundled html directory
-        // No need to copy - static files are served from the mod
-        var modHtml = Path.Combine(Path.GetDirectoryName(GetType().Assembly.Location) ?? "", "html");
-        
-        if (Directory.Exists(modHtml) && File.Exists(Path.Combine(modHtml, "index.html")))
-        {
-            _sapi.Logger.Notification($"[VintageAtlas] Serving static files from mod directory: {modHtml}");
-            _sapi.Logger.Notification($"[VintageAtlas] Generated data will be stored in: {_config.OutputDirectory}");
-            return modHtml;
-        }
-        
-        _sapi.Logger.Error($"[VintageAtlas] Could not find HTML files in mod directory: {modHtml}");
-        _sapi.Logger.Error("[VintageAtlas] Please ensure the mod was built correctly with embedded HTML files.");
-        return null;
     }
 
     private void OnGameTick(float dt)

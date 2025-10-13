@@ -21,19 +21,34 @@ public sealed class MbTilesStorage : IDisposable
     public MbTilesStorage(string dbPath)
     {
         _dbPath = dbPath;
-        
-        // Create directory if needed
-        var directory = Path.GetDirectoryName(dbPath);
-        if (!string.IsNullOrEmpty(directory))
+
+        // Create directory if needed (skip for :memory: databases)
+        if (dbPath != ":memory:")
         {
-            Directory.CreateDirectory(directory);
+            var directory = Path.GetDirectoryName(dbPath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
         }
 
         // Use connection string instead of shared connection for thread safety
+        // For in-memory databases, use URI format with shared cache and unique name to ensure
+        // all connections see the same database while maintaining test isolation
         // Enable WAL mode for better concurrent write performance
         // Note: Busy timeout is set via PRAGMA in InitializeDatabase
-        _connectionString = $"Data Source={dbPath};Mode=ReadWriteCreate;Cache=Shared;Pooling=True";
-        
+        if (dbPath == ":memory:")
+        {
+            // Use named shared cache for in-memory database with unique name
+            // This ensures each instance has its own isolated database
+            var uniqueName = $"memdb_{Guid.NewGuid():N}";
+            _connectionString = $"Data Source=file:{uniqueName}?mode=memory&cache=shared;";
+        }
+        else
+        {
+            _connectionString = $"Data Source={dbPath};Mode=ReadWriteCreate;Cache=Shared;Pooling=True";
+        }
+
         InitializeDatabase();
     }
 
@@ -171,6 +186,8 @@ public sealed class MbTilesStorage : IDisposable
     /// </summary>
     public async Task<byte[]?> GetTileAsync(int zoom, int x, int y)
     {
+        await EnsureInitializedAsync(); // Ensure database is initialized
+
         // Use absolute tile coordinates (no TMS conversion needed)
         await using var connection = CreateConnection();
         await Task.CompletedTask; // Already opened in CreateConnection()
@@ -196,6 +213,8 @@ public sealed class MbTilesStorage : IDisposable
     /// </summary>
     public async Task<bool> TileExistsAsync(int zoom, int x, int y)
     {
+        await EnsureInitializedAsync(); // Ensure database is initialized
+
         // Use absolute tile coordinates (no TMS conversion needed)
         await using var connection = CreateConnection();
         await Task.CompletedTask; // Already opened in CreateConnection()
@@ -245,6 +264,8 @@ public sealed class MbTilesStorage : IDisposable
     /// </summary>
     public async Task<long> GetTileCountAsync(int? zoom = null)
     {
+        await EnsureInitializedAsync(); // Ensure database is initialized
+
         await using var connection = CreateConnection();
         await Task.CompletedTask; // Already opened in CreateConnection()
         
@@ -268,6 +289,8 @@ public sealed class MbTilesStorage : IDisposable
     /// </summary>
     public async Task<TileExtent?> GetTileExtentAsync(int zoom)
     {
+        await EnsureInitializedAsync(); // Ensure database is initialized
+
         try
         {
             await using var connection = new SqliteConnection(_connectionString);

@@ -17,7 +17,7 @@ namespace VintageAtlas.Web.API;
 /// Provides dynamic map configuration (extent, center, zoom levels, etc.)
 /// Replaces hardcoded values in frontend mapConfig.ts
 /// </summary>
-public sealed class MapConfigController(ICoreServerAPI sapi)
+public class MapConfigController(ICoreServerAPI sapi)
 {
     private readonly JsonSerializerSettings _jsonSettings = new()
     {
@@ -64,7 +64,7 @@ public sealed class MapConfigController(ICoreServerAPI sapi)
     /// Get the current map configuration (used by TileController for coordinate transformation)
     /// Virtual to allow mocking in unit tests
     /// </summary>
-    public MapConfigData? GetCurrentConfig()
+    public virtual MapConfigData? GetCurrentConfig()
     {
         // Check if the world is ready
         if (sapi.World?.BlockAccessor == null)

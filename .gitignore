@@ -41,11 +41,7 @@ VintagestoryData/
 test_server*/
 
 # Built Vue.js frontend (keep source in frontend/, built output ignored)
-VintageAtlas/html/index.html
-VintageAtlas/html/assets/
-VintageAtlas/html/vite.svg
-vintageAtlas/html/
-# Keep: css/, data/, webfonts/ (shared static resources)
+VintageAtlas/html
 
 node_modules/
 docs/

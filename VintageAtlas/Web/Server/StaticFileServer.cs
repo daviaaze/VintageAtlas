@@ -13,7 +13,7 @@ namespace VintageAtlas.Web.Server;
 /// <summary>
 /// Serves static files (HTML, CSS, JS, images) with async I/O and ETag caching
 /// </summary>
-public class StaticFileServer(ICoreServerAPI sapi, string webRoot, ModConfig config)
+public class StaticFileServer(ICoreServerAPI sapi, ModConfig config)
 {
     private readonly string _basePath = config.BasePath.EndsWith('/') ? config.BasePath : $"{config.BasePath}/";
     
@@ -41,6 +41,26 @@ public class StaticFileServer(ICoreServerAPI sapi, string webRoot, ModConfig con
         { ".otf", "font/otf" }
     };
 
+    private string? FindWebRoot()
+    {
+        if (config == null || sapi == null) return null;
+        
+        // Serve HTML directly from the mod's bundled html directory
+        // No need to copy - static files are served from the mod
+        var modHtml = Path.Combine(Path.GetDirectoryName(GetType().Assembly.Location) ?? "", "html");
+        
+        if (Directory.Exists(modHtml) && File.Exists(Path.Combine(modHtml, "index.html")))
+        {
+            sapi.Logger.Notification($"[VintageAtlas] Serving static files from mod directory: {modHtml}");
+            sapi.Logger.Notification($"[VintageAtlas] Generated data will be stored in: {config.OutputDirectory}");
+            return modHtml;
+        }
+        
+        sapi.Logger.Error($"[VintageAtlas] Could not find HTML files in mod directory: {modHtml}");
+        sapi.Logger.Error("[VintageAtlas] Please ensure the mod was built correctly with embedded HTML files.");
+        return null;
+    }
+
     /// <summary>
     /// Try to serve a static file from the web root with async I/O and ETag support
     /// </summary>
@@ -56,7 +76,7 @@ public class StaticFileServer(ICoreServerAPI sapi, string webRoot, ModConfig con
 
             // Security: prevent directory traversal
             var safePath = requestPath.TrimStart('/').Replace("..", "");
-            var filePath = Path.Combine(webRoot, safePath);
+            var filePath = Path.Combine(FindWebRoot() ?? "", safePath);
 
             if (!File.Exists(filePath))
             {
