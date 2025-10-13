@@ -50,7 +50,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
             context.Response.StatusCode = 200;
             context.Response.ContentType = "application/json";
             context.Response.ContentLength64 = bytes.Length;
-            
+
             await context.Response.OutputStream.WriteAsync(bytes);
             await context.Response.OutputStream.FlushAsync();
             context.Response.Close();
@@ -83,7 +83,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
             context.Response.StatusCode = 200;
             context.Response.ContentType = "application/json";
             context.Response.ContentLength64 = bytes.Length;
-            
+
             await context.Response.OutputStream.WriteAsync(bytes);
             context.Response.Close();
         }
@@ -278,10 +278,10 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
         {
             context.Response.StatusCode = statusCode;
             context.Response.ContentType = "application/json";
-            
+
             var errorJson = JsonConvert.SerializeObject(new { error = message }, _jsonSettings);
             var errorBytes = Encoding.UTF8.GetBytes(errorJson);
-            
+
             await context.Response.OutputStream.WriteAsync(errorBytes);
             context.Response.Close();
         }

@@ -62,7 +62,7 @@ public class GroupChunks
             _positionsLong.Add(key, ver);
         }
     }
-    
+
     public void IterativeDfs(int x, int z, string version, ulong key, List<ChunkPosition> group)
     {
         var stack = new Stack<(int x, int z, ulong key)>();
@@ -115,8 +115,8 @@ public class GroupChunks
     private List<int> GetGeoJsonCoordinates(Coordinate? pos)
     {
         if (pos == null) return new List<int>();
-        var x = (int)pos.X % 32 != 0 ? (int)pos.X+1: (int)pos.X;
-        var z = (int)pos.Y % 32 != 0 ? (int)pos.Y+1: (int)pos.Y;
+        var x = (int)pos.X % 32 != 0 ? (int)pos.X + 1 : (int)pos.X;
+        var z = (int)pos.Y % 32 != 0 ? (int)pos.Y + 1 : (int)pos.Y;
 
         x = x - spawnChunkX;
         z = (z - spawnChunkZ) * -1;
@@ -130,28 +130,28 @@ public class GroupChunks
     public ChunkVersionFeature GetShape(GroupedPosition gpositions)
     {
         var positions = gpositions.Positions;
-        
+
         var pointAll = new HashSet<Point>();
         foreach (var p in positions)
         {
             var x = p.X * 32;
             var z = p.Z * 32;
             pointAll.Add(new Point(x, z));
-            pointAll.Add(new Point(x+31, z));
-            pointAll.Add(new Point(x, z+31));
-            pointAll.Add(new Point(x+31, z+31));
+            pointAll.Add(new Point(x + 31, z));
+            pointAll.Add(new Point(x, z + 31));
+            pointAll.Add(new Point(x + 31, z + 31));
         }
         // var points = positions.Select(p => new Point(p.X, p.Z)).ToArray();
         var geometryFactory = new GeometryFactory();
-        
+
         var multiPoint = geometryFactory.CreateMultiPoint(pointAll.ToArray());
-        
+
         var concaveHull = new ConcaveHull(multiPoint)
         {
             MaximumEdgeLength = 45
         };
         var geometry = concaveHull.GetHull();
-        
+
         var list = new List<List<int>>();
         foreach (var pos in geometry.Coordinates)
         {
@@ -168,15 +168,15 @@ public class GroupChunks
 
         return feature;
     }
-    
+
     public void GenerateGradient(List<GroupedPosition> groupedPositions)
     {
-        var startColor = new Vector3(255,106,0); // Orange (oldest)
-        var endColor = new Vector3(0,78,255);     // Blue (newest)
+        var startColor = new Vector3(255, 106, 0); // Orange (oldest)
+        var endColor = new Vector3(0, 78, 255);     // Blue (newest)
         var gradientColors = new List<string>();
 
-        var versions = groupedPositions.Select(g=>g.Version).Distinct().Select(s => ProperVersion.SemVer.Parse(s)).OrderDescending().ToList();
-        
+        var versions = groupedPositions.Select(g => g.Version).Distinct().Select(s => ProperVersion.SemVer.Parse(s)).OrderDescending().ToList();
+
         // Handle single version (avoid division by zero)
         if (versions.Count == 1)
         {

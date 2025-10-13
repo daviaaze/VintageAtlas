@@ -23,13 +23,13 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
     private readonly TileGenerationState _state;
     private readonly ITileGenerator _tileGenerator;
     private readonly ChunkChangeTracker _chunkTracker;
-    
+
     private Thread? _workerThread;
     private CancellationTokenSource? _cancellationToken;
     private readonly AutoResetEvent _wakeupSignal = new(false);
-    
+
     private bool _isRunning;
-    
+
     // IAsyncServerSystem implementation
     public long ElapsedMilliseconds { get; private set; }
     public bool Enabled { get; set; } = true;
@@ -37,14 +37,14 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
     private long _lastStatisticsLogTime;
     private readonly int _chunkCheckIntervalMs = 5000; // Check for chunk updates every 5 seconds
     private readonly int _statisticsLogIntervalMs = 60000; // Log stats every minute
-    
+
     // Configuration
     private readonly int _batchSize = 5; // Process 5 tiles at a time
     private readonly int _maxConcurrent = 2; // Max 2 tiles generating simultaneously
     private readonly int _minTimeBetweenBatchesMs = 1000; // Wait 1 second between batches
 
     public BackgroundTileService(
-        ICoreServerAPI sapi, 
+        ICoreServerAPI sapi,
         ModConfig config,
         TileGenerationState state,
         ITileGenerator tileGenerator,
@@ -55,7 +55,7 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
         _state = state;
         _tileGenerator = tileGenerator;
         _chunkTracker = chunkTracker;
-        
+
         _lastChunkCheckTime = sapi.World.ElapsedMilliseconds;
         _lastStatisticsLogTime = sapi.World.ElapsedMilliseconds;
     }
@@ -73,16 +73,16 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
 
         _isRunning = true;
         _cancellationToken = new CancellationTokenSource();
-        
+
         _workerThread = new Thread(WorkerLoop)
         {
             Name = "VintageAtlas-TileGenerator",
             IsBackground = true, // Don't prevent server shutdown
             Priority = ThreadPriority.BelowNormal // Don't interfere with game thread
         };
-        
+
         _workerThread.Start();
-        
+
         _sapi.Logger.Notification("[VintageAtlas] Background tile generation service started");
     }
 
@@ -96,9 +96,9 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
         _isRunning = false;
         _cancellationToken?.Cancel();
         _wakeupSignal.Set(); // Wake up thread so it can exit
-        
+
         _workerThread?.Join(TimeSpan.FromSeconds(5)); // Wait up to 5 seconds for graceful shutdown
-        
+
         _sapi.Logger.Notification("[VintageAtlas] Background tile generation service stopped");
     }
 
@@ -108,7 +108,7 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
     private void WorkerLoop()
     {
         _sapi.Logger.Debug("[VintageAtlas] Background worker thread started");
-        
+
         try
         {
             while (_isRunning && !_cancellationToken!.Token.IsCancellationRequested)
@@ -117,23 +117,23 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
                 {
                     // Check for chunk updates periodically
                     var now = _sapi.World.ElapsedMilliseconds;
-                    
+
                     if (now - _lastChunkCheckTime > _chunkCheckIntervalMs)
                     {
                         CheckForChunkUpdates();
                         _lastChunkCheckTime = now;
                     }
-                    
+
                     // Log statistics periodically
                     if (now - _lastStatisticsLogTime > _statisticsLogIntervalMs)
                     {
                         LogStatistics();
                         _lastStatisticsLogTime = now;
                     }
-                    
+
                     // Process next batch of tiles
                     ProcessNextBatch();
-                    
+
                     // Wait before processing next batch (or until woken up by new work)
                     _wakeupSignal.WaitOne(_minTimeBetweenBatchesMs);
                 }
@@ -141,7 +141,7 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
                 {
                     _sapi.Logger.Error($"[VintageAtlas] Error in background worker loop: {ex.Message}");
                     _sapi.Logger.Error(ex.StackTrace ?? "");
-                    
+
                     // Don't spam errors - wait a bit before continuing
                     Thread.Sleep(5000);
                 }
@@ -152,7 +152,7 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
             _sapi.Logger.Error($"[VintageAtlas] Fatal error in background worker thread: {ex.Message}");
             _sapi.Logger.Error(ex.StackTrace ?? "");
         }
-        
+
         _sapi.Logger.Debug("[VintageAtlas] Background worker thread exiting");
     }
 
@@ -164,22 +164,22 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
         try
         {
             var modifiedChunks = _chunkTracker.GetAllModifiedChunks();
-            
+
             if (modifiedChunks.Count == 0) return;
-            
+
             _sapi.Logger.Debug($"[VintageAtlas] Found {modifiedChunks.Count} modified chunks");
-            
+
             // Find all tiles affected by these chunks
             var chunkList = modifiedChunks.Keys.ToList();
             var affectedTiles = _state.GetTilesAffectedByChunks(chunkList);
-            
+
             if (affectedTiles.Count > 0)
             {
                 // Queue for regeneration with high priority (chunk update)
                 _state.QueueTilesForGeneration(affectedTiles, "chunk_update", priority: 8);
-                
+
                 _sapi.Logger.Notification($"[VintageAtlas] Queued {affectedTiles.Count} tiles for regeneration due to chunk updates");
-                
+
                 // Wake up worker to process immediately
                 _wakeupSignal.Set();
             }
@@ -190,13 +190,13 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
                 if (newTiles.Count > 0)
                 {
                     _state.QueueTilesForGeneration(newTiles, "new_chunks", priority: 6);
-                    
+
                     _sapi.Logger.Notification($"[VintageAtlas] Queued {newTiles.Count} new tiles for generation");
-                    
+
                     _wakeupSignal.Set();
                 }
             }
-            
+
             // Clear tracked changes now that we've processed them
             _chunkTracker.ClearAllChanges();
         }
@@ -213,13 +213,13 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
     {
         var tiles = new HashSet<TileCoordinate>();
         var chunksPerTile = _config.TileSize / 32; // 256 / 32 = 8
-        
+
         foreach (var chunk in chunks)
         {
             // Calculate tile coordinates at base zoom level
             var tileX = chunk.X / chunksPerTile;
             var tileZ = chunk.Y / chunksPerTile;
-            
+
             tiles.Add(new TileCoordinate
             {
                 Zoom = _config.BaseZoomLevel,
@@ -227,7 +227,7 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
                 Z = tileZ
             });
         }
-        
+
         return tiles.ToList();
     }
 
@@ -239,18 +239,18 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
         try
         {
             var batch = _state.GetNextBatch(_batchSize);
-            
+
             if (batch.Count == 0) return;
-            
+
             _sapi.Logger.Debug($"[VintageAtlas] Processing batch of {batch.Count} tiles");
-            
+
             // Process tiles with limited concurrency
             var options = new ParallelOptions
             {
                 MaxDegreeOfParallelism = _maxConcurrent,
                 CancellationToken = _cancellationToken!.Token
             };
-            
+
             Parallel.ForEach(batch, options, tile =>
             {
                 ProcessTile(tile);
@@ -272,40 +272,40 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
     private void ProcessTile(TileCoordinate tile)
     {
         var sw = Stopwatch.StartNew();
-        
+
         try
         {
             _sapi.Logger.VerboseDebug($"[VintageAtlas] Generating tile {tile.Zoom}/{tile.X}_{tile.Z}");
-            
+
             // Generate the tile asynchronously (but wait for it in this background thread)
             var task = _tileGenerator.GetTileDataAsync(tile.Zoom, tile.X, tile.Z);
             task.Wait(_cancellationToken!.Token);
-            
+
             var result = task.Result;
-            
+
             if (result == null)
             {
                 _state.RecordTileError(tile.Zoom, tile.X, tile.Z, "No data available");
                 _sapi.Logger.Debug($"[VintageAtlas] No data for tile {tile.Zoom}/{tile.X}_{tile.Z}");
                 return;
             }
-            
+
             sw.Stop();
-            
+
             // Record successful generation
             var chunks = CalculateChunksForTile(tile.Zoom, tile.X, tile.Z);
             _state.RecordTileGenerated(
-                tile.Zoom, 
-                tile.X, 
-                tile.Z, 
-                sw.ElapsedMilliseconds, 
+                tile.Zoom,
+                tile.X,
+                tile.Z,
+                sw.ElapsedMilliseconds,
                 chunks.Count,
                 result?.Length ?? 0
             );
-            
+
             // Map chunks to tile for future invalidation
             _state.MapChunksToTile(tile.Zoom, tile.X, tile.Z, chunks);
-            
+
             _sapi.Logger.Debug($"[VintageAtlas] Generated tile {tile.Zoom}/{tile.X}_{tile.Z} in {sw.ElapsedMilliseconds}ms");
         }
         catch (OperationCanceledException)
@@ -327,10 +327,10 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
     {
         var chunks = new List<Vec2i>();
         var chunksPerTile = _config.TileSize / 32; // 256 / 32 = 8
-        
+
         var startChunkX = tileX * chunksPerTile;
         var startChunkZ = tileZ * chunksPerTile;
-        
+
         for (var cx = 0; cx < chunksPerTile; cx++)
         {
             for (var cz = 0; cz < chunksPerTile; cz++)
@@ -338,7 +338,7 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
                 chunks.Add(new Vec2i(startChunkX + cx, startChunkZ + cz));
             }
         }
-        
+
         return chunks;
     }
 
@@ -350,7 +350,7 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
         try
         {
             var stats = _state.GetStatistics();
-            
+
             _sapi.Logger.Notification(
                 $"[VintageAtlas] Tile Statistics: " +
                 $"{stats.ReadyTiles}/{stats.TotalTiles} ready, " +
@@ -382,7 +382,7 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
     public void QueueArea(int zoom, int minX, int minZ, int maxX, int maxZ, string reason = "area", int priority = 3)
     {
         var tiles = new List<TileCoordinate>();
-        
+
         for (var x = minX; x <= maxX; x++)
         {
             for (var z = minZ; z <= maxZ; z++)
@@ -390,10 +390,10 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
                 tiles.Add(new TileCoordinate { Zoom = zoom, X = x, Z = z });
             }
         }
-        
+
         _state.QueueTilesForGeneration(tiles, reason, priority);
         _wakeupSignal.Set();
-        
+
         _sapi.Logger.Notification($"[VintageAtlas] Queued {tiles.Count} tiles for area generation");
     }
 
@@ -413,14 +413,14 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
     {
         // Update elapsed time for tracking
         ElapsedMilliseconds = _sapi.World.ElapsedMilliseconds;
-        
+
         // This is called from the server thread, but our actual work
         // happens in the background thread - this is just for monitoring
         if (!Enabled || !_isRunning)
         {
             return;
         }
-        
+
         // Optional: Could add heartbeat monitoring here
         // to detect if background thread has stalled
     }
@@ -489,7 +489,7 @@ public class BackgroundTileService : IAsyncServerSystem, IDisposable
             Stop();
             _cancellationToken?.Dispose();
             _wakeupSignal.Dispose();
-            
+
             _sapi.Logger.Notification("[VintageAtlas] Background tile service disposed");
         }
     }

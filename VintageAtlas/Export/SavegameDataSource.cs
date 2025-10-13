@@ -32,12 +32,12 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
     {
         var sqliteConn = _loader.SqliteThreadConn;
         List<ChunkPos> positions;
-        
+
         lock (sqliteConn.Con)
         {
             positions = _loader.GetAllMapChunkPositions(sqliteConn).ToList();
         }
-        
+
         sqliteConn.Free();
         logger.Notification($"[VintageAtlas] Found {positions.Count} map chunks in savegame database");
         return positions;
@@ -56,7 +56,7 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
                 var chunksPerTile = config.TileSize / _chunkSize;
                 var startChunkX = tileX * chunksPerTile;
                 var startChunkZ = tileZ * chunksPerTile;
-                
+
                 var tileData = new TileChunkData
                 {
                     Zoom = zoom,
@@ -67,7 +67,7 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
                 };
 
                 var sqliteConn = _loader.SqliteThreadConn;
-                
+
                 try
                 {
                     lock (sqliteConn.Con)
@@ -79,20 +79,20 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
                             {
                                 var chunkX = startChunkX + offsetX;
                                 var chunkZ = startChunkZ + offsetZ;
-                                
+
                                 // We need to determine the chunk Y coordinate
                                 // For map tiles, we typically want the surface (Y=0 in map chunk coords)
                                 // TODO: Check why this is always 0
                                 const int chunkY = 0;
-                                
+
                                 var chunkPos = new ChunkPos(chunkX, chunkY, chunkZ);
-                                
+
                                 // Get ServerMapChunk (contains height map and top block IDs)
                                 var mapChunk = _loader.GetServerMapChunk(sqliteConn, chunkPos);
 
-                                if (mapChunk is null) 
+                                if (mapChunk is null)
                                     continue;
-                                
+
                                 // Create a snapshot from ServerMapChunk
                                 var snapshot = CreateSnapshotFromMapChunk(mapChunk, chunkX, chunkY, chunkZ, sqliteConn);
                                 if (snapshot != null)
@@ -110,7 +110,7 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
 
                 if (tileData.Chunks.Count != 0)
                     return tileData;
-                
+
                 logger.VerboseDebug($"[VintageAtlas] SavegameDataSource: No chunks found for tile {zoom}/{tileX}_{tileZ}");
                 return null;
             }
@@ -121,7 +121,7 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
             }
         });
     }
-    
+
     /// <summary>
     /// Create a ChunkSnapshot from ServerMapChunk data.
     /// ServerMapChunk contains a RainHeightMap with surface heights.
@@ -137,11 +137,11 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
             }
 
             var heightMap = new int[_chunkSize * _chunkSize];
-            
+
             // For full rendering, we'd need to load ServerChunk data for block IDs
             // For now, we'll just populate the height map
             // The rendering code will need access to actual ServerChunks for block colors
-            
+
             for (var x = 0; x < _chunkSize; x++)
             {
                 for (var z = 0; z < _chunkSize; z++)
@@ -153,7 +153,7 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
                     }
                 }
             }
-            
+
             // ═══════════════════════════════════════════════════════════════
             // LOAD SURFACE BLOCK IDS FROM SERVER CHUNKS
             // For each X,Z position, we need to:
@@ -163,9 +163,9 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
             // 4. Extract the block ID at that position
             // This matches how Extractor.cs does it in ExtractWorldMap()
             // ═══════════════════════════════════════════════════════════════
-            
+
             var blockIds = new int[_chunkSize * _chunkSize * _chunkSize];
-            
+
             // Determine which vertical chunks we need to load
             var chunksToLoad = new HashSet<int>();
             for (var x = 0; x < _chunkSize; x++)
@@ -173,15 +173,15 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
                 for (var z = 0; z < _chunkSize; z++)
                 {
                     var mapIndex = z * _chunkSize + x;
-                    if (mapIndex >= heightMap.Length || heightMap[mapIndex] <= 0) 
+                    if (mapIndex >= heightMap.Length || heightMap[mapIndex] <= 0)
                         continue;
-                    
+
                     var height = heightMap[mapIndex];
                     var chunkYForHeight = height / _chunkSize;
                     chunksToLoad.Add(chunkYForHeight);
                 }
             }
-            
+
             // Load the required ServerChunks
             var loadedChunks = new Dictionary<int, ServerChunk>();
             var allBlockEntities = new Dictionary<BlockPos, BlockEntity>();
@@ -189,12 +189,12 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
             {
                 var chunkPos = new ChunkPos(chunkX, y, chunkZ);
                 var serverChunk = _loader.GetServerChunk(sqliteConn, chunkPos.ToChunkIndex());
-                if (serverChunk == null) 
+                if (serverChunk == null)
                     continue;
-                
+
                 serverChunk.Unpack_ReadOnly();
                 loadedChunks[y] = serverChunk;
-                
+
                 // Collect block entities from this chunk
                 if (serverChunk.BlockEntities != null)
                 {
@@ -204,35 +204,80 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
                     }
                 }
             }
-            
-            // Extract block IDs at surface positions
+
+            // Extract block IDs at surface positions (and handle snow-underlay)
             for (var x = 0; x < _chunkSize; x++)
             {
                 for (var z = 0; z < _chunkSize; z++)
                 {
                     var mapIndex = z * _chunkSize + x;
-                    if (mapIndex >= heightMap.Length || heightMap[mapIndex] <= 0) 
+                    if (mapIndex >= heightMap.Length || heightMap[mapIndex] <= 0)
                         continue;
-                    
+
                     var height = heightMap[mapIndex];
                     var chunkYForHeight = height / _chunkSize;
 
-                    if (!loadedChunks.TryGetValue(chunkYForHeight, out var serverChunk)) 
+                    if (!loadedChunks.TryGetValue(chunkYForHeight, out var serverChunk))
                         continue;
-                        
+
                     var localY = height % _chunkSize; // Y within the chunk
                     var chunkDataIndex = (localY * _chunkSize + z) * _chunkSize + x;
                     var blockId = serverChunk.Data[chunkDataIndex];
-                            
+
                     // Store in our BlockIds array at the same local Y position
                     var blockIndex = localY * _chunkSize * _chunkSize + z * _chunkSize + x;
                     if (blockIndex >= 0 && blockIndex < blockIds.Length)
                     {
                         blockIds[blockIndex] = blockId;
                     }
+
+                    // If surface block is snow, also fetch the block underneath (height-1)
+                    // This mirrors Extractor.cs behavior for snow-covered terrain
+                    if (server.World.Blocks[blockId].BlockMaterial == EnumBlockMaterial.Snow)
+                    {
+                        var adjustedHeight = height - 1;
+                        if (adjustedHeight >= 0)
+                        {
+                            var adjustedChunkY = adjustedHeight / _chunkSize;
+                            var adjustedLocalY = adjustedHeight % _chunkSize;
+
+                            // Ensure adjusted chunk is loaded
+                            if (!loadedChunks.TryGetValue(adjustedChunkY, out var adjustedChunk))
+                            {
+                                var adjPos = new ChunkPos(chunkX, adjustedChunkY, chunkZ);
+                                adjustedChunk = _loader.GetServerChunk(sqliteConn, adjPos.ToChunkIndex());
+                                if (adjustedChunk != null)
+                                {
+                                    adjustedChunk.Unpack_ReadOnly();
+                                    loadedChunks[adjustedChunkY] = adjustedChunk;
+
+                                    // Merge its block entities as well
+                                    if (adjustedChunk.BlockEntities != null)
+                                    {
+                                        foreach (var kvp in adjustedChunk.BlockEntities)
+                                        {
+                                            allBlockEntities[kvp.Key] = kvp.Value;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (adjustedChunk != null)
+                            {
+                                var adjustedIndex = (adjustedLocalY * _chunkSize + z) * _chunkSize + x;
+                                var underBlockId = adjustedChunk.Data[adjustedIndex];
+
+                                var adjustedBlockIndex = adjustedLocalY * _chunkSize * _chunkSize + z * _chunkSize + x;
+                                if (adjustedBlockIndex >= 0 && adjustedBlockIndex < blockIds.Length)
+                                {
+                                    blockIds[adjustedBlockIndex] = underBlockId;
+                                }
+                            }
+                        }
+                    }
                 }
             }
-            
+
             return new ChunkSnapshot
             {
                 ChunkX = chunkX,

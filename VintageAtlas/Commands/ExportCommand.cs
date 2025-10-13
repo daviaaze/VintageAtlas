@@ -23,7 +23,7 @@ public static class ExportCommand
                 {
                     return TextCommandResult.Success("Export already running.");
                 }
-                
+
                 mapExporter.StartExport();
                 return TextCommandResult.Success("Map export started. Check server console for progress.");
             })

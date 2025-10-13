@@ -2,7 +2,7 @@ using Newtonsoft.Json;
 
 namespace VintageAtlas.GeoJson.SignPost;
 
-public record SignPostFeature(SignPostProperties Properties, PointGeometry Geometry,string Type = "Feature")
+public record SignPostFeature(SignPostProperties Properties, PointGeometry Geometry, string Type = "Feature")
 {
 
     [JsonProperty("type")]

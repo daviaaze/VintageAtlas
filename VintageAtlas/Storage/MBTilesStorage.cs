@@ -59,24 +59,24 @@ public sealed class MbTilesStorage : IDisposable
     {
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
-        
+
         // Set a busy timeout to 30 seconds (30000ms) to wait for locks
         using var cmd = connection.CreateCommand();
         cmd.CommandText = "PRAGMA busy_timeout=30000;";
         cmd.ExecuteNonQuery();
-        
+
         return connection;
     }
 
     private async Task EnsureInitializedAsync()
     {
         if (_initialized) return;
-        
+
         await _initLock.WaitAsync();
         try
         {
             if (_initialized) return;
-            
+
             // Initialize database synchronously (one-time setup)
             InitializeDatabaseInternal();
             _initialized = true;
@@ -86,16 +86,16 @@ public sealed class MbTilesStorage : IDisposable
             _initLock.Release();
         }
     }
-    
+
     private void InitializeDatabase()
     {
         if (_initialized) return;
-        
+
         _initLock.Wait();
         try
         {
             if (_initialized) return;
-            
+
             InitializeDatabaseInternal();
             _initialized = true;
         }
@@ -104,20 +104,20 @@ public sealed class MbTilesStorage : IDisposable
             _initLock.Release();
         }
     }
-    
+
     private void InitializeDatabaseInternal()
     {
         // Actual initialization logic (called by both sync and async methods)
-            
-            using var connection = CreateConnection();
-            using var cmd = connection.CreateCommand();
-            
-            // Enable WAL mode for better concurrent access
-            cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;";
-            cmd.ExecuteNonQuery();
-            
-            // Create a tile table
-            cmd.CommandText = """
+
+        using var connection = CreateConnection();
+        using var cmd = connection.CreateCommand();
+
+        // Enable WAL mode for better concurrent access
+        cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;";
+        cmd.ExecuteNonQuery();
+
+        // Create a tile table
+        cmd.CommandText = """
 
                                               CREATE TABLE IF NOT EXISTS tiles (
                                                   zoom_level INTEGER NOT NULL,
@@ -136,15 +136,15 @@ public sealed class MbTilesStorage : IDisposable
                                               );
                                           
                               """;
-            
-            cmd.ExecuteNonQuery();
-            
-            // Set metadata
-            SetMetadataInternal(connection, "name", "VintageAtlas Map");
-            SetMetadataInternal(connection, "type", "baselayer");
-            SetMetadataInternal(connection, "version", "1.0");
-            SetMetadataInternal(connection, "description", "Vintage Story World Map");
-            SetMetadataInternal(connection, "format", "png");
+
+        cmd.ExecuteNonQuery();
+
+        // Set metadata
+        SetMetadataInternal(connection, "name", "VintageAtlas Map");
+        SetMetadataInternal(connection, "type", "baselayer");
+        SetMetadataInternal(connection, "version", "1.0");
+        SetMetadataInternal(connection, "description", "Vintage Story World Map");
+        SetMetadataInternal(connection, "format", "png");
     }
 
     /// <summary>
@@ -156,12 +156,12 @@ public sealed class MbTilesStorage : IDisposable
         // not zoom-relative coordinates (0 to 2^zoom-1).
         // Standard TMS conversion doesn't apply here - we store coordinates as-is.
         // The MBTiles spec allows this for custom coordinate systems.
-        
+
         await EnsureInitializedAsync(); // CRITICAL: Initialize DB before first write
-        
+
         await using var connection = CreateConnection();
         await Task.CompletedTask; // Already opened in CreateConnection()
-        
+
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
 
@@ -169,14 +169,14 @@ public sealed class MbTilesStorage : IDisposable
                                       VALUES (@zoom, @x, @y, @data)
                                   
                           """;
-        
+
         cmd.Parameters.AddWithValue("@zoom", zoom);
         cmd.Parameters.AddWithValue("@x", x);
         cmd.Parameters.AddWithValue("@y", y); // Use absolute tile coordinates
         cmd.Parameters.AddWithValue("@data", tileData);
-        
+
         await cmd.ExecuteNonQueryAsync();
-        
+
         // Maintain minzoom/maxzoom metadata automatically
         await UpdateZoomMetadataAsync(zoom);
     }
@@ -191,7 +191,7 @@ public sealed class MbTilesStorage : IDisposable
         // Use absolute tile coordinates (no TMS conversion needed)
         await using var connection = CreateConnection();
         await Task.CompletedTask; // Already opened in CreateConnection()
-        
+
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
 
@@ -199,11 +199,11 @@ public sealed class MbTilesStorage : IDisposable
                                       WHERE zoom_level = @zoom AND tile_column = @x AND tile_row = @y
                                   
                           """;
-        
+
         cmd.Parameters.AddWithValue("@zoom", zoom);
         cmd.Parameters.AddWithValue("@x", x);
         cmd.Parameters.AddWithValue("@y", y); // Use absolute tile coordinates
-        
+
         var result = await cmd.ExecuteScalarAsync();
         return result as byte[];
     }
@@ -218,7 +218,7 @@ public sealed class MbTilesStorage : IDisposable
         // Use absolute tile coordinates (no TMS conversion needed)
         await using var connection = CreateConnection();
         await Task.CompletedTask; // Already opened in CreateConnection()
-        
+
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
 
@@ -226,11 +226,11 @@ public sealed class MbTilesStorage : IDisposable
                                       WHERE zoom_level = @zoom AND tile_column = @x AND tile_row = @y
                                   
                           """;
-        
+
         cmd.Parameters.AddWithValue("@zoom", zoom);
         cmd.Parameters.AddWithValue("@x", x);
         cmd.Parameters.AddWithValue("@y", y); // Use absolute tile coordinates
-        
+
         var count = (long)(await cmd.ExecuteScalarAsync() ?? 0L);
         return count > 0;
     }
@@ -243,7 +243,7 @@ public sealed class MbTilesStorage : IDisposable
         // Use absolute tile coordinates (no TMS conversion needed)
         await using var connection = CreateConnection();
         await Task.CompletedTask; // Already opened in CreateConnection()
-        
+
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
 
@@ -251,11 +251,11 @@ public sealed class MbTilesStorage : IDisposable
                                       WHERE zoom_level = @zoom AND tile_column = @x AND tile_row = @y
                                   
                           """;
-        
+
         cmd.Parameters.AddWithValue("@zoom", zoom);
         cmd.Parameters.AddWithValue("@x", x);
         cmd.Parameters.AddWithValue("@y", y); // Use absolute tile coordinates
-        
+
         await cmd.ExecuteNonQueryAsync();
     }
 
@@ -268,9 +268,9 @@ public sealed class MbTilesStorage : IDisposable
 
         await using var connection = CreateConnection();
         await Task.CompletedTask; // Already opened in CreateConnection()
-        
+
         await using var cmd = connection.CreateCommand();
-        
+
         if (zoom.HasValue)
         {
             cmd.CommandText = "SELECT COUNT(*) FROM tiles WHERE zoom_level = @zoom";
@@ -280,7 +280,7 @@ public sealed class MbTilesStorage : IDisposable
         {
             cmd.CommandText = "SELECT COUNT(*) FROM tiles";
         }
-        
+
         return (long)(await cmd.ExecuteScalarAsync() ?? 0L);
     }
 
@@ -295,7 +295,7 @@ public sealed class MbTilesStorage : IDisposable
         {
             await using var connection = new SqliteConnection(_connectionString);
             await connection.OpenAsync();
-            
+
             await using var cmd = connection.CreateCommand();
             cmd.CommandText = """
 
@@ -309,9 +309,9 @@ public sealed class MbTilesStorage : IDisposable
                                           
                               """;
             cmd.Parameters.AddWithValue("@zoom", zoom);
-            
+
             await using var reader = await cmd.ExecuteReaderAsync();
-            
+
             if (await reader.ReadAsync())
             {
                 // Check if the result is NULL (no tiles for this zoom level)
@@ -320,7 +320,7 @@ public sealed class MbTilesStorage : IDisposable
                     Console.WriteLine($"[MBTilesStorage] No tiles found for zoom level {zoom} (NULL result)");
                     return null;
                 }
-                
+
                 var extent = new TileExtent
                 {
                     MinX = reader.GetInt32(0),
@@ -328,12 +328,12 @@ public sealed class MbTilesStorage : IDisposable
                     MinY = reader.GetInt32(2),
                     MaxY = reader.GetInt32(3)
                 };
-                
+
                 Console.WriteLine($"[MBTilesStorage] Found tile extent for zoom {zoom}: ({extent.MinX},{extent.MinY}) to ({extent.MaxX},{extent.MaxY})");
-                
+
                 return extent;
             }
-            
+
             Console.WriteLine($"[MBTilesStorage] No tiles found for zoom level {zoom} (no rows)");
             return null;
         }
@@ -352,7 +352,7 @@ public sealed class MbTilesStorage : IDisposable
     {
         await using var connection = CreateConnection();
         await Task.CompletedTask; // Already opened in CreateConnection()
-        
+
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = "VACUUM";
         await cmd.ExecuteNonQueryAsync();
@@ -482,9 +482,9 @@ public sealed class MbTilesStorage : IDisposable
 
     private void Dispose(bool disposing)
     {
-        if (!disposing) 
+        if (!disposing)
             return;
-        
+
         try
         {
             // Checkpoint WAL to ensure all data is committed to the main DB

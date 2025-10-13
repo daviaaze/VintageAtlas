@@ -4,7 +4,7 @@ namespace VintageAtlas.GeoJson;
 
 public record Crs(string Name, string Type = "name")
 {
-    
+
     [JsonProperty("type")]
     public string Type { get; set; } = Type;
 

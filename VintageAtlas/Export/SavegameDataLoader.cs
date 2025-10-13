@@ -51,7 +51,7 @@ public class SqliteThreadCon
     }
 }
 
-public sealed class SavegameDataLoader: IDisposable
+public sealed class SavegameDataLoader : IDisposable
 {
     private readonly SqliteThreadCon[] _sqliteConnections;
 
@@ -323,12 +323,12 @@ public sealed class SavegameDataLoader: IDisposable
             using var cmd = sqliteConn.Con.CreateCommand();
             cmd.CommandText = "SELECT data FROM gamedata LIMIT 1";
             using var sqliteDataReader = cmd.ExecuteReader();
-            if (!sqliteDataReader.Read()) 
+            if (!sqliteDataReader.Read())
                 return null;
-            
-            if (sqliteDataReader["data"] is not byte[] data) 
+
+            if (sqliteDataReader["data"] is not byte[] data)
                 return null;
-                
+
             var saveGame = Serializer.Deserialize<SaveGame>(new MemoryStream(data));
             return saveGame;
 

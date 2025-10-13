@@ -7,7 +7,7 @@ import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
 import XYZ from 'ol/source/XYZ';
 import GeoJSON from 'ol/format/GeoJSON';
-import { createTileGrid } from './olMapConfig';
+import { createTileGrid, getTileUrl } from './olMapConfig';
 import {
   exploredChunksStyle,
   tradersStyle,
@@ -25,8 +25,7 @@ export function createWorldLayer(): TileLayer<XYZ> {
     tileGrid: tileGrid,
     wrapX: false,
     interpolate: false,
-    zDirection: -1,
-    url: '/tiles/{z}/{x}_{y}.png'
+    tileUrlFunction: ([z, x, y]) => getTileUrl(z, x, y)
   });
   
   source.on('tileloaderror', (evt: any) => {

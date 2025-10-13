@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using Vintagestory.API.Server;
+using System.Linq;
+using VintageAtlas.Export;
 
 namespace VintageAtlas.Web.API;
 
@@ -13,8 +15,9 @@ namespace VintageAtlas.Web.API;
 /// Provides dynamic map configuration (extent, center, zoom levels, etc.)
 /// Replaces hardcoded values in frontend mapConfig.ts
 /// </summary>
-public class MapConfigController(ICoreServerAPI sapi)
+public class MapConfigController(ICoreServerAPI sapi, ITileGenerator? tileGenerator = null)
 {
+    private readonly ITileGenerator? _tileGenerator = tileGenerator;
     private readonly JsonSerializerSettings _jsonSettings = new()
     {
         ContractResolver = new DefaultContractResolver
@@ -24,7 +27,7 @@ public class MapConfigController(ICoreServerAPI sapi)
         Formatting = Formatting.Indented,
         NullValueHandling = NullValueHandling.Ignore
     };
-    
+
     private MapConfigData? _cachedConfig;
     private long _lastConfigUpdate;
     private readonly object _cacheLock = new();
@@ -39,12 +42,12 @@ public class MapConfigController(ICoreServerAPI sapi)
             var mapConfig = GetMapConfig();
             var json = JsonConvert.SerializeObject(mapConfig, _jsonSettings);
             var bytes = Encoding.UTF8.GetBytes(json);
-            
+
             context.Response.StatusCode = 200;
             context.Response.ContentType = "application/json";
             context.Response.ContentLength64 = bytes.Length;
             context.Response.Headers.Add("Cache-Control", "public, max-age=300"); // Cache for 5 minutes
-            
+
             await context.Response.OutputStream.WriteAsync(bytes);
             context.Response.Close();
         }
@@ -67,7 +70,7 @@ public class MapConfigController(ICoreServerAPI sapi)
         {
             return null; // Return null if world not initialized yet
         }
-        
+
         try
         {
             return GetMapConfig();
@@ -85,9 +88,9 @@ public class MapConfigController(ICoreServerAPI sapi)
         {
             throw new InvalidOperationException("World not yet initialized");
         }
-        
+
         var now = sapi.World.ElapsedMilliseconds;
-        
+
         lock (_cacheLock)
         {
             // Cache for 5 minutes
@@ -98,7 +101,7 @@ public class MapConfigController(ICoreServerAPI sapi)
         }
 
         var mapConfig = GenerateMapConfig();
-        
+
         lock (_cacheLock)
         {
             _cachedConfig = mapConfig;
@@ -115,49 +118,67 @@ public class MapConfigController(ICoreServerAPI sapi)
 
         var mapSizeX = sapi.World.BlockAccessor.MapSizeX / 2;
         var mapSizeZ = sapi.World.BlockAccessor.MapSizeZ / 2;
-        
-        // Fixed extent: [-512000, -512000, 512000, 512000] - same as WebCartographer
+
+        // Legacy WebCartographer coordinate system
         int[] worldExtent = [-mapSizeX, -mapSizeZ, mapSizeX, mapSizeZ];
-        
-        // Fixed origin: [-512000, 512000] - same as WebCartographer  
         int[] worldOrigin = [-mapSizeX, mapSizeZ];
-        
-        // Center at spawn (but use fixed coordinate system)
-        int[] defaultCenter = [spawn.X, spawn.Z];
-        
-        // WebCartographer's exact resolution pattern
+        int[] defaultCenter = [spawn.X - mapSizeX, spawn.Z - mapSizeZ];
+
         double[] webCartographerResolutions = [512, 256, 128, 64, 32, 16, 8, 4, 2, 1];
-        
+        var maxZoom = webCartographerResolutions.Length - 1;
+
+        var originTiles = new int[webCartographerResolutions.Length][];
+
+        for (var zoom = 0; zoom < webCartographerResolutions.Length; zoom++)
+        {
+            var resolution = webCartographerResolutions[zoom];
+            int originTileX = (int)Math.Floor(worldOrigin[0] / (resolution * 256));
+            int originTileY = (int)Math.Floor(worldOrigin[1] / (resolution * 256));
+
+            if (_tileGenerator != null)
+            {
+                try
+                {
+                    var extent = _tileGenerator.GetTileExtentAsync(zoom).GetAwaiter().GetResult();
+                    if (extent != null)
+                    {
+                        originTileX = extent.MinX;
+                        originTileY = extent.MinY;
+                    }
+                }
+                catch
+                {
+                    // Fallback to default calculation if extent lookup fails
+                }
+            }
+
+            originTiles[zoom] = new[] { originTileX, originTileY };
+        }
+
         return new MapConfigData
         {
-            // Fixed coordinates - exactly like WebCartographer!
             WorldExtent = worldExtent,
-            WorldOrigin = worldOrigin, 
+            WorldOrigin = worldOrigin,
             DefaultCenter = defaultCenter,
-            DefaultZoom = 6, // WebCartographer default
-            
-            // Fixed zoom configuration - exactly like WebCartographer
+            DefaultZoom = maxZoom,
+
             MinZoom = 0,
-            MaxZoom = 9, // WebCartographer has 10 levels (0-9)
-            BaseZoomLevel = 6,
-            
-            // Tile configuration  
-            TileSize = 256, // WebCartographer standard
+            MaxZoom = maxZoom,
+            BaseZoomLevel = maxZoom,
+
+            TileSize = 256,
             TileResolutions = webCartographerResolutions,
-            ViewResolutions = webCartographerResolutions, // Same as tile resolutions for perfect alignment
-            
-            // Map metadata
+            ViewResolutions = webCartographerResolutions,
+            OriginTilesPerZoom = originTiles,
+
             MapSizeX = sapi.World.BlockAccessor.MapSizeX,
-            MapSizeZ = sapi.World.BlockAccessor.MapSizeZ, 
+            MapSizeZ = sapi.World.BlockAccessor.MapSizeZ,
             MapSizeY = sapi.World.BlockAccessor.MapSizeY,
-            
-            // Position data
+
             SpawnPosition = [spawn.X, spawn.Z],
-            
-            // Tile availability
+
             TileStats = tileStats,
-            
-            // Server info
+
             ServerName = sapi.Server.Config.ServerName,
             WorldName = sapi.World.SavegameIdentifier
         };
@@ -186,7 +207,7 @@ public class MapConfigController(ICoreServerAPI sapi)
         {
             _cachedConfig = null;
         }
-        
+
         sapi.Logger.Debug("[VintageAtlas] Map config cache invalidated");
     }
 
@@ -196,10 +217,10 @@ public class MapConfigController(ICoreServerAPI sapi)
         {
             context.Response.StatusCode = statusCode;
             context.Response.ContentType = "application/json";
-            
+
             var errorJson = JsonConvert.SerializeObject(new { error = message }, _jsonSettings);
             var errorBytes = Encoding.UTF8.GetBytes(errorJson);
-            
+
             context.Response.ContentLength64 = errorBytes.Length;
             await context.Response.OutputStream.WriteAsync(errorBytes);
             context.Response.Close();
@@ -222,42 +243,48 @@ public class MapConfigData
     /// Frontend's getTileUrl() maps grid coords to storage tile numbers.
     /// </summary>
     public int[] WorldExtent { get; set; } = [];
-    
+
     /// <summary>
     /// Origin (top-left) in world BLOCK coordinates: [x, z]
     /// This is where tile (0,0) would be located in the tile grid.
     /// OpenLayers uses this to create the TileGrid origin.
     /// </summary>
     public int[] WorldOrigin { get; set; } = [];
-    
+
     /// <summary>
     /// Default center in world BLOCK coordinates: [x, z]
     /// Usually the spawn point or middle of explored area.
     /// OpenLayers centers the view here initially.
     /// </summary>
     public int[] DefaultCenter { get; set; } = [];
-    
+
     public int DefaultZoom { get; set; }
     public int MinZoom { get; set; }
     public int MaxZoom { get; set; }
     public int BaseZoomLevel { get; set; }
     public int TileSize { get; set; }
-    
+
     /// <summary>
     /// Tile resolutions for each zoom level (blocks per pixel)
     /// </summary>
     public double[] TileResolutions { get; set; } = [];
-    
+
     /// <summary>
     /// View resolutions for smooth zooming (includes extra zoom levels)
     /// </summary>
     public double[] ViewResolutions { get; set; } = [];
-    
+
+    /// <summary>
+    /// Absolute tile origin per zoom level (X,Y) in storage coordinates.
+    /// Allows the frontend to offset tile grid indices to direct XYZ requests.
+    /// </summary>
+    public int[][] OriginTilesPerZoom { get; set; } = [];
+
     /// <summary>
     /// Spawn position in world block coordinates: [x, z]
     /// </summary>
     public int[] SpawnPosition { get; set; } = [];
-    
+
     public int MapSizeX { get; set; }
     public int MapSizeZ { get; set; }
     public int MapSizeY { get; set; }

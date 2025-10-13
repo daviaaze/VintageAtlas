@@ -28,17 +28,17 @@ public sealed class ServerManager : IDisposable
     private UnifiedTileGenerator? _tileGenerator;
     private TileGenerationState? _tileState;
     private WebServer? _webServer;
-    
+
     // Event callbacks for cleanup
     private long _gameTickListenerId;
     private PlayerDeathDelegate? _playerDeathCallback;
 
     public ServerManager(
-        ICoreServerAPI sapi, 
-        ModConfig config, 
-        MapExporter mapExporter, 
-        BlockColorCache colorCache, 
-        MbTilesStorage storage, 
+        ICoreServerAPI sapi,
+        ModConfig config,
+        MapExporter mapExporter,
+        BlockColorCache colorCache,
+        MbTilesStorage storage,
         MapConfigController? mapConfigController = null)
     {
         _sapi = sapi ?? throw new ArgumentNullException(nameof(sapi));
@@ -57,13 +57,13 @@ public sealed class ServerManager : IDisposable
         try
         {
             _sapi.Logger.Notification("[VintageAtlas] Setting up live web server...");
-            
+
             InitializeDirectories();
             InitializeServices();
             RegisterEventHandlers();
             CreateWebServerComponents();
             StartWebServer();
-            
+
             _sapi.Logger.Notification("[VintageAtlas] Live server ready");
         }
         catch (Exception ex)
@@ -85,21 +85,21 @@ public sealed class ServerManager : IDisposable
     {
         // Initialize data collector
         _dataCollector = new DataCollector(_sapi);
-        
+
         // Initialize the historical tracker if enabled
         if (_config.EnableHistoricalTracking)
         {
             _historicalTracker = new HistoricalTracker(_sapi);
             _historicalTracker.Initialize();
         }
-        
+
         // Initialize unified tile generator for live serving (shares storage with exporter)
         // This is the SAME generator used for full exports - no more code duplication!
         _tileGenerator = new UnifiedTileGenerator(_sapi, _config, _colorCache, _storage);
-        
+
         // Initialize tile generation state database
         _tileState = new TileGenerationState(_sapi, _config.OutputDirectory);
-        
+
         _sapi.Logger.Notification("[VintageAtlas] ⚠️  Background tile generation DISABLED - tiles only generated via /atlas export");
     }
 
@@ -111,7 +111,7 @@ public sealed class ServerManager : IDisposable
         {
             // Update data cache (called on main thread - THREAD SAFE)
             _dataCollector?.UpdateCache(dt);
-            
+
             // Update historical tracker if enabled
             if (_config.EnableHistoricalTracking && _historicalTracker != null)
             {
@@ -119,11 +119,12 @@ public sealed class ServerManager : IDisposable
             }
         }, 1000); // Call every second (1000ms)
         _sapi.Logger.Notification("[VintageAtlas] Main thread cache updates registered (HTTP threads isolated from game state)");
-        
+
         // Register player death handler for historical tracking
         if (_config.EnableHistoricalTracking)
         {
-            _playerDeathCallback = (player, damageSource) => {
+            _playerDeathCallback = (player, damageSource) =>
+            {
                 var source = damageSource?.Type.ToString();
                 if (damageSource?.SourceEntity != null)
                 {
@@ -133,7 +134,7 @@ public sealed class ServerManager : IDisposable
             };
             _sapi.Event.PlayerDeath += _playerDeathCallback;
         }
-        
+
         // Register shutdown handler
         _sapi.Event.ServerRunPhase(EnumServerRunPhase.Shutdown, OnShutdown);
     }
@@ -150,17 +151,17 @@ public sealed class ServerManager : IDisposable
         var statusController = new StatusController(_sapi, _dataCollector);
         var configController = new ConfigController(_sapi, _config, _mapExporter);
         var historicalController = new HistoricalController(_sapi, _historicalTracker);
-        
+
         // Use the existing mapConfigController instance (created earlier)
-        var mapConfigController = _mapConfigController ?? new MapConfigController(_sapi);
-        
+        var mapConfigController = _mapConfigController ?? new MapConfigController(_sapi, _tileGenerator);
+
         // Create coordinate transformation service (centralized coordinate logic)
         var coordinateService = new CoordinateTransformService(mapConfigController, _config);
-        
+
         // Inject coordinate service into controllers
         var geoJsonController = new GeoJsonController(_sapi, _config, coordinateService);
         var tileController = new TileController(_sapi, _config, _tileGenerator, mapConfigController);
-        
+
         var router = new RequestRouter(
             _config,
             statusController,
@@ -171,7 +172,7 @@ public sealed class ServerManager : IDisposable
             tileController,
             staticFileServer
         );
-        
+
         _webServer = new WebServer(_sapi, _config, router);
     }
 
@@ -192,15 +193,15 @@ public sealed class ServerManager : IDisposable
         {
             _sapi.Event.UnregisterGameTickListener(_gameTickListenerId);
         }
-        
+
         if (_playerDeathCallback != null)
         {
             _sapi.Event.PlayerDeath -= _playerDeathCallback;
         }
-        
+
         // Dispose web server
         _webServer?.Dispose();
-        
+
         // Dispose other services
         _historicalTracker?.Dispose();
         _tileState?.Dispose();

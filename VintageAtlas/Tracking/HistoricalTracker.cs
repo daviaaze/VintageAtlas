@@ -33,13 +33,13 @@ namespace VintageAtlas.Tracking
             {
                 var dataPath = Path.Combine(sapi.DataBasePath, "ModData", "VintageAtlas");
                 Directory.CreateDirectory(dataPath);
-                
+
                 var dbPath = Path.Combine(dataPath, "metrics.db");
                 _metricsDb = new SqliteConnection($"Data Source={dbPath}");
                 _metricsDb.Open();
-                
+
                 CreateSchema();
-                
+
                 sapi.Logger.Notification("[VintageAtlas] Historical tracker initialized at: " + dbPath);
             }
             catch (Exception ex)
@@ -129,7 +129,7 @@ namespace VintageAtlas.Tracking
                                           
                               """;
             cmd.ExecuteNonQuery();
-            
+
             sapi.Logger.Debug("[VintageAtlas] Database schema created/verified");
         }
 
@@ -177,7 +177,7 @@ namespace VintageAtlas.Tracking
             if (_metricsDb == null) return;
 
             var timestamp = sapi.World.ElapsedMilliseconds;
-            
+
             using var transaction = _metricsDb.BeginTransaction();
             try
             {
@@ -200,11 +200,11 @@ namespace VintageAtlas.Tracking
                     {
                         var pos = player.Entity.ServerPos ?? player.Entity.Pos;
                         var attrs = player.Entity.WatchedAttributes as TreeAttribute;
-                        
+
                         var healthTree = attrs?.GetTreeAttribute("health");
                         var hungerTree = attrs?.GetTreeAttribute("hunger");
                         var bodyTempTree = attrs?.GetTreeAttribute("bodyTemp");
-                        
+
                         var blockPos = pos.AsBlockPos;
                         var climate = sapi.World.BlockAccessor?.GetClimateAt(blockPos);
 
@@ -336,7 +336,7 @@ namespace VintageAtlas.Tracking
                                   """;
 
                 var memoryMb = GC.GetTotalMemory(false) / 1024.0 / 1024.0;
-                
+
                 // Get actual loaded chunk count from Vintage Story API
                 cmd.Parameters.AddWithValue("@ts", timestamp);
                 cmd.Parameters.AddWithValue("@players", sapi.World.AllOnlinePlayers.Length);
@@ -405,7 +405,7 @@ namespace VintageAtlas.Tracking
                 ";
                 cmd.Parameters.AddWithValue("@limit", MaxPositionsPerPlayer);
                 var deleted = cmd.ExecuteNonQuery();
-                
+
                 if (deleted > 0)
                 {
                     sapi.Logger.Debug($"[VintageAtlas] Cleaned up {deleted} old position records");
@@ -434,7 +434,7 @@ namespace VintageAtlas.Tracking
 
                 var cmd = _metricsDb.CreateCommand();
                 var whereClauses = new List<string> { "timestamp >= @cutoff" };
-                
+
                 if (!string.IsNullOrEmpty(queryParams.PlayerUid))
                 {
                     whereClauses.Add("player_uid = @playerUid");
@@ -617,8 +617,8 @@ namespace VintageAtlas.Tracking
                 // Oldest data timestamp
                 cmd.CommandText = "SELECT MIN(timestamp) FROM player_positions";
                 var oldestObj = cmd.ExecuteScalar();
-                stats.OldestDataTimestamp = oldestObj != null && oldestObj != DBNull.Value 
-                    ? Convert.ToInt64(oldestObj) 
+                stats.OldestDataTimestamp = oldestObj != null && oldestObj != DBNull.Value
+                    ? Convert.ToInt64(oldestObj)
                     : stats.CurrentTimestamp;
 
                 // Database size
@@ -667,7 +667,7 @@ namespace VintageAtlas.Tracking
                     while (reader.Read())
                     {
                         var playerUid = reader.GetString(0);
-                        
+
                         // Calculate distance traveled
                         var distCmd = _metricsDb.CreateCommand();
                         distCmd.CommandText = @"
@@ -730,11 +730,11 @@ namespace VintageAtlas.Tracking
 
         private void Dispose(bool disposing)
         {
-            if (!disposing) 
+            if (!disposing)
                 return;
             if (_metricsDb is null)
                 return;
-            
+
             sapi.Logger.Notification("[VintageAtlas] Shutting down historical tracker");
             _metricsDb.Close();
             _metricsDb.Dispose();

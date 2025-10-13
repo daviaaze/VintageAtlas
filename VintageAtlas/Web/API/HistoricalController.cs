@@ -78,7 +78,7 @@ public class HistoricalController(ICoreServerAPI sapi, IHistoricalTracker? histo
         try
         {
             var queryParams = ParseHistoricalQuery(context);
-            
+
             if (string.IsNullOrEmpty(queryParams.PlayerUid))
             {
                 await ServeError(context, "Player UID required (use ?player=UUID)", 400);
@@ -190,15 +190,15 @@ public class HistoricalController(ICoreServerAPI sapi, IHistoricalTracker? histo
         // Remove leading '?' and split by '&'
         query = query.TrimStart('?');
         var pairs = query.Split('&');
-        
+
         foreach (var pair in pairs)
         {
             var parts = pair.Split('=');
             if (parts.Length != 2) continue;
-            
+
             var key = Uri.UnescapeDataString(parts[0]);
             var value = Uri.UnescapeDataString(parts[1]);
-            
+
             switch (key.ToLowerInvariant())
             {
                 case "player":
@@ -235,10 +235,10 @@ public class HistoricalController(ICoreServerAPI sapi, IHistoricalTracker? histo
         {
             context.Response.StatusCode = statusCode;
             context.Response.ContentType = "application/json";
-            
+
             var errorJson = JsonConvert.SerializeObject(new { error = message }, _jsonSettings);
             var errorBytes = Encoding.UTF8.GetBytes(errorJson);
-            
+
             context.Response.ContentLength64 = errorBytes.Length;
             await context.Response.OutputStream.WriteAsync(errorBytes);
             context.Response.Close();

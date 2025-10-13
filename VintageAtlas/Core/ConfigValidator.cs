@@ -109,9 +109,9 @@ public static class ConfigValidator
     {
         var config = sapi.LoadModConfig<ModConfig>("VintageAtlasConfig.json");
 
-        if (config is not null) 
+        if (config is not null)
             return FinalizeConfig(sapi, config);
-        
+
         sapi.Logger.Warning("[VintageAtlas] No configuration found, creating default config");
 
         // Use ModData directory for all VintageAtlas data
@@ -121,11 +121,11 @@ public static class ConfigValidator
             Mode = ImageMode.MedievalStyleWithHillShading,
             OutputDirectory = modDataPath
         };
-            
+
         sapi.StoreModConfig(config, "VintageAtlasConfig.json");
         sapi.Logger.Notification($"[VintageAtlas] Created default config at: {Path.Combine(GamePaths.ModConfig, "VintageAtlasConfig.json")}");
         sapi.Logger.Notification($"[VintageAtlas] Data will be stored in: {modDataPath}");
-        
+
         return FinalizeConfig(sapi, config);
     }
 
@@ -138,7 +138,7 @@ public static class ConfigValidator
         sapi.Logger.Notification($"[VintageAtlas] ════════ CONFIG LOADED ════════");
         sapi.Logger.Notification($"[VintageAtlas] Mode = {config.Mode} ({(int)config.Mode})");
         sapi.Logger.Notification($"[VintageAtlas] ════════════════════════════════");
-        
+
         // Validate configuration
         var validationErrors = Validate(config);
         if (validationErrors.Count > 0)
@@ -150,7 +150,7 @@ public static class ConfigValidator
             }
             sapi.Logger.Error("[VintageAtlas] Please fix configuration and restart server");
         }
-        
+
         // Apply auto-fixes
         ApplyAutoFixes(config);
         return config ?? throw new InvalidOperationException("Config initialization failed");

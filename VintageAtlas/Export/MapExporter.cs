@@ -21,7 +21,7 @@ public class MapExporter : IMapExporter
     private string? _serverPassword = null;
 
     public bool IsRunning { get; private set; }
-    
+
     public MapExporter(
         ICoreServerAPI sapi,
         ModConfig config,
@@ -49,7 +49,7 @@ public class MapExporter : IMapExporter
     private async Task ExecuteExportAsync()
     {
         if (IsRunning) return;
-        
+
         IsRunning = true;
 
         try
@@ -63,10 +63,10 @@ public class MapExporter : IMapExporter
 
             // Create the data source for reading from the savegame database
             using var dataSource = new SavegameDataSource(_server, _config, _sapi.Logger);
-            
+
             // Generate tiles directly to MBTiles storage
             await _tileGenerator.ExportFullMapAsync(dataSource);
-            
+
             // CRITICAL: Invalidate map config cache so frontend gets updated extent
             _mapConfigController?.InvalidateCache();
             _sapi.Logger.Debug("[VintageAtlas] Map config cache invalidated after export");
@@ -80,7 +80,7 @@ public class MapExporter : IMapExporter
         {
             if (_config.SaveMode)
             {
-               DisableSaveMode();
+                DisableSaveMode();
             }
 
             if (_config.StopOnDone)
@@ -96,7 +96,7 @@ public class MapExporter : IMapExporter
     {
         _serverPassword = _sapi.Server.Config.Password;
         _sapi.Server.Config.Password = Random.Shared.Next().ToString();
-                
+
         // Disconnect all players safely
         var players = _sapi.World.AllOnlinePlayers;
         foreach (var player1 in players)
@@ -104,9 +104,9 @@ public class MapExporter : IMapExporter
             try
             {
                 var player = (IServerPlayer)player1;
-                if (player?.Entity == null) 
+                if (player?.Entity == null)
                     continue;
-                        
+
                 _sapi.Logger.Debug($"[VintageAtlas] Disconnecting player {player.PlayerName} for export");
                 player.Disconnect("Exporting the map now");
             }
@@ -115,7 +115,7 @@ public class MapExporter : IMapExporter
                 _sapi.Logger.Warning($"[VintageAtlas] Failed to disconnect player during export: {ex.Message}");
             }
         }
-                
+
         // Wait a moment for disconnections to complete
         System.Threading.Thread.Sleep(500);
         _server.Suspend(true, 1000);

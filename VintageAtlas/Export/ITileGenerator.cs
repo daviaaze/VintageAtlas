@@ -15,7 +15,7 @@ public interface ITileGenerator : IDisposable
     /// Returns null if tile cannot be generated.
     /// </summary>
     Task<byte[]?> GetTileDataAsync(int zoom, int tileX, int tileZ);
-    
+
     /// <summary>
     /// Get tile extent (min/max coordinates) for a zoom level from storage.
     /// Used by pyramid downsampler to determine which tiles exist.

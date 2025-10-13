@@ -30,7 +30,7 @@ public sealed class UnifiedTileGenerator : ITileGenerator
 
     // In-memory cache for frequently accessed tiles
     private readonly ConcurrentDictionary<string, CachedTile> _memoryCache = new();
-    
+
     // Cache for microblock detection (chiseled blocks)
     private readonly HashSet<int> _microBlocks;
 
@@ -116,7 +116,7 @@ public sealed class UnifiedTileGenerator : ITileGenerator
 
                     if (tileData != null)
                     {
-                        // Write directly to the MBTiles database (NO PNG files!)
+                        // Write tile using absolute world coordinates (matching legacy extractor)
                         await _storage.PutTileAsync(_config.BaseZoomLevel, tile.X, tile.Z, tileData);
 
                         var completed = System.Threading.Interlocked.Increment(ref totalTiles);
@@ -203,32 +203,9 @@ public sealed class UnifiedTileGenerator : ITileGenerator
     /// </summary>
     private List<TilePos> CalculateTileCoverage()
     {
-        var tiles = new HashSet<TilePos>();
-        var chunksPerTile = _config.TileSize / ChunkSize;
-
-        // CRITICAL FIX: Use actual world extent, not theoretical max
-        // Vintage Story worlds are typically much smaller than MapSizeX
-        // Most worlds are ~10,000 to 100,000 blocks, not 1,000,000+
-
-        // Use a reasonable default based on typical world sizes
-        // This will be overridden by actual chunk positions if available
-        var estimatedWorldRadius = 5000; // 10,000 blocks across (reasonable for most worlds)
-        var tilesPerSide = estimatedWorldRadius * 2 / ChunkSize / chunksPerTile;
-
-        var minTile = -tilesPerSide / 2;
-        var maxTile = tilesPerSide / 2;
-
-        _sapi.Logger.Notification($"[VintageAtlas] Estimated tile coverage: {minTile} to {maxTile} ({(maxTile - minTile + 1) * (maxTile - minTile + 1)} tiles)");
-
-        for (var tileX = minTile; tileX <= maxTile; tileX++)
-        {
-            for (var tileZ = minTile; tileZ <= maxTile; tileZ++)
-            {
-                tiles.Add(new TilePos(tileX, tileZ));
-            }
-        }
-
-        return tiles.ToList();
+        // Remove estimation: require actual chunk-driven coverage
+        _sapi.Logger.Warning("[VintageAtlas] CalculateTileCoverage() called without chunk positions; returning empty set");
+        return new List<TilePos>();
     }
 
     /// <summary>
@@ -448,9 +425,9 @@ public sealed class UnifiedTileGenerator : ITileGenerator
                 return null;
             }
 
-            if (tileData.Chunks.Count != 0) 
+            if (tileData.Chunks.Count != 0)
                 return await Task.Run(() => RenderTileImage(tileData));
-            
+
             _sapi.Logger.Warning($"[VintageAtlas] ⚠️  No chunks found for tile {zoom}/{tileX}_{tileZ}");
             return null;
         }
@@ -471,11 +448,15 @@ public sealed class UnifiedTileGenerator : ITileGenerator
         {
             var tileSize = tileData.TileSize;
             var chunksPerTile = tileData.ChunksPerTileEdge;
-            
+
             using var bitmap = new SKBitmap(tileSize, tileSize);
             using var canvas = new SKCanvas(bitmap);
 
             canvas.Clear(); // TODO: can use to create background | new SKColor(41, 128, 185) Ocean blue
+
+            // Per-tile randomness (parity with Extractor's per-image Random)
+            // Non-deterministic across runs; stable within a tile during a single render
+            var randomForTile = new Random(unchecked(Environment.TickCount ^ (tileData.TileX * 73856093) ^ (tileData.TileZ * 19349663)));
 
             // Create a shadow map for hill shading modes
             Span<byte> shadowMap = null;
@@ -510,7 +491,7 @@ public sealed class UnifiedTileGenerator : ITileGenerator
                     }
 
                     RenderChunkToCanvas(canvas, snapshot, offsetX * ChunkSize, offsetZ * ChunkSize,
-                        shadowMap, tileSize, tileData);
+                        shadowMap, tileSize, tileData, randomForTile);
                     chunksRendered++;
                 }
             }
@@ -543,7 +524,7 @@ public sealed class UnifiedTileGenerator : ITileGenerator
     /// Uses BlockColorCache for proper terrain coloring with full rendering mode support.
     /// </summary>
     private void RenderChunkToCanvas(SKCanvas canvas, ChunkSnapshot snapshot, int offsetX, int offsetZ,
-        Span<byte> shadowMap, int tileSize, TileChunkData tileData)
+        Span<byte> shadowMap, int tileSize, TileChunkData tileData, Random randomForTile)
     {
         try
         {
@@ -557,9 +538,11 @@ public sealed class UnifiedTileGenerator : ITileGenerator
             }
 
             using var paint = new SKPaint();
-            var random = new Random(snapshot.ChunkX * 31 + snapshot.ChunkZ); // Deterministic seed
+            // Use per-tile randomness (parity with Extractor) instead of per-chunk deterministic seed
+            var random = randomForTile;
 
             var mapYHalf = _sapi.WorldManager.MapSizeY / 2;
+            var mapMaxY = _sapi.WorldManager.MapSizeY - 1;
 
             for (var x = 0; x < ChunkSize; x++)
             {
@@ -570,9 +553,8 @@ public sealed class UnifiedTileGenerator : ITileGenerator
                         continue;
 
                     var height = heightMap[heightIndex];
-
-                    if (height == 0)
-                        continue;
+                    // Clamp height to valid map range (Extractor behavior)
+                    height = GameMath.Clamp(height, 0, mapMaxY);
 
                     // ═══════════════════════════════════════════════════════════════
                     // SURFACE BLOCK RENDERING (from SavegameDataSource)
@@ -580,9 +562,9 @@ public sealed class UnifiedTileGenerator : ITileGenerator
                     // e.g., height=114 → localY=114%32=18 → blockIndex at Y=18
                     // ═══════════════════════════════════════════════════════════════
                     var localY = height % ChunkSize; // Local Y within a 32-block range
-                    
+
                     var blockIndex = localY * ChunkSize * ChunkSize + z * ChunkSize + x;
-                    
+
                     if (blockIndex < 0 || blockIndex >= blockIds.Length)
                     {
                         // TODO: Check why we are setting this color
@@ -601,64 +583,71 @@ public sealed class UnifiedTileGenerator : ITileGenerator
                         var adjustedHeight = height - 1;
                         if (adjustedHeight >= 0)
                         {
-                            // Calculate which chunk contains this adjusted height
-                            var adjustedChunkY = adjustedHeight / ChunkSize;
                             var adjustedLocalY = adjustedHeight % ChunkSize;
-                            
-                            // Try to get the chunk for the adjusted height
-                            var adjustedSnapshot = tileData.GetChunk(snapshot.ChunkX, snapshot.ChunkZ, adjustedChunkY);
-                            if (adjustedSnapshot is { IsLoaded: true })
+                            // Use the current snapshot's BlockIds at the adjusted local Y.
+                            // SavegameDataSource populates BlockIds at the surface localY positions.
+                            var adjustedBlockIndex = adjustedLocalY * ChunkSize * ChunkSize + z * ChunkSize + x;
+                            if (adjustedBlockIndex >= 0 && adjustedBlockIndex < blockIds.Length)
                             {
-                                var adjustedBlockIndex = adjustedLocalY * ChunkSize * ChunkSize + z * ChunkSize + x;
-                                if (adjustedBlockIndex >= 0 && adjustedBlockIndex < adjustedSnapshot.BlockIds.Length)
-                                {
-                                    blockId = adjustedSnapshot.BlockIds[adjustedBlockIndex];
-                                }
+                                blockId = blockIds[adjustedBlockIndex];
                             }
                         }
                     }
-                    
+
                     // Get color based on render mode
                     uint color;
                     var imgX = offsetX + x;
                     var imgZ = offsetZ + z;
-                    
+
                     // Handle chiseled/micro blocks: use the actual block from the chisel
+                    uint? overrideColor = null;
                     if (_microBlocks.Contains(blockId))
                     {
                         var worldX = snapshot.ChunkX * ChunkSize + x;
                         var worldZ = snapshot.ChunkZ * ChunkSize + z;
                         var blockPos = new BlockPos(worldX, height + isHeightOffset, worldZ, 0);
 
-                        if (snapshot.BlockEntities.TryGetValue(blockPos, out var blockEntity) && 
+                        if (snapshot.BlockEntities.TryGetValue(blockPos, out var blockEntity) &&
                             blockEntity is BlockEntityMicroBlock { BlockIds.Length: > 0 } blockEntityChisel)
-                            // Use the first block ID from the chiseled block
+                        // Use the first block ID from the chiseled block
                         {
                             blockId = blockEntityChisel.BlockIds[0];
                         }
-                        // If we can't find the block entity, or it's invalid, use the default land color
-                        // This matches the Extractor behavior
+                        else
+                        {
+                            // Fallback parity with Extractor
+                            // Non-medieval: flat green. Medieval: land color.
+                            if (_config.Mode == ImageMode.MedievalStyleWithHillShading)
+                            {
+                                overrideColor = MapColors.ColorsByCode["land"];
+                            }
+                            else
+                            {
+                                var green = (uint)SKColors.Green;
+                                overrideColor = green;
+                            }
+                        }
                     }
 
                     switch (_config.Mode)
                     {
                         case ImageMode.OnlyOneColor:
-                            color = _colorCache.GetBaseColor(blockId);
+                            color = overrideColor ?? _colorCache.GetBaseColor(blockId);
                             break;
 
                         case ImageMode.ColorVariations:
-                            color = _colorCache.GetRandomColorVariation(blockId, random);
+                            color = overrideColor ?? _colorCache.GetRandomColorVariation(blockId, random);
                             break;
 
                         case ImageMode.ColorVariationsWithHeight:
-                            color = _colorCache.GetRandomColorVariation(blockId, random);
+                            color = overrideColor ?? _colorCache.GetRandomColorVariation(blockId, random);
                             // Apply height-based darkening/lightening (add height offset for snow)
                             var adjustedHeight = height + isHeightOffset;
                             color = (uint)ColorUtil.ColorMultiply3Clamped((int)color, adjustedHeight / (float)mapYHalf);
                             break;
 
                         case ImageMode.ColorVariationsWithHillShading:
-                            color = _colorCache.GetRandomColorVariation(blockId, random);
+                            color = overrideColor ?? _colorCache.GetRandomColorVariation(blockId, random);
 
                             // Calculate slope and populate shadow map
                             if (shadowMap != null)
@@ -676,7 +665,7 @@ public sealed class UnifiedTileGenerator : ITileGenerator
                         case ImageMode.MedievalStyleWithHillShading:
                             // Check if this is a water edge
                             var isWaterEdge = DetectWaterEdge(blockId, x, z, snapshot);
-                            color = _colorCache.GetMedievalStyleColor(blockId, isWaterEdge);
+                            color = overrideColor ?? _colorCache.GetMedievalStyleColor(blockId, isWaterEdge);
 
                             // Apply hill shading for non-water blocks
                             if (shadowMap != null && !_colorCache.IsLake(blockId))
@@ -799,19 +788,26 @@ public sealed class UnifiedTileGenerator : ITileGenerator
         var westernX = x - 1;
         var northernZ = z - 1;
 
-        // Stay within chunk boundaries to avoid loading neighbors
-        if (westernX < 0) westernX++;
-        if (northernZ < 0) northernZ++;
+        if (westernX < 0)
+        {
+            westernX++;
+        }
+
+        if (northernZ < 0)
+        {
+            northernZ++;
+        }
 
         westernX = GameMath.Mod(westernX, ChunkSize);
         northernZ = GameMath.Mod(northernZ, ChunkSize);
 
         var northWestIndex = northernZ * ChunkSize + westernX;
-        var northIndex = northernZ * ChunkSize + x;
-        var westIndex = z * ChunkSize + westernX;
-
         var northWestHeight = northWestIndex < heightMap.Length ? heightMap[northWestIndex] : y;
+
+        var northIndex = northernZ * ChunkSize + x;
         var northHeight = northIndex < heightMap.Length ? heightMap[northIndex] : y;
+
+        var westIndex = z * ChunkSize + westernX;
         var westHeight = westIndex < heightMap.Length ? heightMap[westIndex] : y;
 
         return (y - northWestHeight, y - northHeight, y - westHeight);

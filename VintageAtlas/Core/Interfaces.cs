@@ -25,17 +25,17 @@ public interface IHistoricalTracker
     /// Get heatmap data for visualization
     /// </summary>
     List<HeatmapPoint> GetHeatmap(HistoricalQueryParams queryParams);
-    
+
     /// <summary>
     /// Get player path history
     /// </summary>
     List<PlayerPathPoint> GetPlayerPath(HistoricalQueryParams queryParams);
-    
+
     /// <summary>
     /// Get entity census data
     /// </summary>
     List<EntityCensusSnapshot> GetEntityCensus(HistoricalQueryParams queryParams);
-    
+
     /// <summary>
     /// Get server statistics
     /// </summary>
@@ -51,7 +51,7 @@ public interface IMapExporter
     /// Start the map export process
     /// </summary>
     void StartExport();
-    
+
     /// <summary>
     /// Check if export is currently running
     /// </summary>

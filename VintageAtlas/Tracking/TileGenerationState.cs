@@ -23,7 +23,7 @@ public class TileGenerationState : IDisposable
     {
         _sapi = sapi;
         _dbPath = Path.Combine(dataDirectory, "tile_state.db");
-        
+
         Initialize();
     }
 
@@ -32,12 +32,12 @@ public class TileGenerationState : IDisposable
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_dbPath) ?? "");
-            
+
             _db = new SqliteConnection($"Data Source={_dbPath}");
             _db.Open();
-            
+
             CreateTables();
-            
+
             _sapi.Logger.Notification($"[VintageAtlas] Tile state database initialized at: {_dbPath}");
         }
         catch (Exception ex)
@@ -54,7 +54,7 @@ public class TileGenerationState : IDisposable
         lock (_dbLock)
         {
             using var cmd = _db.CreateCommand();
-            
+
             // Table to track tile generation status
             cmd.CommandText = @"
                 CREATE TABLE IF NOT EXISTS tiles (
@@ -101,7 +101,7 @@ public class TileGenerationState : IDisposable
                 
                 CREATE INDEX IF NOT EXISTS idx_queue_priority ON generation_queue(priority DESC, queued_at ASC);
             ";
-            
+
             cmd.ExecuteNonQuery();
         }
     }
@@ -118,14 +118,14 @@ public class TileGenerationState : IDisposable
             try
             {
                 var now = _sapi.World.ElapsedMilliseconds;
-                
+
                 using var cmd = _db.CreateCommand();
                 cmd.CommandText = @"
                     INSERT OR REPLACE INTO tiles 
                     (zoom, tile_x, tile_z, status, generated_at, last_updated, file_size, generation_time_ms, source_chunks, error_count)
                     VALUES (@zoom, @x, @z, 'ready', @now, @now, @size, @time, @chunks, 0)
                 ";
-                
+
                 cmd.Parameters.AddWithValue("@zoom", zoom);
                 cmd.Parameters.AddWithValue("@x", tileX);
                 cmd.Parameters.AddWithValue("@z", tileZ);
@@ -133,7 +133,7 @@ public class TileGenerationState : IDisposable
                 cmd.Parameters.AddWithValue("@size", fileSize);
                 cmd.Parameters.AddWithValue("@time", generationTimeMs);
                 cmd.Parameters.AddWithValue("@chunks", sourceChunks);
-                
+
                 cmd.ExecuteNonQuery();
             }
             catch (Exception ex)
@@ -155,7 +155,7 @@ public class TileGenerationState : IDisposable
             try
             {
                 var now = _sapi.World.ElapsedMilliseconds;
-                
+
                 using var cmd = _db.CreateCommand();
                 cmd.CommandText = @"
                     INSERT INTO tiles 
@@ -167,13 +167,13 @@ public class TileGenerationState : IDisposable
                         error_count = error_count + 1,
                         last_error = @error
                 ";
-                
+
                 cmd.Parameters.AddWithValue("@zoom", zoom);
                 cmd.Parameters.AddWithValue("@x", tileX);
                 cmd.Parameters.AddWithValue("@z", tileZ);
                 cmd.Parameters.AddWithValue("@now", now);
                 cmd.Parameters.AddWithValue("@error", error);
-                
+
                 cmd.ExecuteNonQuery();
             }
             catch (Exception ex)
@@ -200,11 +200,11 @@ public class TileGenerationState : IDisposable
                     FROM tiles
                     WHERE zoom = @zoom AND tile_x = @x AND tile_z = @z
                 ";
-                
+
                 cmd.Parameters.AddWithValue("@zoom", zoom);
                 cmd.Parameters.AddWithValue("@x", tileX);
                 cmd.Parameters.AddWithValue("@z", tileZ);
-                
+
                 using var reader = cmd.ExecuteReader();
                 if (reader.Read())
                 {
@@ -218,7 +218,7 @@ public class TileGenerationState : IDisposable
                         LastError = reader.IsDBNull(5) ? null : reader.GetString(5)
                     };
                 }
-                
+
                 return new TileStatus { Status = "missing" };
             }
             catch (Exception ex)
@@ -241,7 +241,7 @@ public class TileGenerationState : IDisposable
             try
             {
                 using var transaction = _db.BeginTransaction();
-                
+
                 foreach (var chunk in chunks)
                 {
                     using var cmd = _db.CreateCommand();
@@ -249,16 +249,16 @@ public class TileGenerationState : IDisposable
                         INSERT OR IGNORE INTO chunk_tiles (chunk_x, chunk_z, zoom, tile_x, tile_z)
                         VALUES (@cx, @cz, @zoom, @tx, @tz)
                     ";
-                    
+
                     cmd.Parameters.AddWithValue("@cx", chunk.X);
                     cmd.Parameters.AddWithValue("@cz", chunk.Y);
                     cmd.Parameters.AddWithValue("@zoom", zoom);
                     cmd.Parameters.AddWithValue("@tx", tileX);
                     cmd.Parameters.AddWithValue("@tz", tileZ);
-                    
+
                     cmd.ExecuteNonQuery();
                 }
-                
+
                 transaction.Commit();
             }
             catch (Exception ex)
@@ -280,7 +280,7 @@ public class TileGenerationState : IDisposable
             try
             {
                 var tiles = new HashSet<TileCoordinate>();
-                
+
                 using var cmd = _db.CreateCommand();
                 var chunkParams = string.Join(",", chunks.Select((_, i) => $"(@cx{i}, @cz{i})"));
                 cmd.CommandText = $@"
@@ -288,13 +288,13 @@ public class TileGenerationState : IDisposable
                     FROM chunk_tiles
                     WHERE (chunk_x, chunk_z) IN ({chunkParams})
                 ";
-                
+
                 for (var i = 0; i < chunks.Count; i++)
                 {
                     cmd.Parameters.AddWithValue($"@cx{i}", chunks[i].X);
                     cmd.Parameters.AddWithValue($"@cz{i}", chunks[i].Y);
                 }
-                
+
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
                 {
@@ -305,7 +305,7 @@ public class TileGenerationState : IDisposable
                         Z = reader.GetInt32(2)
                     });
                 }
-                
+
                 return tiles.ToList();
             }
             catch (Exception ex)
@@ -328,9 +328,9 @@ public class TileGenerationState : IDisposable
             try
             {
                 var now = _sapi.World.ElapsedMilliseconds;
-                
+
                 using var transaction = _db.BeginTransaction();
-                
+
                 foreach (var tile in tiles)
                 {
                     using var cmd = _db.CreateCommand();
@@ -338,19 +338,19 @@ public class TileGenerationState : IDisposable
                         INSERT OR IGNORE INTO generation_queue (zoom, tile_x, tile_z, priority, queued_at, reason)
                         VALUES (@zoom, @x, @z, @priority, @now, @reason)
                     ";
-                    
+
                     cmd.Parameters.AddWithValue("@zoom", tile.Zoom);
                     cmd.Parameters.AddWithValue("@x", tile.X);
                     cmd.Parameters.AddWithValue("@z", tile.Z);
                     cmd.Parameters.AddWithValue("@priority", priority);
                     cmd.Parameters.AddWithValue("@now", now);
                     cmd.Parameters.AddWithValue("@reason", reason);
-                    
+
                     cmd.ExecuteNonQuery();
                 }
-                
+
                 transaction.Commit();
-                
+
                 _sapi.Logger.Debug($"[VintageAtlas] Queued {tiles.Count} tiles for generation: {reason}");
             }
             catch (Exception ex)
@@ -372,7 +372,7 @@ public class TileGenerationState : IDisposable
             try
             {
                 var tiles = new List<TileCoordinate>();
-                
+
                 using var cmd = _db.CreateCommand();
                 cmd.CommandText = @"
                     SELECT id, zoom, tile_x, tile_z
@@ -380,11 +380,11 @@ public class TileGenerationState : IDisposable
                     ORDER BY priority DESC, queued_at ASC
                     LIMIT @limit
                 ";
-                
+
                 cmd.Parameters.AddWithValue("@limit", batchSize);
-                
+
                 var idsToDelete = new List<long>();
-                
+
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
                 {
@@ -396,9 +396,9 @@ public class TileGenerationState : IDisposable
                         Z = reader.GetInt32(3)
                     });
                 }
-                
+
                 reader.Close();
-                
+
                 // Remove from queue
                 if (idsToDelete.Count > 0)
                 {
@@ -409,7 +409,7 @@ public class TileGenerationState : IDisposable
                     ";
                     deleteCmd.ExecuteNonQuery();
                 }
-                
+
                 return tiles;
             }
             catch (Exception ex)
@@ -442,7 +442,7 @@ public class TileGenerationState : IDisposable
                         (SELECT COUNT(*) FROM generation_queue) as queued
                     FROM tiles
                 ";
-                
+
                 using var reader = cmd.ExecuteReader();
                 if (reader.Read())
                 {
@@ -456,7 +456,7 @@ public class TileGenerationState : IDisposable
                         QueuedTiles = reader.GetInt32(5)
                     };
                 }
-                
+
                 return new TileStatistics();
             }
             catch (Exception ex)
@@ -483,7 +483,7 @@ public class TileGenerationState : IDisposable
                 _db?.Dispose();
                 _db = null;
             }
-            
+
             _sapi.Logger.Notification("[VintageAtlas] Tile state database disposed");
         }
     }
@@ -512,9 +512,9 @@ public class TileCoordinate
 
     public override bool Equals(object? obj)
     {
-        return obj is TileCoordinate other && 
-               Zoom == other.Zoom && 
-               X == other.X && 
+        return obj is TileCoordinate other &&
+               Zoom == other.Zoom &&
+               X == other.X &&
                Z == other.Z;
     }
 }

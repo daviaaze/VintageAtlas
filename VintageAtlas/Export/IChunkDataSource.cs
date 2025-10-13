@@ -15,12 +15,12 @@ public interface IChunkDataSource
     /// Returns null if tile area is not available/explored.
     /// </summary>
     Task<TileChunkData?> GetTileChunksAsync(int zoom, int tileX, int tileZ);
-    
+
     /// <summary>
     /// Get a human-readable name for this data source (for logging)
     /// </summary>
     string SourceName { get; }
-    
+
     /// <summary>
     /// Whether this source requires main thread access (game state)
     /// </summary>

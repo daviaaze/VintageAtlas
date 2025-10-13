@@ -14,12 +14,12 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
     : IDisposable
 {
     private HttpListener? _httpListener;
-    
+
     // Separate semaphores for different request types
     private SemaphoreSlim? _apiRequestSemaphore;     // Limited for API calls
     private SemaphoreSlim? _tileRequestSemaphore;    // Higher limit for tiles
     private SemaphoreSlim? _staticRequestSemaphore;  // Higher limit for static files
-    
+
     private bool _isRunning;
 
     /// <summary>
@@ -32,9 +32,9 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
         try
         {
             var port = config.LiveServerPort ?? sapi.Server.Config.Port + 1;
-            
+
             sapi.Logger.Notification($"[VintageAtlas] Starting production web server on port {port}");
-            
+
             // PRODUCTION OPTIMIZATION: Increase ServicePointManager limits for high-volume requests
             // This affects client connections FROM this server (not incoming connections)
             ServicePointManager.DefaultConnectionLimit = 1000;
@@ -42,16 +42,16 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
             ServicePointManager.Expect100Continue = false; // Disable 100-continue handshake
             ServicePointManager.UseNagleAlgorithm = false; // Disable Nagle's algorithm for lower latency
             sapi.Logger.Notification($"[VintageAtlas] ServicePointManager optimized for high-volume serving");
-            
+
             // Initialize separate throttling semaphores for different request types
             var maxApiRequests = config.MaxConcurrentRequests ?? 50;
             var maxTileRequests = config.MaxConcurrentTileRequests ?? 500;  // Much higher for tiles
             var maxStaticRequests = config.MaxConcurrentStaticRequests ?? 200;
-            
+
             _apiRequestSemaphore = new SemaphoreSlim(maxApiRequests, maxApiRequests);
             _tileRequestSemaphore = new SemaphoreSlim(maxTileRequests, maxTileRequests);
             _staticRequestSemaphore = new SemaphoreSlim(maxStaticRequests, maxStaticRequests);
-            
+
             sapi.Logger.Notification($"[VintageAtlas] Request throttling configured:");
             sapi.Logger.Notification($"  - API requests: {maxApiRequests} concurrent");
             sapi.Logger.Notification($"  - Tile requests: {maxTileRequests} concurrent");
@@ -62,14 +62,14 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
             var uriPrefix = $"http://+:{port}/";
             _httpListener.Prefixes.Add(uriPrefix);
             _httpListener.Start();
-            
+
             _isRunning = true;
-            
+
             sapi.Logger.Notification($"[VintageAtlas] Web server started successfully");
             sapi.Logger.Notification($"  - Web UI: http://localhost:{port}/");
             sapi.Logger.Notification($"  - API Status: http://localhost:{port}/api/{config.LiveServerEndpoint}");
             sapi.Logger.Notification($"  - Accessible from network: http://<server-ip>:{port}/");
-            
+
             _ = Task.Run(ListenAsync);
         }
         catch (Exception ex)
@@ -90,9 +90,9 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
         {
             _isRunning = false;
 
-            if (_httpListener is not { IsListening: true }) 
+            if (_httpListener is not { IsListening: true })
                 return;
-            
+
             sapi.Logger.Notification("[VintageAtlas] Shutting down web server");
             _httpListener.Stop();
             _httpListener.Close();
@@ -105,21 +105,21 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
 
     private async Task ListenAsync()
     {
-        if (_httpListener == null) 
+        if (_httpListener == null)
             return;
-        
+
         while (_httpListener.IsListening && _isRunning)
         {
             try
             {
                 var context = await _httpListener.GetContextAsync();
-                
+
                 // Determine the request type and apply appropriate throttling
                 var rawPath = context.Request.Url?.AbsolutePath ?? "/";
                 var path = NormalizePath(rawPath);
                 var requestType = ClassifyRequest(path);
                 var semaphore = GetSemaphoreForRequestType(requestType);
-                
+
                 // Request throttling with type-specific limits
                 // Wait up to 100ms for a slot (better than immediate rejection)
                 var timeout = requestType == RequestType.Tile ? 50 : 100; // Shorter for tiles
@@ -180,10 +180,10 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
     {
         if (path.StartsWith("/api/"))
             return RequestType.Api;
-        
+
         if (path.StartsWith("/tiles/") || path.Contains(".png"))
             return RequestType.Tile;
-        
+
         return RequestType.Static;
     }
 
@@ -221,7 +221,7 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
             // Add timeout to prevent requests from hanging indefinitely
             using var cts = new CancellationTokenSource();
             cts.CancelAfter(TimeSpan.FromSeconds(30)); // 30 second timeout
-            
+
             try
             {
                 // Route the request with timeout
@@ -266,21 +266,21 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
         {
             context.Response.StatusCode = 503;
             context.Response.Headers.Add("Retry-After", "2"); // Shorter retry for tiles
-            
+
             if (config.EnableCors)
             {
                 context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
             }
-            
-            var errorMsg = requestType == RequestType.Tile 
+
+            var errorMsg = requestType == RequestType.Tile
                 ? "{\"error\":\"Tile server at capacity\"}"u8.ToArray()
                 : "{\"error\":\"Server too busy, please retry later\"}"u8.ToArray();
-                
+
             context.Response.ContentType = "application/json";
             context.Response.ContentLength64 = errorMsg.Length;
             await context.Response.OutputStream.WriteAsync(errorMsg);
             context.Response.Close();
-            
+
             sapi.Logger.Debug($"[VintageAtlas] {requestType} request rejected - server at capacity");
         }
         catch
@@ -297,9 +297,9 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
 
     private void Dispose(bool disposing)
     {
-        if (!disposing) 
+        if (!disposing)
             return;
-        
+
         Stop();
         _apiRequestSemaphore?.Dispose();
         _tileRequestSemaphore?.Dispose();

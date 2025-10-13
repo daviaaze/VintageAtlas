@@ -22,14 +22,14 @@ public class RequestRouter(
     public async Task RouteRequest(HttpListenerContext context)
     {
         var path = context.Request.Url?.AbsolutePath ?? "/";
-        
+
         // Route tile requests (with caching)
         if (TileController.IsTilePath(path))
         {
             await tileController.ServeTile(context, path);
             return;
         }
-        
+
         // Route API requests
         if (path.StartsWith("/api/"))
         {
@@ -210,7 +210,7 @@ public class RequestRouter(
         {
             context.Response.StatusCode = statusCode;
             context.Response.ContentType = "application/json";
-            
+
             var errorBytes = Encoding.UTF8.GetBytes($"{{\"error\":\"{message}\"}}");
             context.Response.ContentLength64 = errorBytes.Length;
             await context.Response.OutputStream.WriteAsync(errorBytes);

@@ -40,6 +40,7 @@ import {
   getViewResolutions, 
   getViewCenter, 
   getViewZoom,
+  getViewExtent,
   formatCoords
 } from '@/utils/olMapConfig';
 
@@ -97,6 +98,9 @@ onMounted(async () => {
       view: new View({
         center: getViewCenter(),
         constrainResolution: true, // Snap to zoom levels - same as WebCartographer
+        extent: getViewExtent(),    // Constrain panning/requests to world extent
+        constrainOnlyCenter: false,
+        multiWorld: false,
         zoom: getViewZoom(), // WebCartographer default zoom level
         resolutions: [256, 128, 64, 32, 16, 8, 4, 2, 1, 0.5, 0.25, 0.125], // WebCartographer-style fixed resolutions
       })

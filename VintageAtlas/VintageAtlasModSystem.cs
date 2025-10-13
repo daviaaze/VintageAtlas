@@ -15,14 +15,14 @@ public class VintageAtlasModSystem : ModSystem
 {
     private ICoreServerAPI? _sapi;
     private ModConfig? _config;
-    
+
     // Core components
     private CoreComponents? _coreComponents;
-    
+
     // Web components
     private ServerManager? _serverManager;
     private long _lastMapExport;
-    
+
 
     public override bool ShouldLoad(EnumAppSide forSide)
     {
@@ -33,32 +33,32 @@ public class VintageAtlasModSystem : ModSystem
     {
         _sapi = api;
         _config = ConfigValidator.LoadAndValidateConfig(_sapi);
-        
+
         // Initialize core components
         _coreComponents = ComponentInitializer.Initialize(_sapi, _config);
-        
+
         // Register commands
         ExportCommand.Register(_sapi, _coreComponents.MapExporter);
-        
+
         // Setup export on start if configured
         if (_config.ExportOnStart)
         {
             _sapi.Event.ServerRunPhase(EnumServerRunPhase.RunGame, () => _coreComponents.MapExporter.StartExport());
         }
-        
+
         // Setup live server if enabled
         if (_config.EnableLiveServer)
         {
             _sapi.Event.ServerRunPhase(EnumServerRunPhase.GameReady, SetupLiveServer);
         }
-        
+
         _sapi.Logger.Notification("[VintageAtlas] Initialization complete");
     }
 
     private void SetupLiveServer()
     {
         if (_sapi == null || _config == null || _coreComponents == null) return;
-        
+
         try
         {
             // Initialize server manager with all dependencies
@@ -70,10 +70,10 @@ public class VintageAtlasModSystem : ModSystem
                 _coreComponents.Storage,
                 _coreComponents.MapConfigController
             );
-            
+
             // Let the ServerManager handle all the setup
             _serverManager.Initialize();
-            
+
             // Register game tick for auto-export (separate from server manager responsibilities)
             _sapi.Event.RegisterGameTickListener(OnGameTick, 1000);
         }
@@ -87,14 +87,14 @@ public class VintageAtlasModSystem : ModSystem
     private void OnGameTick(float dt)
     {
         if (_config == null || _sapi == null || _coreComponents == null) return;
-        
+
         // Auto-export full map data if enabled and the interval has passed
         if (!_config.AutoExportMap || !_config.EnableLiveServer) return;
-        
+
         var currentTime = _sapi.World.ElapsedMilliseconds;
-        
+
         if (currentTime - _lastMapExport < _config.MapExportIntervalMs) return;
-        
+
         _lastMapExport = currentTime;
         _coreComponents.MapExporter.StartExport();
     }
@@ -103,10 +103,10 @@ public class VintageAtlasModSystem : ModSystem
     {
         // Dispose server manager (handles web server, historical tracker, and other server components)
         _serverManager?.Dispose();
-        
+
         // Dispose core components
         _coreComponents?.Storage.Dispose();
-        
+
         base.Dispose();
     }
 }

@@ -16,10 +16,10 @@ namespace VintageAtlas.Web.Server;
 public class StaticFileServer(ICoreServerAPI sapi, ModConfig config)
 {
     private readonly string _basePath = config.BasePath.EndsWith('/') ? config.BasePath : $"{config.BasePath}/";
-    
+
     // ETag cache for static files (file path -> ETag)
     private readonly ConcurrentDictionary<string, string> _etagCache = new();
-    
+
     private static readonly Dictionary<string, string> MimeTypes = new()
     {
         { ".html", "text/html" },
@@ -44,18 +44,18 @@ public class StaticFileServer(ICoreServerAPI sapi, ModConfig config)
     private string? FindWebRoot()
     {
         if (config == null || sapi == null) return null;
-        
+
         // Serve HTML directly from the mod's bundled html directory
         // No need to copy - static files are served from the mod
         var modHtml = Path.Combine(Path.GetDirectoryName(GetType().Assembly.Location) ?? "", "html");
-        
+
         if (Directory.Exists(modHtml) && File.Exists(Path.Combine(modHtml, "index.html")))
         {
             sapi.Logger.Notification($"[VintageAtlas] Serving static files from mod directory: {modHtml}");
             sapi.Logger.Notification($"[VintageAtlas] Generated data will be stored in: {config.OutputDirectory}");
             return modHtml;
         }
-        
+
         sapi.Logger.Error($"[VintageAtlas] Could not find HTML files in mod directory: {modHtml}");
         sapi.Logger.Error("[VintageAtlas] Please ensure the mod was built correctly with embedded HTML files.");
         return null;
@@ -89,7 +89,7 @@ public class StaticFileServer(ICoreServerAPI sapi, ModConfig config)
             // Get or compute ETag for this file
             var fileInfo = new FileInfo(filePath);
             var etag = GetOrComputeETag(filePath, fileInfo);
-            
+
             // Check the If-None-Match header for conditional requests
             var ifNoneMatch = context.Request.Headers["If-None-Match"];
             if (!string.IsNullOrEmpty(ifNoneMatch) && ifNoneMatch == etag)
@@ -108,7 +108,7 @@ public class StaticFileServer(ICoreServerAPI sapi, ModConfig config)
                 buffer = new byte[fs.Length];
                 await fs.ReadExactlyAsync(buffer, 0, buffer.Length);
             }
-            
+
             // Inject a base path into HTML files for nginx sub-path support
             if (extension == ".html")
             {
@@ -144,7 +144,7 @@ public class StaticFileServer(ICoreServerAPI sapi, ModConfig config)
             }
 
             await context.Response.OutputStream.WriteAsync(buffer);
-            
+
             return true;
         }
         catch (Exception ex)
@@ -153,7 +153,7 @@ public class StaticFileServer(ICoreServerAPI sapi, ModConfig config)
             return false;
         }
     }
-    
+
     /// <summary>
     /// Synchronous wrapper for backward compatibility
     /// </summary>
@@ -161,7 +161,7 @@ public class StaticFileServer(ICoreServerAPI sapi, ModConfig config)
     {
         return TryServeFileAsync(context, requestPath).GetAwaiter().GetResult();
     }
-    
+
     /// <summary>
     /// Get or compute ETag for a file (based on last modified time and size)
     /// </summary>
@@ -169,13 +169,13 @@ public class StaticFileServer(ICoreServerAPI sapi, ModConfig config)
     {
         var cacheKey = filePath;
         var expectedETag = $"\"{fileInfo.LastWriteTimeUtc.Ticks:X}-{fileInfo.Length:X}\"";
-        
+
         // Check cache
         if (_etagCache.TryGetValue(cacheKey, out var cachedETag) && cachedETag == expectedETag)
         {
             return cachedETag;
         }
-        
+
         // Update cache
         _etagCache[cacheKey] = expectedETag;
         return expectedETag;

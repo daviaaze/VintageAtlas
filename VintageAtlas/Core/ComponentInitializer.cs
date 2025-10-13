@@ -18,28 +18,28 @@ public static class ComponentInitializer
     public static CoreComponents Initialize(ICoreServerAPI sapi, ModConfig config)
     {
         sapi.Logger.Notification("[VintageAtlas] Initializing core components...");
-        
+
         // Initialize tile storage (shared by all tile generators)
         var dbPath = Path.Combine(config.OutputDirectory, "data", "tiles.mbtiles");
         var storage = new MbTilesStorage(dbPath);
         sapi.Logger.Debug($"[VintageAtlas] Tile storage initialized: {dbPath}");
-        
+
         // Initialize the block color cache (needed for tile rendering)
         var colorCache = new BlockColorCache(sapi, config);
         colorCache.Initialize();
         sapi.Logger.Debug("[VintageAtlas] Block color cache initialized");
-        
+
         // Initialize unified tile generator for full exports
         var unifiedGenerator = new UnifiedTileGenerator(sapi, config, colorCache, storage);
         sapi.Logger.Debug("[VintageAtlas] Unified tile generator initialized");
-        
+
         // Initialize map config controller (needed by exporter for cache invalidation)
         var mapConfigController = new MapConfigController(sapi);
         sapi.Logger.Debug("[VintageAtlas] Map config controller initialized");
-        
+
         // Initialize map exporter with unified generator and map config controller
         var mapExporter = new MapExporter(sapi, config, unifiedGenerator, mapConfigController);
-        
+
         return new CoreComponents(
             storage,
             colorCache,

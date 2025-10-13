@@ -2,7 +2,7 @@ using Newtonsoft.Json;
 
 namespace VintageAtlas.GeoJson.Translocator;
 
-public record TranslocatorProperties(int Depth1, int Depth2, string Label="", string Tag="")
+public record TranslocatorProperties(int Depth1, int Depth2, string Label = "", string Tag = "")
 {
     [JsonProperty("depth1")]
     public int Depth1 { get; set; } = Depth1;

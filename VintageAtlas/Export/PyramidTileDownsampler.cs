@@ -49,17 +49,9 @@ public class PyramidTileDownsampler(
 
             var sourceTiles = await Task.WhenAll(sourceTileTasks);
 
-            // Strict requirement: all 4 source tiles must be present
-            var missingCount = sourceTiles.Count(t => t == null);
-            if (missingCount > 0)
-            {
-                sapi.Logger.Warning($"[VintageAtlas] Could not get all source tiles for {zoom}/{tileX}_{tileZ} (have {4 - missingCount}/4)");
-                return null;
-            }
-
             try
             {
-                // Downsample with all 4 tiles available
+                // Compose available source tiles (missing tiles leave transparent quadrants)
                 var downsampled = DownsampleTiles(sourceTiles);
                 sapi.Logger.VerboseDebug($"[VintageAtlas] Successfully downsampled tile {zoom}/{tileX}_{tileZ}");
                 return downsampled;
@@ -99,7 +91,7 @@ public class PyramidTileDownsampler(
         // Create output bitmap (starts transparent)
         using var outputBitmap = new SKBitmap(tileSize, tileSize);
         using var canvas = new SKCanvas(outputBitmap);
-        
+
         // Clear to transparent (matches old Extractor.cs: outputImage.Erase(SKColor.Empty))
         canvas.Clear(SKColor.Empty);
 
@@ -117,11 +109,11 @@ public class PyramidTileDownsampler(
                 sapi.Logger.VerboseDebug($"[VintageAtlas] Source tile {i} is null, leaving area transparent");
                 continue;
             }
-            
+
             try
             {
                 using var sourceBitmap = SKBitmap.Decode(sourceTiles[i]!);
-                
+
                 if (sourceBitmap == null)
                 {
                     sapi.Logger.Warning($"[VintageAtlas] Failed to decode source tile {i} for downsampling");

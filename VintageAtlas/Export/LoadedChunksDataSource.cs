@@ -24,7 +24,7 @@ public class LoadedChunksDataSource(ICoreServerAPI sapi, ModConfig config) : ICh
     {
         // Always queue to the main thread for safety
         var tcs = new TaskCompletionSource<TileChunkData?>();
-        
+
         sapi.Event.EnqueueMainThreadTask(() =>
         {
             try
@@ -38,7 +38,7 @@ public class LoadedChunksDataSource(ICoreServerAPI sapi, ModConfig config) : ICh
                 tcs.SetException(ex);
             }
         }, $"extract-tile-unified-{zoom}-{tileX}-{tileZ}");
-        
+
         return await tcs.Task;
     }
 }

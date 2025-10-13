@@ -17,7 +17,7 @@ public abstract class ChunkChangeTracker : IDisposable
     private readonly ConcurrentDictionary<Vec2i, long> _modifiedChunks;
     private readonly ConcurrentDictionary<Vec2i, HashSet<ChunkChangeType>> _chunkChangeTypes;
     private readonly object _lock = new();
-    
+
     // Track GeoJSON-related changes separately
     private readonly ConcurrentDictionary<string, long> _structureChanges;
     private bool _geoJsonInvalidated;
@@ -28,9 +28,9 @@ public abstract class ChunkChangeTracker : IDisposable
         _modifiedChunks = new ConcurrentDictionary<Vec2i, long>();
         _chunkChangeTypes = new ConcurrentDictionary<Vec2i, HashSet<ChunkChangeType>>();
         _structureChanges = new ConcurrentDictionary<string, long>();
-        
+
         RegisterEventHandlers();
-        
+
         _sapi.Logger.Notification("[VintageAtlas] Chunk change tracker initialized");
     }
 
@@ -39,10 +39,10 @@ public abstract class ChunkChangeTracker : IDisposable
         // Use BreakBlock and DidPlaceBlock for tracking block changes
         _sapi.Event.BreakBlock += OnBlockBreaking;
         _sapi.Event.DidPlaceBlock += OnBlockPlaced;
-        
+
         // Track chunk generation
         _sapi.Event.ChunkColumnLoaded += OnChunkColumnLoaded;
-        
+
         _sapi.Logger.Debug("[VintageAtlas] Registered chunk change event handlers");
     }
 
@@ -50,7 +50,7 @@ public abstract class ChunkChangeTracker : IDisposable
     private void OnBlockPlaced(IServerPlayer byPlayer, int oldblockId, BlockSelection blockSel, ItemStack withItemStack)
     {
         TrackBlockChange(blockSel.Position, ChunkChangeType.BlockModified);
-        
+
         // Check if it's a structure block (sign, signpost, etc.)
         var block = _sapi.World.BlockAccessor.GetBlock(blockSel.Position);
         if (IsStructureBlock(block))
@@ -64,7 +64,7 @@ public abstract class ChunkChangeTracker : IDisposable
     {
         // Called when a block is about to be broken (more stable than DidBreakBlock)
         TrackBlockChange(blockSel.Position, ChunkChangeType.BlockModified);
-        
+
         // Check if a structure block was removed
         var block = _sapi.World.BlockAccessor.GetBlock(blockSel.Position);
         if (IsStructureBlock(block))
@@ -94,9 +94,9 @@ public abstract class ChunkChangeTracker : IDisposable
     private void TrackChunkChange(Vec2i chunkCoord, ChunkChangeType changeType)
     {
         var now = _sapi.World.ElapsedMilliseconds;
-        
+
         _modifiedChunks.AddOrUpdate(chunkCoord, now, (_, _) => now);
-        
+
         // Track the type of change
         _chunkChangeTypes.AddOrUpdate(
             chunkCoord,
@@ -114,9 +114,9 @@ public abstract class ChunkChangeTracker : IDisposable
     private static bool IsStructureBlock(Block block)
     {
         if (block.Code == null) return false;
-        
+
         var path = block.Code.Path;
-        return path.Contains("sign") || 
+        return path.Contains("sign") ||
                path.Contains("signpost") ||
                path.Contains("translocator") ||
                path.Contains("teleporter");
@@ -213,11 +213,11 @@ public abstract class ChunkChangeTracker : IDisposable
             _sapi.Event.BreakBlock -= OnBlockBreaking;
             _sapi.Event.DidPlaceBlock -= OnBlockPlaced;
             _sapi.Event.ChunkColumnLoaded -= OnChunkColumnLoaded;
-            
+
             _modifiedChunks.Clear();
             _chunkChangeTypes.Clear();
             _structureChanges.Clear();
-            
+
             _sapi.Logger.Notification("[VintageAtlas] Chunk change tracker disposed");
         }
     }

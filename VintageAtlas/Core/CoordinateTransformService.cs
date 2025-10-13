@@ -79,25 +79,25 @@ public class CoordinateTransformService
     public (int storageTileX, int storageTileZ) GridToStorage(int zoom, int gridX, int gridY)
     {
         var mapConfig = _mapConfigController.GetCurrentConfig();
-        
+
         if (mapConfig == null)
         {
             // Fallback: assume grid coordinates ARE storage coordinates (legacy behavior)
             // This shouldn't happen in production, but prevents crashes during initialization
             return (gridX, gridY);
         }
-        
+
         // Calculate blocks per tile at this zoom level
         // Lower zoom = more blocks per tile (zoomed out)
         // Higher zoom = fewer blocks per tile (zoomed in)
         var resolution = mapConfig.TileResolutions[zoom];
         var blocksPerTile = _config.TileSize * resolution;
-        
+
         // Calculate the origin tile numbers (where OpenLayers grid 0,0 maps to)
         // WorldOrigin is in world block coordinates, we convert to tile numbers
         var originTileX = (int)Math.Floor(mapConfig.WorldOrigin[0] / blocksPerTile);
         var originTileY = (int)Math.Floor(mapConfig.WorldOrigin[1] / blocksPerTile);
-        
+
         // Transform grid coordinates to storage coordinates
         // OpenLayers uses bottom-left origin by default:
         // - Grid (0,0) = origin tile
@@ -105,7 +105,7 @@ public class CoordinateTransformService
         // - Positive Y = tiles south of origin (increasing Z in game coords)
         var storageTileX = originTileX + gridX;
         var storageTileZ = originTileY + gridY;
-        
+
         return (storageTileX, storageTileZ);
     }
 
@@ -116,21 +116,21 @@ public class CoordinateTransformService
     public (int gridX, int gridY) StorageToGrid(int zoom, int storageTileX, int storageTileZ)
     {
         var mapConfig = _mapConfigController.GetCurrentConfig();
-        
+
         if (mapConfig == null)
         {
             return (storageTileX, storageTileZ);
         }
-        
+
         var resolution = mapConfig.TileResolutions[zoom];
         var blocksPerTile = _config.TileSize * resolution;
-        
+
         var originTileX = (int)Math.Floor(mapConfig.WorldOrigin[0] / blocksPerTile);
         var originTileY = (int)Math.Floor(mapConfig.WorldOrigin[1] / blocksPerTile);
-        
+
         var gridX = storageTileX - originTileX;
         var gridY = storageTileZ - originTileY;
-        
+
         return (gridX, gridY);
     }
 
@@ -144,18 +144,18 @@ public class CoordinateTransformService
     public (int tileX, int tileZ) BlockToTile(int blockX, int blockZ, int zoom)
     {
         var mapConfig = _mapConfigController.GetCurrentConfig();
-        
+
         if (mapConfig == null)
         {
             return (0, 0);
         }
-        
+
         var resolution = mapConfig.TileResolutions[zoom];
         var blocksPerTile = _config.TileSize * resolution;
-        
+
         var tileX = (int)Math.Floor(blockX / blocksPerTile);
         var tileZ = (int)Math.Floor(blockZ / blocksPerTile);
-        
+
         return (tileX, tileZ);
     }
 
@@ -165,18 +165,18 @@ public class CoordinateTransformService
     public (int blockX, int blockZ) TileToBlock(int tileX, int tileZ, int zoom)
     {
         var mapConfig = _mapConfigController.GetCurrentConfig();
-        
+
         if (mapConfig == null)
         {
             return (0, 0);
         }
-        
+
         var resolution = mapConfig.TileResolutions[zoom];
         var blocksPerTile = _config.TileSize * resolution;
-        
+
         var blockX = (int)(tileX * blocksPerTile);
         var blockZ = (int)(tileZ * blocksPerTile);
-        
+
         return (blockX, blockZ);
     }
 
@@ -190,15 +190,15 @@ public class CoordinateTransformService
     public bool IsTileInBounds(int tileX, int tileZ, int zoom)
     {
         var mapConfig = _mapConfigController.GetCurrentConfig();
-        
+
         if (mapConfig == null)
         {
             return true; // Can't validate without config
         }
-        
+
         // Convert tile to world blocks
         var (blockX, blockZ) = TileToBlock(tileX, tileZ, zoom);
-        
+
         // Check against world extent [minX, minZ, maxX, maxZ]
         return blockX >= mapConfig.WorldExtent[0] &&
                blockZ >= mapConfig.WorldExtent[1] &&
@@ -250,7 +250,7 @@ public class CoordinateTransformService
     {
         var (storageTileX, storageTileZ) = GridToStorage(zoom, gridX, gridY);
         var (blockX, blockZ) = GridToWorldBlocks(zoom, gridX, gridY);
-        
+
         return $"Zoom {zoom}: Grid({gridX},{gridY}) → Storage({storageTileX},{storageTileZ}) → Blocks({blockX},{blockZ})";
     }
 

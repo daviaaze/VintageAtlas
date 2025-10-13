@@ -22,22 +22,24 @@ export async function initOLConfig() {
 export function createTileGrid(): TileGrid {
   if (!serverConfig) throw new Error('Config not initialized');
   
-  const extent = serverConfig.worldExtent;
-  const origin = serverConfig.worldOrigin;
+  const extent = serverConfig.worldExtent as [number, number, number, number];
+  // OpenLayers uses Y up; our map uses Z down. Flip Z to Y for OL coords.
+  const olExtent: [number, number, number, number] = [extent[0], -extent[3], extent[2], -extent[1]];
+  const olOrigin: [number, number] = [extent[0], -extent[1]];
   const resolutions = serverConfig.tileResolutions;
   const tileSize = serverConfig.tileSize;
 
   console.log('[createTileGrid] Creating WebCartographer-style tile grid with:', {
-    extent,
-    origin,
+    extent: olExtent,
+    origin: olOrigin,
     resolutions,
     tileSize,
   });
-  
-  // WebCartographer-style tile grid: fixed extent and origin
+
+  // WebCartographer-style tile grid: fixed extent and origin (in OL coords)
   const grid = new TileGrid({
-    extent,
-    origin,     // [-512000, 512000]  
+    extent: olExtent,
+    origin: olOrigin,     // top-left of extent in OL coords
     resolutions, // [512, 256, 128, 64, 32, 16, 8, 4, 2, 1]
     tileSize: [tileSize, tileSize] // [256, 256]
   });
@@ -79,6 +81,17 @@ export function getViewZoom(): number {
 }
 
 /**
+ * Get the view extent in OpenLayers coordinates
+ * Backend provides extent as [minX, minZ, maxX, maxZ]
+ * OL internal Y axis is inverted vs game Z, so flip Z to Y: [minX, -maxZ, maxX, -minZ]
+ */
+export function getViewExtent(): [number, number, number, number] {
+  if (!serverConfig) throw new Error('Config not initialized');
+  const e = serverConfig.worldExtent as [number, number, number, number];
+  return [e[0], -e[3], e[2], -e[1]];
+}
+
+/**
  * Generate tile URL from OpenLayers grid coordinates.
  * 
  * CLEAN ARCHITECTURE: Backend handles all coordinate transformations!
@@ -88,7 +101,6 @@ export function getViewZoom(): number {
  * - No frontend coordinate logic needed!
  */
 export function getTileUrl(z: number, x: number, y: number): string {
-  // Simple passthrough: backend does the heavy lifting
   return `/tiles/${z}/${x}_${y}.png`;
 }
 

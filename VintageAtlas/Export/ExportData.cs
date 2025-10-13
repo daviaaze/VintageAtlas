@@ -15,12 +15,12 @@ public class ExportData
     /// </summary>
     [JsonProperty("Blocks")]
     public Dictionary<string, int[]> BlocksRaw { get; set; } = new();
-    
+
     /// <summary>
     /// Get blocks as uint[] by converting signed integers to unsigned.
     /// </summary>
     [JsonIgnore]
-    public Dictionary<string, uint[]> Blocks => 
+    public Dictionary<string, uint[]> Blocks =>
         BlocksRaw.ToDictionary(
             kvp => kvp.Key,
             kvp => kvp.Value.Select(i => unchecked((uint)i)).ToArray()

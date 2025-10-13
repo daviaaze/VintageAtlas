@@ -81,7 +81,7 @@ public class BlockColorCache
             paletteDistribution.TryAdd(colorIndex, 0);
             paletteDistribution[colorIndex]++;
         }
-        
+
         _sapi.Logger.Notification($"[VintageAtlas] Block color cache initialized: " +
             $"{variationCount} blocks with color variations, " +
             $"{lakeCount} water/lake blocks identified");
@@ -152,7 +152,7 @@ public class BlockColorCache
         }
 
         _sapi.Logger.Notification($"[VintageAtlas] Loaded {_colorPalette.Length} colors into palette (Mode 4 will use these)");
-        
+
         // Log the first few colors for debugging
         for (var i = 0; i < Math.Min(12, _colorPalette.Length); i++)
         {
@@ -207,14 +207,13 @@ public class BlockColorCache
                 {
                     colorCode = MapColors.GetDefaultMapColorCode(block.BlockMaterial);
                 }
-                
+
                 var colorIndex = (byte)MapColors.ColorsByCode.IndexOfKey(colorCode);
                 _blockToColorIndex[block.Id] = colorIndex;
 
-                // Identify water/lake blocks
+                // Identify water/lake blocks (Extractor parity: liquids and ice excluding glacier ice)
                 _blockIsLake[block.Id] = block.BlockMaterial == EnumBlockMaterial.Liquid ||
-                                          block.Code.Path.Contains("water") ||
-                                          block.Code.Path.Contains("lake");
+                                          (block.BlockMaterial == EnumBlockMaterial.Ice && block.Code.Path != "glacierice");
 
                 processedCount++;
             }
@@ -258,9 +257,9 @@ public class BlockColorCache
                     {
                         if (block == null || block.Id == 0) continue;
 
-                        if (!regex.IsMatch(block.Code.ToString())) 
+                        if (!regex.IsMatch(block.Code.ToString()))
                             continue;
-                        
+
                         _blockColorVariations[block.Id] = colors;
                         appliedCount++;
                     }
@@ -269,9 +268,9 @@ public class BlockColorCache
                 {
                     // Exact match
                     var block = _sapi.World.GetBlock(new AssetLocation(blockCode));
-                    if (block == null) 
+                    if (block == null)
                         continue;
-                    
+
                     _blockColorVariations[block.Id] = colors;
                     appliedCount++;
                 }
@@ -300,9 +299,9 @@ public class BlockColorCache
         var baseColor = _colorPalette[colorIndex];
 
         // If this is a water edge, use darker water-edge color
-        if (isWaterEdge && !IsLake(blockId))
+        if (isWaterEdge)
         {
-            return MapColors.ColorsByCode["water-edge"];
+            return MapColors.ColorsByCode["wateredge"];
         }
 
         return baseColor;
@@ -320,24 +319,24 @@ public class BlockColorCache
         {
             // Fallback to palette-based color
             var fallback = GetBaseColor(blockId);
-            
+
             // DEBUG: Log fallback for common surface blocks
             if (blockId is < 10 or 6961 or 3949 or 2617)
             {
                 _sapi.Logger.Warning($"[VintageAtlas] Block {blockId} has NO variations, using palette fallback: 0x{fallback:X8}");
             }
-            
+
             return fallback;
         }
 
         var selectedColor = variations[random.Next(variations.Count)];
-        
+
         // DEBUG: Log successful variation for common surface blocks
         if (blockId is < 10 or 6961 or 3949 or 2617)
         {
             // _sapi.Logger.Notification($"[VintageAtlas] Block {blockId} using detailed color variation: 0x{selectedColor:X8} ({variations.Count} available)");
         }
-        
+
         return selectedColor;
     }
 }
