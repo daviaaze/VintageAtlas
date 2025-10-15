@@ -29,15 +29,12 @@ import { MousePosition } from 'ol/control';
 import { useMapStore } from '@/stores/map';
 
 // Live data layer components
-import PlayerLayer from '@/components/live/PlayerLayer.vue';
-import AnimalLayer from '@/components/live/AnimalLayer.vue';
 import ToolsBar from '@/components/map/ToolsBar.vue';
 import { getDeepLinkOverrides, startDeepLinkSync } from '@/utils/deeplink';
 
 // Clean OL utilities
 import { 
   initOLConfig,
-  getViewResolutions, 
   getViewCenter, 
   getViewZoom,
   getViewExtent,

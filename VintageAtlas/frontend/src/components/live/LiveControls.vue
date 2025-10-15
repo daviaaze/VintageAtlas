@@ -9,18 +9,6 @@
       <span v-if="!isCollapsed">✕</span>
       <span v-else>☰ Live</span>
     </button>
-
-    <!-- Status indicator (always visible) -->
-    <div 
-      class="status-indicator" 
-      :class="liveStore.connectionStatus" 
-      :title="liveStore.connectionMessage || statusMessages[liveStore.connectionStatus]"
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-    >
-      <span class="status-icon">{{ statusIcons[liveStore.connectionStatus] }}</span>
-    </div>
     
     <!-- Collapsible controls -->
     <div v-if="!isCollapsed" class="controls-content">
@@ -149,11 +137,9 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, type Ref } from 'vue';
-import { useLiveStore } from '@/stores/live';
 import { useMapStore } from '@/stores/map';
 
 // Store
-const liveStore = useLiveStore();
 const mapStore = useMapStore();
 
 // State
@@ -209,41 +195,6 @@ const statusMessages: Record<string, string> = {
   loading: 'Loading data...'
 };
 
-// Watch for changes and update localStorage
-watch(showPlayers, (value) => {
-  setBool(SHOW_PLAYERS_KEY, value);
-  mapStore.setLayerVisibility('players', value);
-});
-
-watch(showPlayerStats, (value) => {
-  setBool(SHOW_PLAYER_STATS_KEY, value);
-  // Trigger update of player styles
-  mapStore.refreshLayers();
-});
-
-watch(showAnimals, (value) => {
-  setBool(SHOW_ANIMALS_KEY, value);
-  mapStore.setLayerVisibility('animals', value);
-});
-
-watch(showAnimalHP, (value) => {
-  setBool(SHOW_ANIMAL_HP_KEY, value);
-  // Trigger update of animal styles
-  mapStore.refreshLayers();
-});
-
-watch(showAnimalEnv, (value) => {
-  setBool(SHOW_ANIMAL_ENV_KEY, value);
-  // Trigger update of animal styles
-  mapStore.refreshLayers();
-});
-
-watch(showCoords, (value) => {
-  setBool(SHOW_COORDS_KEY, value);
-  // Trigger update of both player and animal styles
-  mapStore.refreshLayers();
-});
-
 // Handle window resize for mobile detection
 function handleResize() {
   isMobile.value = window.innerWidth < 768;
@@ -257,12 +208,6 @@ function handleKeyDown(e: KeyboardEvent) {
   // Keyboard shortcuts (Alt+Key to avoid conflicts)
   if (e.altKey) {
     const shortcuts: Record<string, { ref: Ref<boolean> | null, name: string }> = {
-      'p': { ref: showPlayers, name: 'Players' },
-      's': { ref: showPlayerStats, name: 'Player Stats' },
-      'a': { ref: showAnimals, name: 'Animals' },
-      'h': { ref: showAnimalHP, name: 'Animal HP' },
-      'e': { ref: showAnimalEnv, name: 'Animal Environment' },
-      'c': { ref: showCoords, name: 'Coordinates' },
       'r': { ref: null, name: 'Reset View' }
     };
     

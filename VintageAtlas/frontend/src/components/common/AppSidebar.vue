@@ -1,7 +1,7 @@
 <template>
   <aside class="app-sidebar">
     <nav class="sidebar-nav">
-      <div class="nav-section">
+      <!-- <div class="nav-section">
         <h3 class="nav-title">NAVIGATION</h3>
         <router-link to="/" class="nav-item">
           <span class="nav-icon">
@@ -27,8 +27,7 @@
           </span>
           <span class="nav-label">Admin Dashboard</span>
         </router-link>
-      </div>
-      
+      </div> -->
       <div class="nav-section">
         <h3 class="nav-title">MAP LAYERS</h3>
         <div 
@@ -45,133 +44,6 @@
             <span class="toggle-slider"></span>
           </label>
         </div>
-        <div 
-          class="nav-item" 
-          :class="{ 'active': mapStore.layerVisibility.traders }"
-          @click="toggleLayer('traders')"
-        >
-          <span class="nav-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
-          </span>
-          <span class="nav-label">Traders</span>
-          <label class="toggle-switch">
-            <input type="checkbox" :checked="mapStore.layerVisibility.traders" @change="toggleLayer('traders')">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="sub-layer-list" v-if="mapStore.layerVisibility.traders">
-          <label v-for="(visible, key) in mapStore.subLayerVisibility.traders" :key="'traders-'+key" class="sub-layer-item" @click.stop>
-            <input type="checkbox" :checked="visible" @change="mapStore.toggleSubLayer('traders', key)" />
-            <span class="sub-layer-label">{{ key }}</span>
-          </label>
-        </div>
-        <div 
-          class="nav-item" 
-          :class="{ 'active': mapStore.layerVisibility.translocators }"
-          @click="toggleLayer('translocators')"
-        >
-          <span class="nav-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-          </span>
-          <span class="nav-label">Translocators</span>
-          <label class="toggle-switch">
-            <input type="checkbox" :checked="mapStore.layerVisibility.translocators" @change="toggleLayer('translocators')">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="sub-layer-list" v-if="mapStore.layerVisibility.translocators">
-          <label v-for="(visible, key) in mapStore.subLayerVisibility.translocators" :key="'translocators-'+key" class="sub-layer-item" @click.stop>
-            <input type="checkbox" :checked="visible" @change="mapStore.toggleSubLayer('translocators', key)" />
-            <span class="sub-layer-label">{{ key }}</span>
-          </label>
-        </div>
-        <div 
-          class="nav-item" 
-          :class="{ 'active': mapStore.layerVisibility.landmarks }"
-          @click="toggleLayer('landmarks')"
-        >
-          <span class="nav-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-          </span>
-          <span class="nav-label">Landmarks</span>
-          <label class="toggle-switch">
-            <input type="checkbox" :checked="mapStore.layerVisibility.landmarks" @change="toggleLayer('landmarks')">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="sub-layer-list" v-if="mapStore.layerVisibility.landmarks">
-          <label v-for="(visible, key) in mapStore.subLayerVisibility.landmarks" :key="'landmarks-'+key" class="sub-layer-item" @click.stop>
-            <input type="checkbox" :checked="visible" @change="mapStore.toggleSubLayer('landmarks', key)" />
-            <span class="sub-layer-label">{{ key }}</span>
-          </label>
-        </div>
-        <div 
-          class="nav-item" 
-          :class="{ 'active': mapStore.layerVisibility.signs }"
-          @click="toggleLayer('signs')"
-        >
-          <span class="nav-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"></path><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"></path><line x1="6" y1="1" x2="6" y2="4"></line><line x1="10" y1="1" x2="10" y2="4"></line><line x1="14" y1="1" x2="14" y2="4"></line></svg>
-          </span>
-          <span class="nav-label">Signs</span>
-          <label class="toggle-switch">
-            <input type="checkbox" :checked="mapStore.layerVisibility.signs" @change="toggleLayer('signs')">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div 
-          class="nav-item" 
-          :class="{ 'active': mapStore.layerVisibility.chunkVersions }"
-          @click="toggleLayer('chunkVersions')"
-        >
-          <span class="nav-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line></svg>
-          </span>
-          <span class="nav-label">Chunk Versions</span>
-          <label class="toggle-switch">
-            <input type="checkbox" :checked="mapStore.layerVisibility.chunkVersions" @change="toggleLayer('chunkVersions')">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div 
-          class="nav-item" 
-          :class="{ 'active': mapStore.layerVisibility.players }"
-          @click="toggleLayer('players')"
-        >
-          <span class="nav-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-          </span>
-          <span class="nav-label">Players</span>
-          <label class="toggle-switch">
-            <input type="checkbox" :checked="mapStore.layerVisibility.players" @change="toggleLayer('players')">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div 
-          class="nav-item" 
-          :class="{ 'active': mapStore.layerVisibility.animals }"
-          @click="toggleLayer('animals')"
-        >
-          <span class="nav-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="4" r="2"></circle><circle cx="18" cy="8" r="2"></circle><circle cx="20" cy="16" r="2"></circle><path d="M9 10a5 5 0 0 1 5 5v3.5a3.5 3.5 0 0 1-6.84 1.045Q6.52 17.48 4.46 16.84A3.5 3.5 0 0 1 5.5 10Z"></path></svg>
-          </span>
-          <span class="nav-label">Animals</span>
-          <label class="toggle-switch">
-            <input type="checkbox" :checked="mapStore.layerVisibility.animals" @change="toggleLayer('animals')">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-      </div>
-      
-      <div class="nav-section online-players" v-if="serverStore.onlinePlayers.length > 0">
-        <h3 class="nav-title">ONLINE PLAYERS</h3>
-        <div class="nav-item" v-for="player in serverStore.onlinePlayers" :key="player.id">
-          <span class="nav-icon player-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-          </span>
-          <span class="nav-label">{{ player.name }}</span>
-          <span class="player-status online"></span>
-        </div>
       </div>
     </nav>
   </aside>
@@ -179,13 +51,11 @@
 
 <script setup lang="ts">
 import { useMapStore } from '@/stores/map';
-import { useServerStore } from '@/stores/server';
 
 const mapStore = useMapStore();
-const serverStore = useServerStore();
 
-function toggleLayer(layer: string) {
-  mapStore.toggleLayer(layer as any);
+function toggleLayer(layer: 'terrain') {
+  mapStore.toggleLayer(layer);
 }
 </script>
 

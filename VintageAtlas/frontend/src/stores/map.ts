@@ -16,18 +16,7 @@ export const useMapStore = defineStore('map', () => {
   
   // Layer visibility state
   const layerVisibility = ref({
-    terrain: true,
-    biomes: false,
-    traders: true,
-    translocators: true,
-    landmarks: true,
-    signs: true,
-    exploredChunks: false,
-    chunks: false,
-    chunkVersions: false,
-    players: true,
-    animals: true,
-    custom: true
+    terrain: true
   });
   
   // Sub-layer visibility for filtering by feature type (spec lines 379-399)

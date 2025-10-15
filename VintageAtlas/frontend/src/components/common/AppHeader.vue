@@ -26,17 +26,16 @@
       </div>
       
       <div class="flex items-center gap-3">
-        <!-- <ThemeSwitcher /> -->
-        
         <div 
           v-if="serverStore.status"
           class="flex items-center gap-2 text-sm bg-black/20 py-2 px-3 rounded-full transition-all"
         >
           <span 
             class="inline-block w-2 h-2 rounded-full bg-[#10b981] relative after:content-[''] after:absolute after:w-3 after:h-3 after:rounded-full after:bg-[#10b981]/30 after:top-1/2 after:left-1/2 after:-translate-x-1/2 after:-translate-y-1/2 after:animate-ping" 
+            ></span> 
+            <!-- TODO fix max player count -->
             title="Server Online"
-          ></span>
-          <span class="font-semibold">{{ serverStore.status.currentPlayers }} / {{ serverStore.status.maxPlayers }}</span>
+          <span class="font-semibold">{{ serverStore.status.players.length }} / 0</span>
         </div>
         <div 
           v-else
@@ -56,7 +55,6 @@
 <script setup lang="ts">
 import { useUiStore } from '@/stores/ui';
 import { useServerStore } from '@/stores/server';
-import ThemeSwitcher from '@/components/common/ThemeSwitcher.vue';
 
 const uiStore = useUiStore();
 const serverStore = useServerStore();

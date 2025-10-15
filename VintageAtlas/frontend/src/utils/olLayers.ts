@@ -28,13 +28,13 @@ export function createWorldLayer(): TileLayer<XYZ> {
     tileUrlFunction: ([z, x, y]) => getTileUrl(z, x, y)
   });
   
-  source.on('tileloaderror', (evt: any) => {
+  source.on('tileloaderror', (evt) => {
     console.error('[Tile Load Error]', evt);
   });
   
   return new TileLayer({
     source: source,
-    properties: { name: 'world' }
+    properties: { name: 'world',  }
   });
 }
 

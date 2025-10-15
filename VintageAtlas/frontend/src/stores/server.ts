@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import type { ServerStatus, Player } from '@/types/server-status';
-import { getServerStatus, getOnlinePlayers } from '@/services/api/status';
+import { getServerStatus } from '@/services/api/status';
 
 /**
  * Store for server status and player information
@@ -16,7 +16,7 @@ export const useServerStore = defineStore('server', () => {
 
   // Getters
   const isOnline = computed(() => !!status.value);
-  const onlinePlayerCount = computed(() => status.value?.currentPlayers || 0);
+  const onlinePlayerCount = computed(() => status.value?.players || 0);
   const onlinePlayers = computed(() => players.value.filter(p => p.online));
 
   // Actions
@@ -35,20 +35,6 @@ export const useServerStore = defineStore('server', () => {
     }
   }
 
-  async function fetchPlayers() {
-    loading.value = true;
-    error.value = null;
-    
-    try {
-      players.value = await getOnlinePlayers();
-      lastUpdated.value = new Date();
-    } catch (err) {
-      error.value = err as Error;
-    } finally {
-      loading.value = false;
-    }
-  }
-
   // Initialize data polling
   let statusInterval: number | null = null;
   
@@ -60,12 +46,10 @@ export const useServerStore = defineStore('server', () => {
     
     // Initial fetch
     fetchStatus();
-    fetchPlayers();
     
     // Set up interval for polling
     statusInterval = window.setInterval(() => {
       fetchStatus();
-      fetchPlayers();
     }, interval);
   }
   
@@ -91,7 +75,6 @@ export const useServerStore = defineStore('server', () => {
     
     // Actions
     fetchStatus,
-    fetchPlayers,
     startPolling,
     stopPolling
   };

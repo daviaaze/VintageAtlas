@@ -2,15 +2,19 @@
  * Server status information
  */
 export interface ServerStatus {
-  serverName: string;
-  gameVersion: string;
-  modVersion: string;
-  currentPlayers: number;
-  maxPlayers: number;
-  uptime: number;
-  tps?: number;
-  memoryUsage?: number;
+  date: {
+    year: number
+    month: number
+    day: number
+    hour: number
+    minute: number
+  },
+  spawnTemperature: number
+  spawnRainfall: number
+  players: Player[]
+  animals: any[]
 }
+
 
 /**
  * Player information
@@ -25,14 +29,4 @@ export interface Player {
   };
   online: boolean;
   lastSeen?: string; // ISO date string
-}
-
-/**
- * Server performance metrics
- */
-export interface ServerMetrics {
-  tps: number;
-  memoryUsage: number;
-  cpuUsage?: number;
-  diskUsage?: number;
 }

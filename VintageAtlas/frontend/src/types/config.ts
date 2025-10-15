@@ -4,7 +4,6 @@
 export interface Config {
   // Map Export Settings
   mode?: ImageMode;
-  outputDirectory?: string;
   extractWorldMap?: boolean;
   fixWhiteLines?: boolean;
   extractStructures?: boolean;
@@ -22,32 +21,6 @@ export interface Config {
   liveServerPort?: number;
   liveServerEndpoint?: string;
   maxConcurrentRequests?: number;
-  
-  // Historical Tracking
-  historicalTrackingEnabled?: boolean;
-  trackerIntervalMinutes?: number;
-  trackOnlyPlayerActivity?: boolean;
-  maxHistoricalEntries?: number;
-
-  // Development Mode (new settings)
-  developmentMode?: boolean;
-  frontendDevServerUrl?: string;
-  
-  // Redis Settings (new settings)
-  cachingEnabled?: boolean;
-  cacheProvider?: string;
-  redis?: RedisConfig;
-  cacheDurations?: Record<string, number>;
-}
-
-/**
- * Redis configuration
- */
-export interface RedisConfig {
-  connectionString?: string;
-  instanceName?: string;
-  connectTimeout?: number;
-  syncTimeout?: number;
 }
 
 /**

@@ -12,31 +12,6 @@ const router = createRouter({
       }
     },
     {
-      path: '/historical',
-      name: 'historical',
-      component: () => import('@/pages/HistoricalView.vue'),
-      meta: {
-        title: 'Historical Data - VintageAtlas'
-      }
-    },
-    {
-      path: '/settings',
-      name: 'settings',
-      component: () => import('@/pages/SettingsView.vue'),
-      meta: {
-        title: 'Settings - VintageAtlas'
-      }
-    },
-    {
-      path: '/admin',
-      name: 'admin',
-      component: () => import('@/pages/AdminDashboard.vue'),
-      meta: {
-        title: 'Admin Dashboard - VintageAtlas',
-        requiresAdmin: true
-      }
-    },
-    {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
       component: () => import('@/pages/NotFound.vue'),

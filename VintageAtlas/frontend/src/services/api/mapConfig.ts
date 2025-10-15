@@ -99,25 +99,6 @@ export async function fetchMapConfig(): Promise<MapConfigData> {
 }
 
 /**
- * Fetch world extent separately (lighter endpoint)
- * @throws Error if extent cannot be fetched
- */
-export async function fetchWorldExtent(): Promise<WorldExtentData> {
-  try {
-    const response = await fetch('/api/map-extent');
-    
-    if (!response.ok) {
-      throw new Error(`❌ HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    const extent = await response.json();
-    return extent;
-  } catch (error) {
-    throw new Error(`Cannot fetch world extent from server: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
-/**
  * Invalidate cached config (e.g., after server restart)
  */
 export function invalidateMapConfig(): void {

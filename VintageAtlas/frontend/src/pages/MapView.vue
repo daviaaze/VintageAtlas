@@ -18,7 +18,7 @@ import MapContainer from '@/components/map/MapContainer.vue';
 const serverStore = useServerStore();
 // Start polling for server status
 onMounted(() => {
-  serverStore.startPolling(30000);
+  serverStore.startPolling(10000);
 });
 </script>
 

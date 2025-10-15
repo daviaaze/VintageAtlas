@@ -81,24 +81,24 @@ public partial class TileController(
                 }
             }
 
-            var storageTileX = gridX + offsetX;
-            var storageTileZ = gridY + offsetZ;
+            var storageTileX = gridX;
+            var storageTileZ = gridY;
 
             sapi.Logger.Notification($"[TileController] 🎯 Tile Request: zoom={zoom}, grid=({gridX},{gridY}) → storage=({storageTileX},{storageTileZ}) with offset ({offsetX},{offsetZ})");
 
-            if (extent != null && (storageTileX < extent.MinX || storageTileX > extent.MaxX ||
-                    storageTileZ < extent.MinY || storageTileZ > extent.MaxY))
-            {
-                // Serve a transparent PNG placeholder rather than 404 to prevent visual cuts
-                var transparentPng = CreateTransparentPng(config.TileSize);
-                context.Response.StatusCode = 200;
-                context.Response.ContentType = "image/png";
-                context.Response.ContentLength64 = transparentPng.Length;
-                context.Response.Headers.Add("Cache-Control", "public, max-age=60");
-                await context.Response.OutputStream.WriteAsync(transparentPng);
-                context.Response.Close();
-                return;
-            }
+            // if (extent != null && (storageTileX < extent.MinX || storageTileX > extent.MaxX ||
+            //         storageTileZ < extent.MinY || storageTileZ > extent.MaxY))
+            // {
+            //     // Serve a transparent PNG placeholder rather than 404 to prevent visual cuts
+            //     var transparentPng = CreateTransparentPng(config.TileSize);
+            //     context.Response.StatusCode = 200;
+            //     context.Response.ContentType = "image/png";
+            //     context.Response.ContentLength64 = transparentPng.Length;
+            //     context.Response.Headers.Add("Cache-Control", "public, max-age=60");
+            //     await context.Response.OutputStream.WriteAsync(transparentPng);
+            //     context.Response.Close();
+            //     return;
+            // }
 
             var result = await tileGenerator.GetTileDataAsync(zoom, storageTileX, storageTileZ);
 
