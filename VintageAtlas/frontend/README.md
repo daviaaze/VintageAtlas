@@ -69,7 +69,6 @@ frontend/
 The frontend expects the following API endpoints to be available:
 
 - `/api/status` - Server status information
-- `/api/historical` - Historical map data
 - `/api/config` - Server configuration
 - `/tiles/{z}/{x}/{y}.png` - Map tiles
 

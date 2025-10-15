@@ -86,20 +86,6 @@ public partial class TileController(
 
             sapi.Logger.Notification($"[TileController] 🎯 Tile Request: zoom={zoom}, grid=({gridX},{gridY}) → storage=({storageTileX},{storageTileZ}) with offset ({offsetX},{offsetZ})");
 
-            // if (extent != null && (storageTileX < extent.MinX || storageTileX > extent.MaxX ||
-            //         storageTileZ < extent.MinY || storageTileZ > extent.MaxY))
-            // {
-            //     // Serve a transparent PNG placeholder rather than 404 to prevent visual cuts
-            //     var transparentPng = CreateTransparentPng(config.TileSize);
-            //     context.Response.StatusCode = 200;
-            //     context.Response.ContentType = "image/png";
-            //     context.Response.ContentLength64 = transparentPng.Length;
-            //     context.Response.Headers.Add("Cache-Control", "public, max-age=60");
-            //     await context.Response.OutputStream.WriteAsync(transparentPng);
-            //     context.Response.Close();
-            //     return;
-            // }
-
             var result = await tileGenerator.GetTileDataAsync(zoom, storageTileX, storageTileZ);
 
             // Handle missing tile - return 404
@@ -209,21 +195,6 @@ public partial class TileController(
         {
             // Silently fail
         }
-    }
-
-    // No grid-to-storage transformation needed in direct XYZ alignment mode
-
-    /// <summary>
-    /// Create a transparent PNG of the given size
-    /// </summary>
-    private static byte[] CreateTransparentPng(int size)
-    {
-        using var bmp = new SkiaSharp.SKBitmap(size, size);
-        using var canvas = new SkiaSharp.SKCanvas(bmp);
-        canvas.Clear(SkiaSharp.SKColor.Empty);
-        using var img = SkiaSharp.SKImage.FromBitmap(bmp);
-        using var data = img.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
-        return data.ToArray();
     }
 
     [GeneratedRegex(@"^/tiles/(\d+)/(-?\d+)_(-?\d+)\.png$", RegexOptions.IgnoreCase | RegexOptions.Compiled, "en-US")]

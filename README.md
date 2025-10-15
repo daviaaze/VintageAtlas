@@ -39,14 +39,6 @@ export VINTAGE_STORY=/path/to/vintagestory
 cd VintageAtlas
 dotnet build --configuration Release
 ```
-
-### CI/CD
-
-This project uses GitHub Actions for automated building and releases:
-
-- **Build**: Runs on every push and PR to `main`, `master`, or `develop`
-- **Release**: Triggered by version tags (e.g., `v1.0.0`)
-
 #### Creating a Release
 
 ```bash

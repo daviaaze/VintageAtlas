@@ -22,31 +22,10 @@ export interface GeoJsonFeatureCollection {
 }
 
 /**
- * Fetch signs/landmarks GeoJSON from API
- */
-export async function fetchSignsGeoJson(): Promise<GeoJsonFeatureCollection> {
-  return fetchGeoJson('/api/geojson/signs');
-}
-
-/**
- * Fetch signposts GeoJSON from API
- */
-export async function fetchSignPostsGeoJson(): Promise<GeoJsonFeatureCollection> {
-  return fetchGeoJson('/api/geojson/signposts');
-}
-
-/**
  * Fetch traders GeoJSON from API
  */
 export async function fetchTradersGeoJson(): Promise<GeoJsonFeatureCollection> {
   return fetchGeoJson('/api/geojson/traders');
-}
-
-/**
- * Fetch translocators GeoJSON from API
- */
-export async function fetchTranslocatorsGeoJson(): Promise<GeoJsonFeatureCollection> {
-  return fetchGeoJson('/api/geojson/translocators');
 }
 
 /**
@@ -74,29 +53,5 @@ async function fetchGeoJson(url: string): Promise<GeoJsonFeatureCollection> {
       features: []
     };
   }
-}
-
-/**
- * Fetch all GeoJSON layers at once
- */
-export async function fetchAllGeoJson(): Promise<{
-  signs: GeoJsonFeatureCollection;
-  signposts: GeoJsonFeatureCollection;
-  traders: GeoJsonFeatureCollection;
-  translocators: GeoJsonFeatureCollection;
-}> {
-  const [signs, signposts, traders, translocators] = await Promise.all([
-    fetchSignsGeoJson(),
-    fetchSignPostsGeoJson(),
-    fetchTradersGeoJson(),
-    fetchTranslocatorsGeoJson()
-  ]);
-
-  return {
-    signs,
-    signposts,
-    traders,
-    translocators
-  };
 }
 

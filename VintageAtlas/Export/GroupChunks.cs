@@ -112,63 +112,6 @@ public class GroupChunks
         return Grouped;
     }
 
-    private List<int> GetGeoJsonCoordinates(Coordinate? pos)
-    {
-        if (pos == null) return new List<int>();
-        var x = (int)pos.X % 32 != 0 ? (int)pos.X + 1 : (int)pos.X;
-        var z = (int)pos.Y % 32 != 0 ? (int)pos.Y + 1 : (int)pos.Y;
-
-        x = x - spawnChunkX;
-        z = (z - spawnChunkZ) * -1;
-
-        return new List<int>
-        {
-            x, z
-        };
-    }
-
-    public ChunkVersionFeature GetShape(GroupedPosition gpositions)
-    {
-        var positions = gpositions.Positions;
-
-        var pointAll = new HashSet<Point>();
-        foreach (var p in positions)
-        {
-            var x = p.X * 32;
-            var z = p.Z * 32;
-            pointAll.Add(new Point(x, z));
-            pointAll.Add(new Point(x + 31, z));
-            pointAll.Add(new Point(x, z + 31));
-            pointAll.Add(new Point(x + 31, z + 31));
-        }
-        // var points = positions.Select(p => new Point(p.X, p.Z)).ToArray();
-        var geometryFactory = new GeometryFactory();
-
-        var multiPoint = geometryFactory.CreateMultiPoint(pointAll.ToArray());
-
-        var concaveHull = new ConcaveHull(multiPoint)
-        {
-            MaximumEdgeLength = 45
-        };
-        var geometry = concaveHull.GetHull();
-
-        var list = new List<List<int>>();
-        foreach (var pos in geometry.Coordinates)
-        {
-            list.Add(GetGeoJsonCoordinates(pos));
-        }
-
-        var re = new List<List<List<int>>> { list };
-        var color = _colors[gpositions.Version];
-        var feature = new ChunkVersionFeature
-        (
-            new ChunkVersionProperties(color, gpositions.Version),
-            new PolygonGeometry(re)
-        );
-
-        return feature;
-    }
-
     public void GenerateGradient(List<GroupedPosition> groupedPositions)
     {
         var startColor = new Vector3(255, 106, 0); // Orange (oldest)

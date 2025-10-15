@@ -43,10 +43,7 @@ import {
 
 import {
   createWorldLayer,
-  createExploredChunksLayer,
   createTradersLayer,
-  createTranslocatorsLayer,
-  createLandmarksLayer
 } from '@/utils/olLayers';
 import { toStringXY } from 'ol/coordinate';
 
@@ -66,9 +63,7 @@ onMounted(async () => {
     
     // Create layers in order (Spec lines 332-341)
     const worldLayer = createWorldLayer();
-    const exploredChunksLayer = createExploredChunksLayer();
     const tradersLayer = createTradersLayer();
-    const translocatorsLayer = createTranslocatorsLayer();
     
     mapInstance.value = new Map({
       target: mapElement.value,
@@ -86,11 +81,7 @@ onMounted(async () => {
       ],
       layers: [
         worldLayer,
-        // chunkVersionLayer,
-        exploredChunksLayer,
         tradersLayer,
-        translocatorsLayer,
-        // landmarksLayer
       ],
       view: new View({
         center: getViewCenter(),
@@ -118,10 +109,6 @@ onMounted(async () => {
       mapStore.setZoom(overrides.zoom);
     }
     startDeepLinkSync(mapInstance.value!);
-    
-    // Add landmarks layer after map is created (needs map instance for zoom)
-    const landmarksLayer = createLandmarksLayer(mapInstance.value);
-    mapInstance.value.addLayer(landmarksLayer);
     
     // Mouse position tracking (Spec lines 510-520)
     mapInstance.value.on('pointermove', (evt) => {

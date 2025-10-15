@@ -17,32 +17,6 @@ public interface IDataCollector
 }
 
 /// <summary>
-/// Interface for historical data tracking
-/// </summary>
-public interface IHistoricalTracker
-{
-    /// <summary>
-    /// Get heatmap data for visualization
-    /// </summary>
-    List<HeatmapPoint> GetHeatmap(HistoricalQueryParams queryParams);
-
-    /// <summary>
-    /// Get player path history
-    /// </summary>
-    List<PlayerPathPoint> GetPlayerPath(HistoricalQueryParams queryParams);
-
-    /// <summary>
-    /// Get entity census data
-    /// </summary>
-    List<EntityCensusSnapshot> GetEntityCensus(HistoricalQueryParams queryParams);
-
-    /// <summary>
-    /// Get server statistics
-    /// </summary>
-    ServerStatistics GetServerStatistics();
-}
-
-/// <summary>
 /// Interface for map export functionality
 /// </summary>
 public interface IMapExporter

@@ -13,7 +13,6 @@ public class RequestRouter(
     ModConfig config,
     StatusController statusController,
     ConfigController configController,
-    HistoricalController historicalController,
     GeoJsonController geoJsonController,
     MapConfigController mapConfigController,
     TileController tileController,
@@ -131,31 +130,6 @@ public class RequestRouter(
             return;
         }
 
-        // Historical data endpoints
-        if (apiPath.StartsWith("heatmap"))
-        {
-            await historicalController.ServeHeatmap(context);
-            return;
-        }
-
-        if (apiPath.StartsWith("player-path"))
-        {
-            await historicalController.ServePlayerPath(context);
-            return;
-        }
-
-        if (apiPath.StartsWith("census"))
-        {
-            await historicalController.ServeCensus(context);
-            return;
-        }
-
-        if (apiPath is "stats" or "stats/")
-        {
-            await historicalController.ServeStats(context);
-            return;
-        }
-
         // Map configuration endpoints
         if (apiPath.StartsWith("map/config") || apiPath == "map-config")
         {
@@ -163,40 +137,10 @@ public class RequestRouter(
             return;
         }
 
-        // GeoJSON endpoints
-        if (apiPath.StartsWith("geojson/signs") || apiPath == "signs.geojson")
-        {
-            await geoJsonController.ServeSigns(context);
-            return;
-        }
-
-        if (apiPath.StartsWith("geojson/signposts") || apiPath == "signposts.geojson")
-        {
-            await geoJsonController.ServeSignPosts(context);
-            return;
-        }
 
         if (apiPath.StartsWith("geojson/traders") || apiPath == "traders.geojson")
         {
             await geoJsonController.ServeTraders(context);
-            return;
-        }
-
-        if (apiPath.StartsWith("geojson/translocators") || apiPath == "translocators.geojson")
-        {
-            await geoJsonController.ServeTranslocators(context);
-            return;
-        }
-
-        if (apiPath.StartsWith("geojson/chunks") || apiPath == "chunks.geojson")
-        {
-            await geoJsonController.ServeChunks(context);
-            return;
-        }
-
-        if (apiPath.StartsWith("geojson/chunk-versions") || apiPath == "chunk-versions.geojson")
-        {
-            await geoJsonController.ServeChunkVersions(context);
             return;
         }
 

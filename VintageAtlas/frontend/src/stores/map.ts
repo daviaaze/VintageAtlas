@@ -16,7 +16,9 @@ export const useMapStore = defineStore('map', () => {
   
   // Layer visibility state
   const layerVisibility = ref({
-    terrain: true
+    terrain: true,
+    spawn: true,
+    traders: true,
   });
   
   // Sub-layer visibility for filtering by feature type (spec lines 379-399)
@@ -40,11 +42,6 @@ export const useMapStore = defineStore('map', () => {
       'Spawn Translocator': true,
       'Teleporter': true
     },
-    landmarks: {
-      'Server': true,
-      'Base': true,
-      'Misc': true
-    }
   });
   
   // Label size for landmarks (spec line 326)
