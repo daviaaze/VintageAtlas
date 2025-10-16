@@ -43,7 +43,7 @@ public static class MapColors
         { "devastation", "#755c3c" }
     };
 
-    public static readonly OrderedDictionary<string, uint> ColorsByCode = new();
+    public static readonly OrderedDictionary<string, uint> ColorsByCode = [];
 
     static MapColors()
     {

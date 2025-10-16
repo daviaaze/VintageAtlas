@@ -331,12 +331,6 @@ public class BlockColorCache
 
         var selectedColor = variations[random.Next(variations.Count)];
 
-        // DEBUG: Log successful variation for common surface blocks
-        if (blockId is < 10 or 6961 or 3949 or 2617)
-        {
-            // _sapi.Logger.Notification($"[VintageAtlas] Block {blockId} using detailed color variation: 0x{selectedColor:X8} ({variations.Count} available)");
-        }
-
         return selectedColor;
     }
 }

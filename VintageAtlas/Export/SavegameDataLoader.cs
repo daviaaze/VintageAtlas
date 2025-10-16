@@ -261,15 +261,6 @@ public sealed class SavegameDataLoader : IDisposable
         return null;
     }
 
-    public ServerMapChunk? GetServerMapChunkT(SqliteThreadCon sqliteConn, ChunkPos position)
-    {
-        var pos = ChunkPos.ToChunkIndex(position.X, position.Y, position.Z);
-        lock (_mapChunkTable)
-        {
-            return GetServerMapChunk(sqliteConn, pos);
-        }
-    }
-
     public ServerMapChunk? GetServerMapChunk(SqliteThreadCon sqliteConn, ChunkPos position)
     {
         var pos = ChunkPos.ToChunkIndex(position.X, position.Y, position.Z);
@@ -358,12 +349,14 @@ public sealed class SavegameDataLoader : IDisposable
 
     private void Dispose(bool disposing)
     {
-        foreach (var con in _sqliteConnections)
-        {
-            con.Con.Dispose();
-        }
+        if (disposing) {
+            foreach (var con in _sqliteConnections)
+            {
+                con.Con.Dispose();
+            }
 
-        _chunkDataPool.FreeAll();
+            _chunkDataPool.FreeAll();
+        }
     }
 }
 

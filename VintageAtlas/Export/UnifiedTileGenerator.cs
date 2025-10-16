@@ -341,61 +341,6 @@ public sealed class UnifiedTileGenerator : ITileGenerator
             };
         }
 
-        // // Generate on-demand from loaded chunks
-        // _sapi.Logger.Debug($"[VintageAtlas] Generating tile on-demand: {zoom}/{tileX}_{tileZ}");
-
-        // try
-        // {
-        //     byte[]? newTileData = null;
-
-        //     if (zoom == _config.BaseZoomLevel)
-        //     {
-        //         // Base zoom: generate from loaded chunks
-        //         var loadedChunksSource = new LoadedChunksDataSource(_sapi, _config);
-        //         newTileData = await RenderTileAsync(zoom, tileX, tileZ, loadedChunksSource);
-        //     }
-        //     else if (zoom < _config.BaseZoomLevel)
-        //     {
-        //         // Lower zoom: downsample from higher zoom
-        //         newTileData = await _downsampler.GenerateTileByDownsamplingAsync(zoom, tileX, tileZ);
-        //     }
-
-        //     // Fallback to placeholder
-        //     if (newTileData == null)
-        //     {
-        //         return new TileResult { NotFound = true };
-        //     }
-
-        //     // Store in database
-        //     await _storage.PutTileAsync(zoom, tileX, tileZ, newTileData);
-
-        //     var lastModified = DateTime.UtcNow;
-        //     var etag = GenerateETag(newTileData, lastModified);
-
-        //     // Cache in memory
-        //     CacheInMemory(tileKey, newTileData, etag, lastModified);
-
-        //     _sapi.Logger.Debug($"[VintageAtlas] Generated and stored tile: {zoom}/{tileX}_{tileZ}");
-
-        //     return new TileResult
-        //     {
-        //         Data = newTileData,
-        //         ETag = etag,
-        //         LastModified = lastModified,
-        //         ContentType = "image/png"
-        //     };
-        // }
-        // catch (Exception ex)
-        // {
-        //     _sapi.Logger.Error($"[VintageAtlas] Failed to generate tile {zoom}/{tileX}_{tileZ}: {ex.Message}");
-        // }
-
-        // ═══════════════════════════════════════════════════════════════
-        // ON-DEMAND GENERATION DISABLED
-        // Tiles are ONLY generated during /atlas export
-        // This ensures we're testing the full export system properly
-        // ═══════════════════════════════════════════════════════════════
-
         // Return 404 - tile must be generated via /atlas export
         return new TileResult { NotFound = true };
     }
@@ -566,12 +511,7 @@ public sealed class UnifiedTileGenerator : ITileGenerator
                     var blockIndex = localY * ChunkSize * ChunkSize + z * ChunkSize + x;
 
                     if (blockIndex < 0 || blockIndex >= blockIds.Length)
-                    {
-                        // TODO: Check why we are setting this color
-                        // paint.Color = new SKColor(172, 136, 88);
-                        // canvas.DrawPoint(offsetX + x, offsetZ + z, paint);
                         continue;
-                    }
 
                     var blockId = blockIds[blockIndex];
 

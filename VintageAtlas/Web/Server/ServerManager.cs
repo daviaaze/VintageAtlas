@@ -115,7 +115,7 @@ public sealed class ServerManager : IDisposable
         var mapConfigController = _mapConfigController ?? new MapConfigController(_sapi, _tileGenerator);
 
         // Create coordinate transformation service (centralized coordinate logic)
-        var coordinateService = new CoordinateTransformService(mapConfigController, _config, _sapi);
+        var coordinateService = new CoordinateTransformService(_sapi);
 
         // Inject coordinate service into controllers
         var geoJsonController = new GeoJsonController(_sapi, coordinateService);
