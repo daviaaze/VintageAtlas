@@ -43,8 +43,6 @@ public class StaticFileServer(ICoreServerAPI sapi, ModConfig config)
 
     private string? FindWebRoot()
     {
-        if (config == null || sapi == null) return null;
-
         // Serve HTML directly from the mod's bundled html directory
         // No need to copy - static files are served from the mod
         var modHtml = Path.Combine(Path.GetDirectoryName(GetType().Assembly.Location) ?? "", "html");
@@ -184,7 +182,7 @@ public class StaticFileServer(ICoreServerAPI sapi, ModConfig config)
     /// <summary>
     /// Serve a 404 Not Found response
     /// </summary>
-    public void ServeNotFound(HttpListenerContext context)
+    public static void ServeNotFound(HttpListenerContext context)
     {
         context.Response.StatusCode = 404;
         context.Response.ContentType = "text/plain";

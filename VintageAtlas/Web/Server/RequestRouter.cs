@@ -18,6 +18,12 @@ public class RequestRouter(
     TileController tileController,
     StaticFileServer staticFileServer)
 {
+    private readonly ApiRouter _apiRouter = BuildApiRouter(
+        config, 
+        statusController, 
+        configController, 
+        geoJsonController, 
+        mapConfigController);
     public async Task RouteRequest(HttpListenerContext context)
     {
         var path = context.Request.Url?.AbsolutePath ?? "/";
@@ -44,103 +50,68 @@ public class RequestRouter(
         }
 
         // Not found
-        staticFileServer.ServeNotFound(context);
+        StaticFileServer.ServeNotFound(context);
         context.Response.Close();
+    }
+
+    /// <summary>
+    /// Build the API routing table with all endpoint configurations
+    /// </summary>
+    private static ApiRouter BuildApiRouter(
+        ModConfig config,
+        StatusController statusController,
+        ConfigController configController,
+        GeoJsonController geoJsonController,
+        MapConfigController mapConfigController)
+    {
+        var router = new ApiRouter();
+
+        // Main status endpoint (configurable path)
+        router.AddRoute(config.LiveServerEndpoint, statusController.ServeStatus);
+
+        // Health check endpoint
+        router.AddRoute("health", statusController.ServeHealth);
+
+        // Live endpoints - summary
+        router.AddRoute("live", statusController.ServeLiveSummary);
+
+        // Live endpoints - split data
+        router.AddRoute(["live/players", "players"], statusController.ServePlayers);
+        router.AddRoute(["live/animals", "animals"], statusController.ServeAnimals);
+        router.AddRoute(["live/weather", "weather"], statusController.ServeWeather);
+        router.AddRoute(["live/date", "date"], statusController.ServeDate);
+        router.AddRoute(["live/spawn", "spawn"], statusController.ServeSpawn);
+
+        // Configuration endpoints (method-specific)
+        router.AddRoute("config", configController.GetConfig, "GET");
+        router.AddRoute("config", configController.UpdateConfig, "POST");
+
+        // Export trigger endpoint
+        router.AddRoute("export", configController.TriggerExport, "POST");
+
+        // Map configuration endpoints
+        router.AddRoute(["map/config", "map-config"], mapConfigController.ServeMapConfig);
+
+        // GeoJSON endpoints
+        router.AddRoute(["geojson/traders", "traders.geojson"], geoJsonController.ServeTraders);
+
+        return router;
     }
 
     private async Task RouteApiRequest(HttpListenerContext context, string apiPath)
     {
-        // Main status endpoint
-        if (apiPath == config.LiveServerEndpoint || apiPath == config.LiveServerEndpoint + "/")
+        var route = _apiRouter.FindRoute(apiPath, context.Request.HttpMethod);
+
+        if (route != null)
         {
-            await statusController.ServeStatus(context);
+            await route.Handler(context);
             return;
         }
 
-        // Health check endpoint
-        if (apiPath is "health" or "health/")
+        // Handle method not allowed for known paths
+        if (_apiRouter.FindRoute(apiPath, "*") != null)
         {
-            await statusController.ServeHealth(context);
-            return;
-        }
-
-        // Split live endpoints
-        if (apiPath is "live" or "live/")
-        {
-            await statusController.ServeLiveSummary(context);
-            return;
-        }
-
-        if (apiPath.StartsWith("live/players") || apiPath == "players")
-        {
-            await statusController.ServePlayers(context);
-            return;
-        }
-        if (apiPath.StartsWith("live/animals") || apiPath == "animals")
-        {
-            await statusController.ServeAnimals(context);
-            return;
-        }
-        if (apiPath.StartsWith("live/weather") || apiPath == "weather")
-        {
-            await statusController.ServeWeather(context);
-            return;
-        }
-        if (apiPath.StartsWith("live/date") || apiPath == "date")
-        {
-            await statusController.ServeDate(context);
-            return;
-        }
-        if (apiPath.StartsWith("live/spawn") || apiPath == "spawn")
-        {
-            await statusController.ServeSpawn(context);
-            return;
-        }
-
-        // Configuration endpoints
-        if (apiPath.StartsWith("config"))
-        {
-            switch (context.Request.HttpMethod)
-            {
-                case "GET":
-                    await configController.GetConfig(context);
-                    break;
-                case "POST":
-                    await configController.UpdateConfig(context);
-                    break;
-                default:
-                    await ServeError(context, "Method not allowed. Use GET or POST", 405);
-                    break;
-            }
-
-            return;
-        }
-
-        // Export trigger endpoint
-        if (apiPath.StartsWith("export"))
-        {
-            if (context.Request.HttpMethod == "POST")
-            {
-                await configController.TriggerExport(context);
-            }
-            else
-            {
-                await ServeError(context, "Method not allowed. Use POST", 405);
-            }
-            return;
-        }
-
-        // Map configuration endpoints
-        if (apiPath.StartsWith("map/config") || apiPath == "map-config")
-        {
-            await mapConfigController.ServeMapConfig(context);
-            return;
-        }
-
-
-        if (apiPath.StartsWith("geojson/traders") || apiPath == "traders.geojson")
-        {
-            await geoJsonController.ServeTraders(context);
+            await ServeError(context, "Method not allowed", 405);
             return;
         }
 
@@ -148,7 +119,7 @@ public class RequestRouter(
         await ServeError(context, "API endpoint not found", 404);
     }
 
-    private async Task ServeError(HttpListenerContext context, string message, int statusCode = 500)
+    private static async Task ServeError(HttpListenerContext context, string message, int statusCode = 500)
     {
         try
         {

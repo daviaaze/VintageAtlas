@@ -297,111 +297,34 @@ public class DataCollector(ICoreServerAPI sapi) : IDataCollector
             return _animalsCache;
         }
 
+        var animals = CollectAnimalsFromPlayers();
+        CacheAnimalsData(animals);
+
+        return animals;
+    }
+
+    private List<AnimalData> CollectAnimalsFromPlayers()
+    {
         var animals = new List<AnimalData>();
 
         try
         {
-            var players = sapi.World.AllOnlinePlayers;
+            var allPlayers = sapi.World.AllOnlinePlayers;
 
-            // No players online? Return an empty list
-            if (players == null || players.Length == 0)
+            if (allPlayers == null || allPlayers.Length == 0)
             {
-                _animalsCache = animals;
-                _animalsCacheUntil = DateTime.UtcNow.AddSeconds(AnimalsCacheSeconds);
                 return animals;
             }
 
             // OPTIMIZATION: Only scan around players (spatial query)
-            // This is MUCH faster than iterating all loaded entities
-            var seenEntities = new HashSet<long>(); // Prevent duplicates
+            var seenEntities = new HashSet<long>();
 
-            foreach (var player in players)
+            foreach (var player in allPlayers)
             {
-                if (player?.Entity?.Pos == null) continue;
+                if (player is not IServerPlayer serverPlayer || !IsValidPlayer(serverPlayer)) 
+                    continue;
 
-                var playerPos = player.Entity.Pos.AsBlockPos;
-
-                // Spatial query - only gets entities near this player (FAST!)
-                var nearbyEntities = sapi.World.GetEntitiesAround(
-                    playerPos.ToVec3d(),
-                    AnimalTrackingRadius,
-                    AnimalTrackingRadius,
-                    entity => entity is EntityAgent &&
-                             !(entity is EntityPlayer) &&
-                             entity.Alive &&
-                             !seenEntities.Contains(entity.EntityId)
-                );
-
-                foreach (var entity in nearbyEntities)
-                {
-                    if (entity?.Pos == null || entity.Code == null) continue;
-
-                    seenEntities.Add(entity.EntityId);
-
-                    try
-                    {
-                        // Use ServerstatusQuery approach: check Code first, then GetName()
-                        var typeCode = entity.Code.ToString();
-                        var name = entity.GetName() ?? typeCode;
-
-                        // Get health using ITreeAttribute
-                        var healthTree = entity.WatchedAttributes?.GetTreeAttribute("health");
-                        var currentHealth = FiniteOrNull(healthTree?.GetFloat("currenthealth"));
-                        var maxHealth = FiniteOrNull(healthTree?.GetFloat("maxhealth"));
-
-                        // Fallback health values
-                        if (maxHealth is null or <= 0)
-                        {
-                            maxHealth = 20;
-                            currentHealth = entity.Alive ? 20 : 0;
-                        }
-
-                        // Use ServerPos like ServerstatusQuery
-                        var x = entity.ServerPos != null ? (int)entity.ServerPos.X : 0;
-                        var y = entity.ServerPos != null ? (int)entity.ServerPos.Y : sapi.World.SeaLevel;
-                        var z = entity.ServerPos != null ? (int)entity.ServerPos.Z : 0;
-
-                        // Get climate data
-                        double? temperature = null;
-                        double? rainfall = null;
-
-                        if (sapi.World.BlockAccessor != null)
-                        {
-                            var climate = sapi.World.BlockAccessor.GetClimateAt(new BlockPos(x, y, z));
-                            if (climate != null)
-                            {
-                                temperature = FiniteOrNull(climate.Temperature);
-                                rainfall = FiniteOrNull(climate.Rainfall);
-                            }
-                        }
-
-                        // Get wind data
-                        var windPercent = GetWindPercent(new BlockPos(x, y, z));
-
-                        animals.Add(new AnimalData
-                        {
-                            Type = typeCode,
-                            Name = string.IsNullOrWhiteSpace(name) ? typeCode : name,
-                            Coordinates = new CoordinateData { X = x, Y = y, Z = z },
-                            Health = new HealthData
-                            {
-                                Current = currentHealth ?? 0,
-                                Max = (double)maxHealth
-                            },
-                            Temperature = temperature,
-                            Rainfall = rainfall ?? 0,
-                            Wind = new WindData { Percent = windPercent }
-                        });
-
-                        // Limit like ServerstatusQuery
-                        if (animals.Count >= AnimalsMax)
-                            break;
-                    }
-                    catch (Exception ex)
-                    {
-                        sapi.Logger.Warning($"[VintageAtlas] Failed to process entity {entity.Code}: {ex.Message}");
-                    }
-                }
+                CollectAnimalsNearPlayer(serverPlayer, animals, seenEntities);
 
                 if (animals.Count >= AnimalsMax) break;
             }
@@ -413,11 +336,137 @@ public class DataCollector(ICoreServerAPI sapi) : IDataCollector
             sapi.Logger.Error($"[VintageAtlas] Failed to collect animals data: {ex.Message}");
         }
 
-        // Cache the results
+        return animals;
+    }
+
+    private void CollectAnimalsNearPlayer(IServerPlayer player, List<AnimalData> animals, HashSet<long> seenEntities)
+    {
+        var playerPos = player.Entity.Pos.AsBlockPos;
+
+        var nearbyEntities = sapi.World.GetEntitiesAround(
+            playerPos.ToVec3d(),
+            AnimalTrackingRadius,
+            AnimalTrackingRadius,
+            entity => IsTrackableAnimal(entity, seenEntities)
+        );
+
+        foreach (var entity in nearbyEntities)
+        {
+            if (!IsValidEntity(entity)) continue;
+
+            seenEntities.Add(entity.EntityId);
+
+            var animalData = TryCreateAnimalData(entity);
+            if (animalData != null)
+            {
+                animals.Add(animalData);
+            }
+
+            if (animals.Count >= AnimalsMax) break;
+        }
+    }
+
+    private AnimalData? TryCreateAnimalData(Vintagestory.API.Common.Entities.Entity entity)
+    {
+        try
+        {
+            return CreateAnimalData(entity);
+        }
+        catch (Exception ex)
+        {
+            sapi.Logger.Warning($"[VintageAtlas] Failed to process entity {entity.Code}: {ex.Message}");
+            return null;
+        }
+    }
+
+    private AnimalData CreateAnimalData(Vintagestory.API.Common.Entities.Entity entity)
+    {
+        var typeCode = entity.Code.ToString();
+        var name = entity.GetName() ?? typeCode;
+        var (currentHealth, maxHealth) = GetEntityHealth(entity);
+        var position = GetEntityPosition(entity);
+        var (temperature, rainfall) = GetClimateData(position);
+        var windPercent = GetWindPercent(position);
+
+        return new AnimalData
+        {
+            Type = typeCode,
+            Name = string.IsNullOrWhiteSpace(name) ? typeCode : name,
+            Coordinates = new CoordinateData { X = position.X, Y = position.Y, Z = position.Z },
+            Health = new HealthData
+            {
+                Current = currentHealth,
+                Max = maxHealth
+            },
+            Temperature = temperature,
+            Rainfall = rainfall ?? 0,
+            Wind = new WindData { Percent = windPercent }
+        };
+    }
+
+    private static (double currentHealth, double maxHealth) GetEntityHealth(Vintagestory.API.Common.Entities.Entity entity)
+    {
+        var healthTree = entity.WatchedAttributes?.GetTreeAttribute("health");
+        var currentHealth = FiniteOrNull(healthTree?.GetFloat("currenthealth"));
+        var maxHealth = FiniteOrNull(healthTree?.GetFloat("maxhealth"));
+
+        // Fallback health values
+        if (maxHealth is null or <= 0)
+        {
+            maxHealth = 20;
+            currentHealth = entity.Alive ? 20 : 0;
+        }
+
+        return (currentHealth ?? 0, (double)maxHealth);
+    }
+
+    private BlockPos GetEntityPosition(Vintagestory.API.Common.Entities.Entity entity)
+    {
+        var x = entity.ServerPos != null ? (int)entity.ServerPos.X : 0;
+        var y = entity.ServerPos != null ? (int)entity.ServerPos.Y : sapi.World.SeaLevel;
+        var z = entity.ServerPos != null ? (int)entity.ServerPos.Z : 0;
+
+        return new BlockPos(x, y, z);
+    }
+
+    private (double? temperature, double? rainfall) GetClimateData(BlockPos pos)
+    {
+        if (sapi.World.BlockAccessor == null)
+        {
+            return (null, null);
+        }
+
+        var climate = sapi.World.BlockAccessor.GetClimateAt(pos);
+        if (climate == null)
+        {
+            return (null, null);
+        }
+
+        return (FiniteOrNull(climate.Temperature), FiniteOrNull(climate.Rainfall));
+    }
+
+    private static bool IsValidPlayer(IServerPlayer player)
+    {
+        return player?.Entity?.Pos != null;
+    }
+
+    private static bool IsValidEntity(Vintagestory.API.Common.Entities.Entity entity)
+    {
+        return entity?.Pos != null && entity.Code != null;
+    }
+
+    private static bool IsTrackableAnimal(Vintagestory.API.Common.Entities.Entity entity, HashSet<long> seenEntities)
+    {
+        return entity is EntityAgent &&
+               !(entity is EntityPlayer) &&
+               entity.Alive &&
+               !seenEntities.Contains(entity.EntityId);
+    }
+
+    private void CacheAnimalsData(List<AnimalData> animals)
+    {
         _animalsCache = animals;
         _animalsCacheUntil = DateTime.UtcNow.AddSeconds(AnimalsCacheSeconds);
-
-        return animals;
     }
 
     // Helper method from ServerstatusQuery

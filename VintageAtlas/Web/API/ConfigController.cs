@@ -30,6 +30,7 @@ public class ConfigController(
     };
     private bool _autoExportEnabled = config.AutoExportMap;
     private bool _historicalTrackingEnabled = config.EnableHistoricalTracking;
+    private const string ResponseFormat = "application/json";
 
     // Initialize runtime state from config
 
@@ -54,7 +55,7 @@ public class ConfigController(
             var bytes = Encoding.UTF8.GetBytes(json);
 
             context.Response.StatusCode = 200;
-            context.Response.ContentType = "application/json";
+            context.Response.ContentType = ResponseFormat;
             context.Response.ContentLength64 = bytes.Length;
 
             await context.Response.OutputStream.WriteAsync(bytes);
@@ -138,7 +139,7 @@ public class ConfigController(
                 var bytes = Encoding.UTF8.GetBytes(json);
 
                 context.Response.StatusCode = 409; // Conflict
-                context.Response.ContentType = "application/json";
+                context.Response.ContentType = ResponseFormat;
                 context.Response.ContentLength64 = bytes.Length;
 
                 await context.Response.OutputStream.WriteAsync(bytes);
@@ -158,7 +159,7 @@ public class ConfigController(
             var successBytes = Encoding.UTF8.GetBytes(successJson);
 
             context.Response.StatusCode = 200;
-            context.Response.ContentType = "application/json";
+            context.Response.ContentType = ResponseFormat;
             context.Response.ContentLength64 = successBytes.Length;
 
             await context.Response.OutputStream.WriteAsync(successBytes);
@@ -200,7 +201,7 @@ public class ConfigController(
         try
         {
             context.Response.StatusCode = statusCode;
-            context.Response.ContentType = "application/json";
+            context.Response.ContentType = ResponseFormat;
 
             var errorJson = JsonConvert.SerializeObject(new { error = message }, _jsonSettings);
             var errorBytes = Encoding.UTF8.GetBytes(errorJson);

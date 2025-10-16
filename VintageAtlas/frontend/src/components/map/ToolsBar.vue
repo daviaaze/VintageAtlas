@@ -10,7 +10,6 @@
       🔗
     </button>
     <!-- Placeholder for future Landmark search -->
-    <!-- <button class="tool-btn" title="Go to Landmark (coming soon)" disabled>🏛</button> -->
   </div>
 </template>
 

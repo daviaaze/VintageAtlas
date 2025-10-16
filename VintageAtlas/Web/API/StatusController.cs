@@ -14,6 +14,9 @@ namespace VintageAtlas.Web.API;
 /// </summary>
 public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
 {
+    private const string ResponseType = "application/json";
+    private const string Message = "Internal server error";
+    private const string Error = "World not ready";
     private readonly JsonSerializerSettings _jsonSettings = new()
     {
         ContractResolver = new DefaultContractResolver
@@ -32,11 +35,11 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
         try
         {
             // Check if world is ready (like ServerstatusQuery does)
-            if (sapi.World == null || sapi.World.BlockAccessor == null)
+            if (sapi.World?.BlockAccessor == null)
             {
                 context.Response.StatusCode = 503; // Service Unavailable
-                context.Response.ContentType = "application/json";
-                var errorJson = JsonConvert.SerializeObject(new { error = "World not ready" }, _jsonSettings);
+                context.Response.ContentType = ResponseType;
+                var errorJson = JsonConvert.SerializeObject(new { error = Error }, _jsonSettings);
                 var errorBytes = Encoding.UTF8.GetBytes(errorJson);
                 await context.Response.OutputStream.WriteAsync(errorBytes);
                 context.Response.Close();
@@ -48,7 +51,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
             var bytes = Encoding.UTF8.GetBytes(json);
 
             context.Response.StatusCode = 200;
-            context.Response.ContentType = "application/json";
+            context.Response.ContentType = ResponseType;
             context.Response.ContentLength64 = bytes.Length;
 
             await context.Response.OutputStream.WriteAsync(bytes);
@@ -58,7 +61,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
         catch (Exception ex)
         {
             sapi.Logger.Error($"[VintageAtlas] Error serving status data: {ex.Message}");
-            await ServeError(context, "Internal server error");
+            await ServeError(context, Message);
         }
     }
 
@@ -81,7 +84,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
             var bytes = Encoding.UTF8.GetBytes(json);
 
             context.Response.StatusCode = 200;
-            context.Response.ContentType = "application/json";
+            context.Response.ContentType = ResponseType;
             context.Response.ContentLength64 = bytes.Length;
 
             await context.Response.OutputStream.WriteAsync(bytes);
@@ -90,7 +93,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
         catch (Exception ex)
         {
             sapi.Logger.Error($"[VintageAtlas] Error serving health check: {ex.Message}");
-            await ServeError(context, "Internal server error");
+            await ServeError(context, Message);
         }
     }
 
@@ -102,9 +105,9 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
     {
         try
         {
-            if (sapi.World == null || sapi.World.BlockAccessor == null)
+            if (sapi.World?.BlockAccessor == null)
             {
-                await ServeError(context, "World not ready", 503);
+                await ServeError(context, Error, 503);
                 return;
             }
 
@@ -114,7 +117,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
             var bytes = Encoding.UTF8.GetBytes(json);
 
             context.Response.StatusCode = 200;
-            context.Response.ContentType = "application/json";
+            context.Response.ContentType = ResponseType;
             context.Response.ContentLength64 = bytes.Length;
             await context.Response.OutputStream.WriteAsync(bytes);
             context.Response.Close();
@@ -122,7 +125,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
         catch (Exception ex)
         {
             sapi.Logger.Error($"[VintageAtlas] Error serving players: {ex.Message}");
-            await ServeError(context, "Internal server error");
+            await ServeError(context, Message);
         }
     }
 
@@ -130,9 +133,9 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
     {
         try
         {
-            if (sapi.World == null || sapi.World.BlockAccessor == null)
+            if (sapi.World?.BlockAccessor == null)
             {
-                await ServeError(context, "World not ready", 503);
+                await ServeError(context, Error, 503);
                 return;
             }
 
@@ -142,7 +145,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
             var bytes = Encoding.UTF8.GetBytes(json);
 
             context.Response.StatusCode = 200;
-            context.Response.ContentType = "application/json";
+            context.Response.ContentType = ResponseType;
             context.Response.ContentLength64 = bytes.Length;
             await context.Response.OutputStream.WriteAsync(bytes);
             context.Response.Close();
@@ -150,7 +153,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
         catch (Exception ex)
         {
             sapi.Logger.Error($"[VintageAtlas] Error serving animals: {ex.Message}");
-            await ServeError(context, "Internal server error");
+            await ServeError(context, Message);
         }
     }
 
@@ -158,9 +161,9 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
     {
         try
         {
-            if (sapi.World == null || sapi.World.BlockAccessor == null)
+            if (sapi.World?.BlockAccessor == null)
             {
-                await ServeError(context, "World not ready", 503);
+                await ServeError(context, Error, 503);
                 return;
             }
 
@@ -170,7 +173,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
             var bytes = Encoding.UTF8.GetBytes(json);
 
             context.Response.StatusCode = 200;
-            context.Response.ContentType = "application/json";
+            context.Response.ContentType = ResponseType;
             context.Response.ContentLength64 = bytes.Length;
             await context.Response.OutputStream.WriteAsync(bytes);
             context.Response.Close();
@@ -178,7 +181,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
         catch (Exception ex)
         {
             sapi.Logger.Error($"[VintageAtlas] Error serving weather: {ex.Message}");
-            await ServeError(context, "Internal server error");
+            await ServeError(context, Message);
         }
     }
 
@@ -186,9 +189,9 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
     {
         try
         {
-            if (sapi.World == null || sapi.World.BlockAccessor == null)
+            if (sapi.World?.BlockAccessor == null)
             {
-                await ServeError(context, "World not ready", 503);
+                await ServeError(context, Error, 503);
                 return;
             }
 
@@ -198,7 +201,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
             var bytes = Encoding.UTF8.GetBytes(json);
 
             context.Response.StatusCode = 200;
-            context.Response.ContentType = "application/json";
+            context.Response.ContentType = ResponseType;
             context.Response.ContentLength64 = bytes.Length;
             await context.Response.OutputStream.WriteAsync(bytes);
             context.Response.Close();
@@ -206,7 +209,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
         catch (Exception ex)
         {
             sapi.Logger.Error($"[VintageAtlas] Error serving date: {ex.Message}");
-            await ServeError(context, "Internal server error");
+            await ServeError(context, Message);
         }
     }
 
@@ -214,9 +217,9 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
     {
         try
         {
-            if (sapi.World == null || sapi.World.BlockAccessor == null)
+            if (sapi.World?.BlockAccessor == null)
             {
-                await ServeError(context, "World not ready", 503);
+                await ServeError(context, Error, 503);
                 return;
             }
 
@@ -226,7 +229,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
             var bytes = Encoding.UTF8.GetBytes(json);
 
             context.Response.StatusCode = 200;
-            context.Response.ContentType = "application/json";
+            context.Response.ContentType = ResponseType;
             context.Response.ContentLength64 = bytes.Length;
             await context.Response.OutputStream.WriteAsync(bytes);
             context.Response.Close();
@@ -234,7 +237,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
         catch (Exception ex)
         {
             sapi.Logger.Error($"[VintageAtlas] Error serving spawn: {ex.Message}");
-            await ServeError(context, "Internal server error");
+            await ServeError(context, Message);
         }
     }
 
@@ -242,9 +245,9 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
     {
         try
         {
-            if (sapi.World == null || sapi.World.BlockAccessor == null)
+            if (sapi.World?.BlockAccessor == null)
             {
-                await ServeError(context, "World not ready", 503);
+                await ServeError(context, Error, 503);
                 return;
             }
 
@@ -260,7 +263,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
             var bytes = Encoding.UTF8.GetBytes(json);
 
             context.Response.StatusCode = 200;
-            context.Response.ContentType = "application/json";
+            context.Response.ContentType = ResponseType;
             context.Response.ContentLength64 = bytes.Length;
             await context.Response.OutputStream.WriteAsync(bytes);
             context.Response.Close();
@@ -268,7 +271,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
         catch (Exception ex)
         {
             sapi.Logger.Error($"[VintageAtlas] Error serving live summary: {ex.Message}");
-            await ServeError(context, "Internal server error");
+            await ServeError(context, Message);
         }
     }
 
@@ -277,7 +280,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
         try
         {
             context.Response.StatusCode = statusCode;
-            context.Response.ContentType = "application/json";
+            context.Response.ContentType = ResponseType;
 
             var errorJson = JsonConvert.SerializeObject(new { error = message }, _jsonSettings);
             var errorBytes = Encoding.UTF8.GetBytes(errorJson);
@@ -287,7 +290,7 @@ public class StatusController(ICoreServerAPI sapi, IDataCollector dataCollector)
         }
         catch
         {
-            // Silently fail if we can't write error response
+            // Silently fail if we can't write the error response
         }
     }
 }

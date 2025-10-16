@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using Vintagestory.API.Common;
 using Vintagestory.API.Server;
 using VintageAtlas.Core;
 using VintageAtlas.Export;
@@ -13,36 +12,26 @@ namespace VintageAtlas.Web.Server;
 /// <summary>
 /// Manages the setup and lifecycle of the live web server and all its dependencies
 /// </summary>
-public sealed class ServerManager : IDisposable
+public sealed class ServerManager(
+    ICoreServerAPI sapi,
+    ModConfig config,
+    MapExporter mapExporter,
+    BlockColorCache colorCache,
+    MbTilesStorage storage,
+    MapConfigController? controller = null)
+    : IDisposable
 {
-    private readonly ICoreServerAPI _sapi;
-    private readonly ModConfig _config;
-    private readonly MapExporter _mapExporter;
-    private readonly BlockColorCache _colorCache;
-    private readonly MbTilesStorage _storage;
-    private readonly MapConfigController? _mapConfigController;
+    private readonly ICoreServerAPI _sapi = sapi ?? throw new ArgumentNullException(nameof(sapi));
+    private readonly ModConfig _config = config ?? throw new ArgumentNullException(nameof(config));
+    private readonly MapExporter _mapExporter = mapExporter ?? throw new ArgumentNullException(nameof(mapExporter));
+    private readonly BlockColorCache _colorCache = colorCache ?? throw new ArgumentNullException(nameof(colorCache));
+    private readonly MbTilesStorage _storage = storage ?? throw new ArgumentNullException(nameof(storage));
 
     // Server components
     private DataCollector? _dataCollector;
     private UnifiedTileGenerator? _tileGenerator;
     private TileGenerationState? _tileState;
     private WebServer? _webServer;
-
-    public ServerManager(
-        ICoreServerAPI sapi,
-        ModConfig config,
-        MapExporter mapExporter,
-        BlockColorCache colorCache,
-        MbTilesStorage storage,
-        MapConfigController? mapConfigController = null)
-    {
-        _sapi = sapi ?? throw new ArgumentNullException(nameof(sapi));
-        _config = config ?? throw new ArgumentNullException(nameof(config));
-        _mapExporter = mapExporter ?? throw new ArgumentNullException(nameof(mapExporter));
-        _colorCache = colorCache ?? throw new ArgumentNullException(nameof(colorCache));
-        _storage = storage ?? throw new ArgumentNullException(nameof(storage));
-        _mapConfigController = mapConfigController;
-    }
 
     /// <summary>
     /// Initialize and start the live web server with all dependencies
@@ -112,7 +101,7 @@ public sealed class ServerManager : IDisposable
         var configController = new ConfigController(_sapi, _config, _mapExporter);
 
         // Use the existing mapConfigController instance (created earlier)
-        var mapConfigController = _mapConfigController ?? new MapConfigController(_sapi, _tileGenerator);
+        var mapConfigController = controller ?? new MapConfigController(_sapi, _tileGenerator);
 
         // Create coordinate transformation service (centralized coordinate logic)
         var coordinateService = new CoordinateTransformService(_sapi);

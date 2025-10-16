@@ -81,7 +81,6 @@ public sealed class UnifiedTileGenerator : ITileGenerator
             // Query actual chunk positions from the data source
             List<TilePos> tiles;
 
-            // TODO: Check if this is really needed.
             if (dataSource is SavegameDataSource savegameSource)
             {
                 var chunkPositions = savegameSource.GetAllMapChunkPositions();
@@ -216,67 +215,93 @@ public sealed class UnifiedTileGenerator : ITileGenerator
     {
         for (var zoom = _config.BaseZoomLevel - 1; zoom >= 0; zoom--)
         {
-            _sapi.Logger.Notification($"[VintageAtlas] Generating zoom level {zoom}...");
+            await GenerateSingleZoomLevelAsync(zoom, progress);
+        }
+    }
 
-            // Get the extent of tiles at a higher zoom level
-            var sourceZoom = zoom + 1;
-            var extent = await _storage.GetTileExtentAsync(sourceZoom);
+    /// <summary>
+    /// Generate tiles for a single zoom level by downsampling from the level above.
+    /// </summary>
+    private async Task GenerateSingleZoomLevelAsync(int zoom, IProgress<ExportProgress>? progress)
+    {
+        _sapi.Logger.Notification($"[VintageAtlas] Generating zoom level {zoom}...");
 
-            if (extent == null)
+        var sourceZoom = zoom + 1;
+        var extent = await _storage.GetTileExtentAsync(sourceZoom);
+
+        if (extent == null)
+        {
+            _sapi.Logger.Warning($"[VintageAtlas] No tiles found at zoom {sourceZoom}, skipping {zoom}");
+            return;
+        }
+
+        var targetTiles = CalculateTargetTilesForZoom(extent);
+        _sapi.Logger.Notification($"[VintageAtlas] Generating {targetTiles.Count} tiles for zoom {zoom}");
+
+        var generated = await GenerateDownsampledTilesAsync(zoom, targetTiles, progress);
+        _sapi.Logger.Notification($"[VintageAtlas] Generated {generated} tiles for zoom {zoom}");
+    }
+
+    /// <summary>
+    /// Calculate which tiles need to be generated at a zoom level based on the source extent.
+    /// </summary>
+    private static List<TilePos> CalculateTargetTilesForZoom(TileExtent extent)
+    {
+        // FORGIVING APPROACH: Generate tiles even if not all 4 source tiles exist
+        // This matches old Extractor.cs behavior where edge tiles with partial coverage
+        // are still created (with transparent areas for missing source tiles)
+        var targetTiles = new List<TilePos>();
+
+        // Simple division by 2 (matches old Extractor.cs)
+        // Edge tiles will have some null source tiles, which is OK
+        for (var tileX = extent.MinX / 2; tileX <= extent.MaxX / 2; tileX++)
+        {
+            for (var tileZ = extent.MinY / 2; tileZ <= extent.MaxY / 2; tileZ++)
             {
-                _sapi.Logger.Warning($"[VintageAtlas] No tiles found at zoom {sourceZoom}, skipping {zoom}");
-                continue;
+                targetTiles.Add(new TilePos(tileX, tileZ));
             }
+        }
 
-            // Calculate target tiles at current zoom
-            // FORGIVING APPROACH: Generate tiles even if not all 4 source tiles exist
-            // This matches old Extractor.cs behavior where edge tiles with partial coverage
-            // are still created (with transparent areas for missing source tiles)
-            var targetTiles = new List<TilePos>();
+        return targetTiles;
+    }
 
-            // Simple division by 2 (matches old Extractor.cs)
-            // Edge tiles will have some null source tiles, which is OK
-            for (var tileX = extent.MinX / 2; tileX <= extent.MaxX / 2; tileX++)
+    /// <summary>
+    /// Generate downsampled tiles in parallel.
+    /// </summary>
+    private async Task<int> GenerateDownsampledTilesAsync(int zoom, List<TilePos> targetTiles,
+        IProgress<ExportProgress>? progress)
+    {
+        var generated = 0;
+
+        await Parallel.ForEachAsync(targetTiles, async (tile, _) =>
+        {
+            try
             {
-                for (var tileZ = extent.MinY / 2; tileZ <= extent.MaxY / 2; tileZ++)
+                var downsampled = await _downsampler.GenerateTileByDownsamplingAsync(zoom, tile.X, tile.Z);
+
+                if (downsampled != null)
                 {
-                    targetTiles.Add(new TilePos(tileX, tileZ));
-                }
-            }
+                    await _storage.PutTileAsync(zoom, tile.X, tile.Z, downsampled);
+                    var count = System.Threading.Interlocked.Increment(ref generated);
 
-            _sapi.Logger.Notification($"[VintageAtlas] Generating {targetTiles.Count} tiles for zoom {zoom}");
-
-            var generated = 0;
-            await Parallel.ForEachAsync(targetTiles, async (tile, _) =>
-            {
-                try
-                {
-                    var downsampled = await _downsampler.GenerateTileByDownsamplingAsync(zoom, tile.X, tile.Z);
-
-                    if (downsampled != null)
+                    if (count % 100 == 0)
                     {
-                        await _storage.PutTileAsync(zoom, tile.X, tile.Z, downsampled);
-                        var count = System.Threading.Interlocked.Increment(ref generated);
-
-                        if (count % 100 == 0)
+                        progress?.Report(new ExportProgress
                         {
-                            progress?.Report(new ExportProgress
-                            {
-                                TilesCompleted = count,
-                                TotalTiles = targetTiles.Count,
-                                CurrentZoomLevel = zoom
-                            });
-                        }
+                            TilesCompleted = count,
+                            TotalTiles = targetTiles.Count,
+                            CurrentZoomLevel = zoom
+                        });
                     }
                 }
-                catch (Exception ex)
-                {
-                    _sapi.Logger.Error($"[VintageAtlas] Failed to generate zoom tile {zoom}/{tile.X}_{tile.Z}: {ex.Message}");
-                }
-            });
+            }
+            catch (Exception ex)
+            {
+                _sapi.Logger.Error($"[VintageAtlas] Failed to generate zoom tile {zoom}/{tile.X}_{tile.Z}: {ex.Message}");
+            }
+        });
 
-            _sapi.Logger.Notification($"[VintageAtlas] Generated {generated} tiles for zoom {zoom}");
-        }
+        return generated;
     }
 
     #endregion
@@ -350,6 +375,71 @@ public sealed class UnifiedTileGenerator : ITileGenerator
     #region Core Rendering (Single Implementation!)
 
     /// <summary>
+    /// Context for rendering a single pixel in a chunk.
+    /// </summary>
+    private readonly struct PixelContext
+    {
+        public readonly int X;
+        public readonly int Z;
+        public readonly int Height;
+        public readonly int ImgX;
+        public readonly int ImgZ;
+
+        public PixelContext(int x, int z, int height, int offsetX, int offsetZ)
+        {
+            X = x;
+            Z = z;
+            Height = height;
+            ImgX = offsetX + x;
+            ImgZ = offsetZ + z;
+        }
+    }
+
+    /// <summary>
+    /// Result of block ID resolution, including snow offset handling.
+    /// </summary>
+    private readonly struct BlockIdResult
+    {
+        public readonly int BlockId;
+        public readonly int HeightOffset;
+
+        public BlockIdResult(int blockId, int heightOffset)
+        {
+            BlockId = blockId;
+            HeightOffset = heightOffset;
+        }
+    }
+
+    /// <summary>
+    /// Context for rendering a chunk column, grouping related parameters.
+    /// Must be ref struct to hold Span<byte>.
+    /// </summary>
+    private ref struct ChunkRenderContext
+    {
+        public readonly int[] HeightMap;
+        public readonly int[] BlockIds;
+        public readonly int MapYHalf;
+        public readonly int MapMaxY;
+        public readonly int OffsetX;
+        public readonly int OffsetZ;
+        public readonly int TileSize;
+        public readonly Span<byte> ShadowMap;
+
+        public ChunkRenderContext(ChunkSnapshot snapshot, int mapYHalf, int mapMaxY,
+            int offsetX, int offsetZ, int tileSize, Span<byte> shadowMap)
+        {
+            HeightMap = snapshot.HeightMap;
+            BlockIds = snapshot.BlockIds;
+            MapYHalf = mapYHalf;
+            MapMaxY = mapMaxY;
+            OffsetX = offsetX;
+            OffsetZ = offsetZ;
+            TileSize = tileSize;
+            ShadowMap = shadowMap;
+        }
+    }
+
+    /// <summary>
     /// CORE RENDERING METHOD - Used by both full export and on-demand generation.
     /// This is the single source of truth for tile rendering logic.
     /// </summary>
@@ -396,50 +486,12 @@ public sealed class UnifiedTileGenerator : ITileGenerator
 
             using var bitmap = new SKBitmap(tileSize, tileSize);
             using var canvas = new SKCanvas(bitmap);
+            canvas.Clear();
 
-            canvas.Clear(); // TODO: can use to create background | new SKColor(41, 128, 185) Ocean blue
+            var randomForTile = CreateTileRandomizer(tileData);
+            var shadowMap = InitializeShadowMap(tileSize);
 
-            // Per-tile randomness (parity with Extractor's per-image Random)
-            // Non-deterministic across runs; stable within a tile during a single render
-            var randomForTile = new Random(unchecked(Environment.TickCount ^ (tileData.TileX * 73856093) ^ (tileData.TileZ * 19349663)));
-
-            // Create a shadow map for hill shading modes
-            Span<byte> shadowMap = null;
-            if (_config.Mode is ImageMode.ColorVariationsWithHillShading or ImageMode.MedievalStyleWithHillShading)
-            {
-                shadowMap = new byte[tileSize * tileSize];
-                for (var i = 0; i < shadowMap.Length; i++)
-                    shadowMap[i] = 128; // Initialize to neutral (no shadow/highlight)
-            }
-
-            var chunksRendered = 0;
-            var startChunkX = tileData.TileX * chunksPerTile;
-            var startChunkZ = tileData.TileZ * chunksPerTile;
-
-            for (var offsetX = 0; offsetX < chunksPerTile; offsetX++)
-            {
-                for (var offsetZ = 0; offsetZ < chunksPerTile; offsetZ++)
-                {
-                    var chunkX = startChunkX + offsetX;
-                    var chunkZ = startChunkZ + offsetZ;
-
-                    var snapshot = tileData.GetChunk(chunkX, chunkZ, 0);
-                    if (snapshot == null)
-                    {
-                        continue;
-                    }
-
-                    if (!snapshot.IsLoaded)
-                    {
-                        _sapi.Logger.Warning($"[VintageAtlas] ⚠️  Chunk ({chunkX},{chunkZ}) exists but IsLoaded=false!");
-                        continue;
-                    }
-
-                    RenderChunkToCanvas(canvas, snapshot, offsetX * ChunkSize, offsetZ * ChunkSize,
-                        shadowMap, tileSize, tileData, randomForTile);
-                    chunksRendered++;
-                }
-            }
+            var chunksRendered = RenderAllChunksToCanvas(canvas, tileData, chunksPerTile, shadowMap, tileSize, randomForTile);
 
             if (chunksRendered == 0)
             {
@@ -447,15 +499,9 @@ public sealed class UnifiedTileGenerator : ITileGenerator
                 return null;
             }
 
-            // Apply shadow map blur and shading for hill shading modes
-            if (_config.Mode is ImageMode.ColorVariationsWithHillShading or ImageMode.MedievalStyleWithHillShading)
-            {
-                ApplyShadowMapToBitmap(bitmap, shadowMap, tileSize);
-            }
+            ApplyShadowMapIfNeeded(bitmap, shadowMap, tileSize);
 
-            using var image = SKImage.FromBitmap(bitmap);
-            using var data = image.Encode(SKEncodedImageFormat.Png, 100);
-            return data.ToArray();
+            return EncodeBitmapToPng(bitmap);
         }
         catch (Exception ex)
         {
@@ -465,181 +511,290 @@ public sealed class UnifiedTileGenerator : ITileGenerator
     }
 
     /// <summary>
+    /// Create a per-tile randomizer for consistent randomness within a tile.
+    /// </summary>
+    private static Random CreateTileRandomizer(TileChunkData tileData)
+    {
+        return new Random(unchecked(Environment.TickCount ^ (tileData.TileX * 73856093) ^ (tileData.TileZ * 19349663)));
+    }
+
+    /// <summary>
+    /// Initialize shadow map for hill shading modes.
+    /// </summary>
+    private Span<byte> InitializeShadowMap(int tileSize)
+    {
+        if (_config.Mode is not (ImageMode.ColorVariationsWithHillShading or ImageMode.MedievalStyleWithHillShading))
+            return null;
+
+        var shadowMap = new byte[tileSize * tileSize];
+        for (var i = 0; i < shadowMap.Length; i++)
+            shadowMap[i] = 128; // Initialize to neutral (no shadow/highlight)
+
+        return shadowMap;
+    }
+
+    /// <summary>
+    /// Render all chunks in the tile to the canvas.
+    /// </summary>
+    private int RenderAllChunksToCanvas(SKCanvas canvas, TileChunkData tileData, int chunksPerTile,
+        Span<byte> shadowMap, int tileSize, Random randomForTile)
+    {
+        var chunksRendered = 0;
+        var startChunkX = tileData.TileX * chunksPerTile;
+        var startChunkZ = tileData.TileZ * chunksPerTile;
+
+        for (var offsetX = 0; offsetX < chunksPerTile; offsetX++)
+        {
+            for (var offsetZ = 0; offsetZ < chunksPerTile; offsetZ++)
+            {
+                var chunkX = startChunkX + offsetX;
+                var chunkZ = startChunkZ + offsetZ;
+
+                var snapshot = tileData.GetChunk(chunkX, chunkZ, 0);
+                if (snapshot?.IsLoaded != true)
+                {
+                    if (snapshot != null)
+                    {
+                        _sapi.Logger.Warning($"[VintageAtlas] ⚠️  Chunk ({chunkX},{chunkZ}) exists but IsLoaded=false!");
+                    }
+                    continue;
+                }
+
+                RenderChunkToCanvas(canvas, snapshot, offsetX * ChunkSize, offsetZ * ChunkSize,
+                    shadowMap, tileSize, randomForTile);
+                chunksRendered++;
+            }
+        }
+
+        return chunksRendered;
+    }
+
+    /// <summary>
+    /// Apply shadow map blur and shading if in hill shading mode.
+    /// </summary>
+    private void ApplyShadowMapIfNeeded(SKBitmap bitmap, Span<byte> shadowMap, int tileSize)
+    {
+        if (_config.Mode is ImageMode.ColorVariationsWithHillShading or ImageMode.MedievalStyleWithHillShading)
+        {
+            ApplyShadowMapToBitmap(bitmap, shadowMap, tileSize);
+        }
+    }
+
+    /// <summary>
+    /// Encode bitmap to PNG format.
+    /// </summary>
+    private static byte[] EncodeBitmapToPng(SKBitmap bitmap)
+    {
+        using var image = SKImage.FromBitmap(bitmap);
+        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+        return data.ToArray();
+    }
+
+    /// <summary>
+    /// Resolve the actual block ID to render, handling snow and microblocks.
+    /// </summary>
+    private BlockIdResult ResolveBlockId(int x, int z, int height, int[] blockIds)
+    {
+        var localY = height % ChunkSize;
+        var blockIndex = localY * ChunkSize * ChunkSize + z * ChunkSize + x;
+
+        if (blockIndex < 0 || blockIndex >= blockIds.Length)
+            return new BlockIdResult(0, 0);
+
+        var blockId = blockIds[blockIndex];
+        var heightOffset = 0;
+
+        // Handle snow blocks: look at the block underneath
+        if (_sapi.World.Blocks[blockId].BlockMaterial == EnumBlockMaterial.Snow)
+        {
+            heightOffset = 1;
+            var adjustedHeight = height - 1;
+            if (adjustedHeight >= 0)
+            {
+                var adjustedLocalY = adjustedHeight % ChunkSize;
+                var adjustedBlockIndex = adjustedLocalY * ChunkSize * ChunkSize + z * ChunkSize + x;
+                if (adjustedBlockIndex >= 0 && adjustedBlockIndex < blockIds.Length)
+                {
+                    blockId = blockIds[adjustedBlockIndex];
+                }
+            }
+        }
+
+        return new BlockIdResult(blockId, heightOffset);
+    }
+
+    /// <summary>
+    /// Handle microblock/chiseled block rendering, potentially overriding the block ID.
+    /// </summary>
+    private (int blockId, uint? overrideColor) ResolveMicroblock(int blockId, ChunkSnapshot snapshot, PixelContext ctx)
+    {
+        uint? overrideColor = null;
+
+        if (_microBlocks.Contains(blockId))
+        {
+            var worldX = snapshot.ChunkX * ChunkSize + ctx.X;
+            var worldZ = snapshot.ChunkZ * ChunkSize + ctx.Z;
+            var blockPos = new BlockPos(worldX, ctx.Height, worldZ, 0);
+
+            if (snapshot.BlockEntities.TryGetValue(blockPos, out var blockEntity) &&
+                blockEntity is BlockEntityMicroBlock { BlockIds.Length: > 0 } blockEntityChisel)
+            {
+                blockId = blockEntityChisel.BlockIds[0];
+            }
+            else
+            {
+                // Fallback parity with Extractor
+                overrideColor = _config.Mode == ImageMode.MedievalStyleWithHillShading
+                    ? MapColors.ColorsByCode["land"]
+                    : (uint)SKColors.Green;
+            }
+        }
+
+        return (blockId, overrideColor);
+    }
+
+    /// <summary>
+    /// Calculate the final pixel color based on the configured render mode.
+    /// </summary>
+    private uint CalculatePixelColor(int blockId, uint? overrideColor, PixelContext ctx,
+        ChunkSnapshot snapshot, Random random, int mapYHalf)
+    {
+        if (overrideColor.HasValue)
+            return overrideColor.Value;
+
+        return _config.Mode switch
+        {
+            ImageMode.OnlyOneColor => _colorCache.GetBaseColor(blockId),
+            ImageMode.ColorVariations => _colorCache.GetRandomColorVariation(blockId, random),
+            ImageMode.ColorVariationsWithHeight => ApplyHeightVariation(blockId, ctx.Height, random, mapYHalf),
+            ImageMode.ColorVariationsWithHillShading => _colorCache.GetRandomColorVariation(blockId, random),
+            ImageMode.MedievalStyleWithHillShading => CalculateMedievalColor(blockId, ctx, snapshot),
+            _ => _colorCache.GetBaseColor(blockId)
+        };
+    }
+
+    /// <summary>
+    /// Apply height-based color variation.
+    /// </summary>
+    private uint ApplyHeightVariation(int blockId, int height, Random random, int mapYHalf)
+    {
+        var color = _colorCache.GetRandomColorVariation(blockId, random);
+        return (uint)ColorUtil.ColorMultiply3Clamped((int)color, height / (float)mapYHalf);
+    }
+
+    /// <summary>
+    /// Calculate medieval style color with water edge detection.
+    /// </summary>
+    private uint CalculateMedievalColor(int blockId, PixelContext ctx, ChunkSnapshot snapshot)
+    {
+        var isWaterEdge = DetectWaterEdge(blockId, ctx.X, ctx.Z, snapshot);
+        return _colorCache.GetMedievalStyleColor(blockId, isWaterEdge);
+    }
+
+    /// <summary>
+    /// Update shadow map for hill shading modes if applicable.
+    /// </summary>
+    private void UpdateShadowMap(Span<byte> shadowMap, int tileSize, int blockId,
+        PixelContext ctx, ChunkSnapshot snapshot)
+    {
+        if (shadowMap == null)
+            return;
+
+        // Skip shadow calculation for lakes in medieval mode
+        if (_config.Mode == ImageMode.MedievalStyleWithHillShading && _colorCache.IsLake(blockId))
+            return;
+
+        var (nwDelta, nDelta, wDelta) = CalculateAltitudeDiff(ctx.X, ctx.Height, ctx.Z, snapshot.HeightMap);
+        var boostMultiplier = CalculateSlopeBoost(nwDelta, nDelta, wDelta);
+        var shadowIndex = ctx.ImgZ * tileSize + ctx.ImgX;
+
+        if (shadowIndex >= 0 && shadowIndex < shadowMap.Length)
+        {
+            shadowMap[shadowIndex] = (byte)(shadowMap[shadowIndex] * boostMultiplier);
+        }
+    }
+
+    /// <summary>
     /// Render a single chunk snapshot onto the canvas.
     /// Uses BlockColorCache for proper terrain coloring with full rendering mode support.
     /// </summary>
     private void RenderChunkToCanvas(SKCanvas canvas, ChunkSnapshot snapshot, int offsetX, int offsetZ,
-        Span<byte> shadowMap, int tileSize, TileChunkData tileData, Random randomForTile)
+        Span<byte> shadowMap, int tileSize, Random randomForTile)
     {
         try
         {
-            var heightMap = snapshot.HeightMap;
-            var blockIds = snapshot.BlockIds;
-
-            if (heightMap.Length == 0 || blockIds.Length == 0)
+            if (snapshot.HeightMap.Length == 0 || snapshot.BlockIds.Length == 0)
             {
-                _sapi.Logger.Warning($"[VintageAtlas] ⚠️  Empty data! heightMap={heightMap.Length}, blockIds={blockIds.Length}");
+                _sapi.Logger.Warning($"[VintageAtlas] ⚠️  Empty data! heightMap={snapshot.HeightMap.Length}, blockIds={snapshot.BlockIds.Length}");
                 return;
             }
 
             using var paint = new SKPaint();
-            // Use per-tile randomness (parity with Extractor) instead of per-chunk deterministic seed
-            var random = randomForTile;
-
             var mapYHalf = _sapi.WorldManager.MapSizeY / 2;
             var mapMaxY = _sapi.WorldManager.MapSizeY - 1;
 
+            var ctx = new ChunkRenderContext(snapshot, mapYHalf, mapMaxY, offsetX, offsetZ, tileSize, shadowMap);
+
             for (var x = 0; x < ChunkSize; x++)
             {
-                for (var z = 0; z < ChunkSize; z++)
-                {
-                    var heightIndex = z * ChunkSize + x;
-                    if (heightIndex >= heightMap.Length)
-                        continue;
-
-                    var height = heightMap[heightIndex];
-                    // Clamp height to valid map range (Extractor behavior)
-                    height = GameMath.Clamp(height, 0, mapMaxY);
-
-                    // ═══════════════════════════════════════════════════════════════
-                    // SURFACE BLOCK RENDERING (from SavegameDataSource)
-                    // BlockIds are stored at their actual height's local Y position
-                    // e.g., height=114 → localY=114%32=18 → blockIndex at Y=18
-                    // ═══════════════════════════════════════════════════════════════
-                    var localY = height % ChunkSize; // Local Y within a 32-block range
-
-                    var blockIndex = localY * ChunkSize * ChunkSize + z * ChunkSize + x;
-
-                    if (blockIndex < 0 || blockIndex >= blockIds.Length)
-                        continue;
-
-                    var blockId = blockIds[blockIndex];
-
-                    // Handle snow blocks: look at the block underneath
-                    var isHeightOffset = 0;
-                    if (_sapi.World.Blocks[blockId].BlockMaterial == EnumBlockMaterial.Snow)
-                    {
-                        isHeightOffset = 1;
-                        var adjustedHeight = height - 1;
-                        if (adjustedHeight >= 0)
-                        {
-                            var adjustedLocalY = adjustedHeight % ChunkSize;
-                            // Use the current snapshot's BlockIds at the adjusted local Y.
-                            // SavegameDataSource populates BlockIds at the surface localY positions.
-                            var adjustedBlockIndex = adjustedLocalY * ChunkSize * ChunkSize + z * ChunkSize + x;
-                            if (adjustedBlockIndex >= 0 && adjustedBlockIndex < blockIds.Length)
-                            {
-                                blockId = blockIds[adjustedBlockIndex];
-                            }
-                        }
-                    }
-
-                    // Get color based on render mode
-                    uint color;
-                    var imgX = offsetX + x;
-                    var imgZ = offsetZ + z;
-
-                    // Handle chiseled/micro blocks: use the actual block from the chisel
-                    uint? overrideColor = null;
-                    if (_microBlocks.Contains(blockId))
-                    {
-                        var worldX = snapshot.ChunkX * ChunkSize + x;
-                        var worldZ = snapshot.ChunkZ * ChunkSize + z;
-                        var blockPos = new BlockPos(worldX, height + isHeightOffset, worldZ, 0);
-
-                        if (snapshot.BlockEntities.TryGetValue(blockPos, out var blockEntity) &&
-                            blockEntity is BlockEntityMicroBlock { BlockIds.Length: > 0 } blockEntityChisel)
-                        // Use the first block ID from the chiseled block
-                        {
-                            blockId = blockEntityChisel.BlockIds[0];
-                        }
-                        else
-                        {
-                            // Fallback parity with Extractor
-                            // Non-medieval: flat green. Medieval: land color.
-                            if (_config.Mode == ImageMode.MedievalStyleWithHillShading)
-                            {
-                                overrideColor = MapColors.ColorsByCode["land"];
-                            }
-                            else
-                            {
-                                var green = (uint)SKColors.Green;
-                                overrideColor = green;
-                            }
-                        }
-                    }
-
-                    switch (_config.Mode)
-                    {
-                        case ImageMode.OnlyOneColor:
-                            color = overrideColor ?? _colorCache.GetBaseColor(blockId);
-                            break;
-
-                        case ImageMode.ColorVariations:
-                            color = overrideColor ?? _colorCache.GetRandomColorVariation(blockId, random);
-                            break;
-
-                        case ImageMode.ColorVariationsWithHeight:
-                            color = overrideColor ?? _colorCache.GetRandomColorVariation(blockId, random);
-                            // Apply height-based darkening/lightening (add height offset for snow)
-                            var adjustedHeight = height + isHeightOffset;
-                            color = (uint)ColorUtil.ColorMultiply3Clamped((int)color, adjustedHeight / (float)mapYHalf);
-                            break;
-
-                        case ImageMode.ColorVariationsWithHillShading:
-                            color = overrideColor ?? _colorCache.GetRandomColorVariation(blockId, random);
-
-                            // Calculate slope and populate shadow map
-                            if (shadowMap != null)
-                            {
-                                var (nwDelta, nDelta, wDelta) = CalculateAltitudeDiff(x, height, z, snapshot.HeightMap);
-                                var boostMultiplier = CalculateSlopeBoost(nwDelta, nDelta, wDelta);
-                                var shadowIndex = imgZ * tileSize + imgX;
-                                if (shadowIndex >= 0 && shadowIndex < shadowMap.Length)
-                                {
-                                    shadowMap[shadowIndex] = (byte)(shadowMap[shadowIndex] * boostMultiplier);
-                                }
-                            }
-                            break;
-
-                        case ImageMode.MedievalStyleWithHillShading:
-                            // Check if this is a water edge
-                            var isWaterEdge = DetectWaterEdge(blockId, x, z, snapshot);
-                            color = overrideColor ?? _colorCache.GetMedievalStyleColor(blockId, isWaterEdge);
-
-                            // Apply hill shading for non-water blocks
-                            if (shadowMap != null && !_colorCache.IsLake(blockId))
-                            {
-                                var (nwDelta, nDelta, wDelta) = CalculateAltitudeDiff(x, height, z, snapshot.HeightMap);
-                                var boostMultiplier = CalculateSlopeBoost(nwDelta, nDelta, wDelta);
-                                var shadowIndex = imgZ * tileSize + imgX;
-                                if (shadowIndex >= 0 && shadowIndex < shadowMap.Length)
-                                {
-                                    shadowMap[shadowIndex] = (byte)(shadowMap[shadowIndex] * boostMultiplier);
-                                }
-                            }
-                            break;
-
-                        default:
-                            color = _colorCache.GetBaseColor(blockId);
-                            break;
-                    }
-
-                    // Convert uint ARGB to SKColor
-                    var a = (byte)((color >> 24) & 0xFF);
-                    var r = (byte)((color >> 16) & 0xFF);
-                    var g = (byte)((color >> 8) & 0xFF);
-                    var b = (byte)(color & 0xFF);
-
-                    paint.Color = new SKColor(r, g, b, a);
-                    canvas.DrawPoint(imgX, imgZ, paint);
-                }
+                RenderChunkColumn(canvas, snapshot, x, ctx, randomForTile, paint);
             }
         }
         catch (Exception ex)
         {
             _sapi.Logger.Error($"[VintageAtlas] Failed to render chunk: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Render a single column (X coordinate) of pixels in a chunk.
+    /// </summary>
+    private void RenderChunkColumn(SKCanvas canvas, ChunkSnapshot snapshot, int x,
+        ChunkRenderContext ctx, Random randomForTile, SKPaint paint)
+    {
+        for (var z = 0; z < ChunkSize; z++)
+        {
+            var heightIndex = z * ChunkSize + x;
+            if (heightIndex >= ctx.HeightMap.Length)
+                continue;
+
+            var height = GameMath.Clamp(ctx.HeightMap[heightIndex], 0, ctx.MapMaxY);
+
+            // Resolve block ID (handles snow blocks)
+            var blockResult = ResolveBlockId(x, z, height, ctx.BlockIds);
+            if (blockResult.BlockId == 0)
+                continue;
+
+            var pixelCtx = new PixelContext(x, z, height + blockResult.HeightOffset, ctx.OffsetX, ctx.OffsetZ);
+
+            // Handle microblocks/chiseled blocks
+            var (blockId, overrideColor) = ResolveMicroblock(blockResult.BlockId, snapshot, pixelCtx);
+
+            // Calculate pixel color
+            var color = CalculatePixelColor(blockId, overrideColor, pixelCtx, snapshot, randomForTile, ctx.MapYHalf);
+
+            // Update shadow map for hill shading modes
+            if (_config.Mode is ImageMode.ColorVariationsWithHillShading or ImageMode.MedievalStyleWithHillShading)
+            {
+                UpdateShadowMap(ctx.ShadowMap, ctx.TileSize, blockId, pixelCtx, snapshot);
+            }
+
+            // Draw pixel
+            paint.Color = ConvertToSkColor(color);
+            canvas.DrawPoint(pixelCtx.ImgX, pixelCtx.ImgZ, paint);
+        }
+    }
+
+    /// <summary>
+    /// Convert uint ARGB color to SKColor.
+    /// </summary>
+    private static SKColor ConvertToSkColor(uint color)
+    {
+        var a = (byte)((color >> 24) & 0xFF);
+        var r = (byte)((color >> 16) & 0xFF);
+        var g = (byte)((color >> 8) & 0xFF);
+        var b = (byte)(color & 0xFF);
+        return new SKColor(r, g, b, a);
     }
 
     #endregion

@@ -41,9 +41,9 @@ public partial class TileController(
             var gridX = int.Parse(match.Groups[2].Value);
             var gridY = int.Parse(match.Groups[3].Value);
 
-            // Validate zoom level using mapConfig.TileResolutions when available
+            // Validate the zoom level using mapConfig.TileResolutions when available
             var mapConfig = mapConfigController.GetCurrentConfig();
-            int maxZoom = (mapConfig?.TileResolutions != null && mapConfig.TileResolutions.Length > 0)
+            var maxZoom = mapConfig?.TileResolutions is { Length: > 0 }
                 ? mapConfig.TileResolutions.Length - 1
                 : config.BaseZoomLevel;
 
@@ -54,39 +54,9 @@ public partial class TileController(
                 return;
             }
 
-            var extent = await tileGenerator.GetTileExtentAsync(zoom);
-
             // Adjust grid coordinates using backend origin offsets for absolute storage tiles
-            var originTiles = mapConfig?.OriginTilesPerZoom;
-            int offsetX = 0;
-            int offsetZ = 0;
 
-            var hasOrigin = originTiles != null && zoom < originTiles.Length && originTiles[zoom] != null;
-
-            if (hasOrigin)
-            {
-                offsetX = originTiles![zoom][0];
-                offsetZ = originTiles![zoom][1];
-            }
-
-            if (extent != null)
-            {
-                if (!hasOrigin || offsetX != extent.MinX || offsetZ != extent.MinY)
-                {
-                    offsetX = extent.MinX;
-                    offsetZ = extent.MinY;
-
-                    // Cached config is outdated; refresh so future requests use latest offsets
-                    mapConfigController.InvalidateCache();
-                }
-            }
-
-            var storageTileX = gridX;
-            var storageTileZ = gridY;
-
-            sapi.Logger.Notification($"[TileController] 🎯 Tile Request: zoom={zoom}, grid=({gridX},{gridY}) → storage=({storageTileX},{storageTileZ}) with offset ({offsetX},{offsetZ})");
-
-            var result = await tileGenerator.GetTileDataAsync(zoom, storageTileX, storageTileZ);
+            var result = await tileGenerator.GetTileDataAsync(zoom, gridX, gridY);
 
             // Handle missing tile - return 404
             if (result == null)

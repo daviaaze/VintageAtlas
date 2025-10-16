@@ -59,7 +59,6 @@ public sealed class SavegameDataLoader : IDisposable
 
     private readonly ServerMain _server;
     private readonly object _chunkTable = new();
-    private readonly object _mapChunkTable = new();
     private readonly ILogger _logger;
 
     public SavegameDataLoader(ServerMain server, int workers, ILogger modLogger)
@@ -155,7 +154,7 @@ public sealed class SavegameDataLoader : IDisposable
         return posList;
     }
 
-    public static IEnumerable<DblChunk<ServerMapRegion>> GetAllServerMapRegions(SqliteThreadCon sqliteConn)
+    public IEnumerable<DblChunk<ServerMapRegion>> GetAllServerMapRegions(SqliteThreadCon sqliteConn)
     {
         using var cmd = sqliteConn.Con.CreateCommand();
         cmd.CommandText = "SELECT position, data FROM mapregion";
@@ -238,7 +237,7 @@ public sealed class SavegameDataLoader : IDisposable
         }
     }
 
-    public ServerMapChunk? GetServerMapChunk(SqliteThreadCon sqliteConn, ulong position)
+    private ServerMapChunk? GetServerMapChunk(SqliteThreadCon sqliteConn, ulong position)
     {
         sqliteConn.GetMapChunk.Parameters["position"].Value = position;
         using var dataReader = sqliteConn.GetMapChunk.ExecuteReader();
@@ -277,8 +276,7 @@ public sealed class SavegameDataLoader : IDisposable
             if (dataReader.Read())
             {
                 var bytes = dataReader["data"] as byte[];
-                ServerChunk? serverMapChunk = null;
-                serverMapChunk = ServerChunk.FromBytes(bytes, _chunkDataPool, _server);
+                var serverMapChunk = ServerChunk.FromBytes(bytes, _chunkDataPool, _server);
 
                 return serverMapChunk;
             }
@@ -344,19 +342,19 @@ public sealed class SavegameDataLoader : IDisposable
     public void Dispose()
     {
         Dispose(true);
-        GC.SuppressFinalize(this);
     }
 
     private void Dispose(bool disposing)
     {
-        if (disposing) {
-            foreach (var con in _sqliteConnections)
-            {
-                con.Con.Dispose();
-            }
-
-            _chunkDataPool.FreeAll();
+        if (!disposing) 
+            return;
+        
+        foreach (var con in _sqliteConnections)
+        {
+            con.Con.Dispose();
         }
+
+        _chunkDataPool.FreeAll();
     }
 }
 

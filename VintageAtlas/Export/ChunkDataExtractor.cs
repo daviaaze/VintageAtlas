@@ -11,18 +11,6 @@ using Vintagestory.API.Config;
 
 namespace VintageAtlas.Export;
 
-/// <summary>
-/// Extracts chunk data on main thread following Vintage Story constraints
-/// 
-/// KEY CONSTRAINTS (from vintagestory-modding-constraints.md):
-/// - Chunk access MUST be on main thread
-/// - Cannot cache chunk references (prevents unloading)
-/// - Extract quickly, minimize main thread time
-/// 
-/// HYBRID APPROACH:
-/// - Try to get chunks from memory first (fast, preferred)
-/// - Fall back to database read if not in memory (slower but works)
-/// </summary>
 public class ChunkDataExtractor
 {
     private readonly ICoreServerAPI _sapi;

@@ -161,14 +161,12 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
         {
             var basePath = config.BasePath ?? "/";
             if (string.IsNullOrWhiteSpace(basePath) || basePath == "/") return path;
-            if (!basePath.StartsWith('/')) basePath = '/' + basePath;
+            if (!basePath.StartsWith('/')) basePath = $"/{basePath}";
             if (!basePath.EndsWith('/')) basePath += '/';
-            if (path.StartsWith(basePath, StringComparison.OrdinalIgnoreCase))
-            {
-                var trimmed = path.Substring(basePath.Length);
-                return "/" + trimmed;
-            }
-            return path;
+            if (!path.StartsWith(basePath, StringComparison.OrdinalIgnoreCase)) 
+                return path;
+            var trimmed = path[basePath.Length..];
+            return "/" + trimmed;
         }
         catch
         {

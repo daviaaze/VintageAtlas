@@ -4,125 +4,178 @@ namespace VintageAtlas.Export;
 
 public static class BlurTool
 {
+    private readonly struct BlurContext
+    {
+        public readonly int HalfRange;
+        public readonly int XStart;
+        public readonly int YStart;
+        public readonly int XEnd;
+        public readonly int YEnd;
+
+        public BlurContext(int halfRange, int xStart, int yStart, int xEnd, int yEnd)
+        {
+            HalfRange = halfRange;
+            XStart = xStart;
+            YStart = yStart;
+            XEnd = xEnd;
+            YEnd = yEnd;
+        }
+    }
+
+    private readonly struct VerticalOffsets
+    {
+        public readonly int OldPixelOffset;
+        public readonly int NewPixelOffset;
+
+        public VerticalOffsets(int oldPixelOffset, int newPixelOffset)
+        {
+            OldPixelOffset = oldPixelOffset;
+            NewPixelOffset = newPixelOffset;
+        }
+    }
+
     public static void Blur(Span<byte> data, int sizeX, int sizeZ, int range)
     {
-        BoxBlurHorizontal(data, range, 0, 0, sizeX, sizeZ);
-        BoxBlurVertical(data, range, 0, 0, sizeX, sizeZ);
+        BoxBlurHorizontal(data, sizeX, range, 0, 0, sizeX, sizeZ);
+        BoxBlurVertical(data, sizeX, range, 0, 0, sizeX, sizeZ);
     }
 
 
-    private static unsafe void BoxBlurHorizontal(Span<byte> map, int range, int xStart, int yStart, int xEnd, int yEnd)
+    private static unsafe void BoxBlurHorizontal(Span<byte> map, int fullWidth, int range, int xStart, int yStart, int xEnd, int yEnd)
     {
         fixed (byte* pixels = map)
         {
-            var w = xEnd - xStart;
-            var h = yEnd - yStart;
-
-            var halfRange = range / 2;
-            var index = yStart * w;
+            var context = new BlurContext(range / 2, xStart, yStart, xEnd, yEnd);
+            var w = context.XEnd - context.XStart;
             var newColors = new byte[w];
+            var index = context.YStart * fullWidth;
 
-            for (var y = yStart; y < yEnd; y++)
+            for (var y = context.YStart; y < context.YEnd; y++)
             {
-                var hits = 0;
-                var r = 0;
-                for (var x = xStart - halfRange; x < xEnd; x++)
-                {
-                    var oldPixel = x - halfRange - 1;
-                    if (oldPixel >= xStart)
-                    {
-                        var col = pixels[index + oldPixel];
-                        if (col != 0)
-                        {
-                            r -= col;
-                        }
-                        hits--;
-                    }
-
-                    var newPixel = x + halfRange;
-                    if (newPixel < xEnd)
-                    {
-                        var col = pixels[index + newPixel];
-                        if (col != 0)
-                        {
-                            r += col;
-                        }
-                        hits++;
-                    }
-
-                    if (x >= xStart)
-                    {
-                        var color = (byte)(r / hits);
-                        newColors[x] = color;
-                    }
-                }
-
-                for (var x = xStart; x < xEnd; x++)
-                {
-                    pixels[index + x] = newColors[x];
-                }
-
-                index += w;
+                ProcessHorizontalRow(pixels, index, newColors, context);
+                ApplyHorizontalRow(pixels, index, newColors, context);
+                index += fullWidth;
             }
         }
     }
 
-    private static unsafe void BoxBlurVertical(Span<byte> map, int range, int xStart, int yStart, int xEnd, int yEnd)
+    private static unsafe void ProcessHorizontalRow(byte* pixels, int index, byte[] newColors, BlurContext context)
+    {
+        var hits = 0;
+        var r = 0;
+
+        for (var x = context.XStart - context.HalfRange; x < context.XEnd; x++)
+        {
+            UpdateHorizontalRollingAverage(pixels, index, x, context, ref r, ref hits);
+
+            if (x >= context.XStart)
+            {
+                var color = (byte)(hits > 0 ? r / hits : 0);
+                newColors[x - context.XStart] = color;
+            }
+        }
+    }
+
+    private static unsafe void UpdateHorizontalRollingAverage(byte* pixels, int index, int x, BlurContext context, ref int r, ref int hits)
+    {
+        var oldPixel = x - context.HalfRange - 1;
+        if (oldPixel >= context.XStart)
+        {
+            var col = pixels[index + oldPixel];
+            if (col != 0)
+            {
+                r -= col;
+            }
+            hits--;
+        }
+
+        var newPixel = x + context.HalfRange;
+        if (newPixel < context.XEnd)
+        {
+            var col = pixels[index + newPixel];
+            if (col != 0)
+            {
+                r += col;
+            }
+            hits++;
+        }
+    }
+
+    private static unsafe void ApplyHorizontalRow(byte* pixels, int index, byte[] newColors, BlurContext context)
+    {
+        for (var x = context.XStart; x < context.XEnd; x++)
+        {
+            pixels[index + x] = newColors[x - context.XStart];
+        }
+    }
+
+    private static unsafe void BoxBlurVertical(Span<byte> map, int fullWidth, int range, int xStart, int yStart, int xEnd, int yEnd)
     {
         fixed (byte* pixels = map)
         {
-            var w = xEnd - xStart;
-            var h = yEnd - yStart;
-
-            var halfRange = range / 2;
-
+            var context = new BlurContext(range / 2, xStart, yStart, xEnd, yEnd);
+            var h = context.YEnd - context.YStart;
             var newColors = new byte[h];
-            var oldPixelOffset = -(halfRange + 1) * w;
-            var newPixelOffset = halfRange * w;
+            var offsets = new VerticalOffsets(-(context.HalfRange + 1) * fullWidth, context.HalfRange * fullWidth);
 
-            for (var x = xStart; x < xEnd; x++)
+            for (var x = context.XStart; x < context.XEnd; x++)
             {
-                var hits = 0;
-                var r = 0;
-                var index = yStart * w - halfRange * w + x;
-                for (var y = yStart - halfRange; y < yEnd; y++)
-                {
-                    var oldPixel = y - halfRange - 1;
-                    if (oldPixel >= yStart)
-                    {
-                        var col = pixels[index + oldPixelOffset];
-                        if (col != 0)
-                        {
-                            r -= col;
-                        }
-                        hits--;
-                    }
-
-                    var newPixel = y + halfRange;
-                    if (newPixel < yEnd)
-                    {
-                        var col = pixels[index + newPixelOffset];
-                        if (col != 0)
-                        {
-                            r += col;
-                        }
-                        hits++;
-                    }
-
-                    if (y >= yStart)
-                    {
-                        var color = (byte)(r / hits);
-                        newColors[y] = color;
-                    }
-
-                    index += w;
-                }
-
-                for (var y = yStart; y < yEnd; y++)
-                {
-                    pixels[y * w + x] = newColors[y];
-                }
+                ProcessVerticalColumn(pixels, fullWidth, x, newColors, context, offsets);
+                ApplyVerticalColumn(pixels, fullWidth, x, newColors, context);
             }
+        }
+    }
+
+    private static unsafe void ProcessVerticalColumn(byte* pixels, int fullWidth, int x, byte[] newColors, BlurContext context, VerticalOffsets offsets)
+    {
+        var hits = 0;
+        var r = 0;
+        var index = context.YStart * fullWidth - context.HalfRange * fullWidth + x;
+
+        for (var y = context.YStart - context.HalfRange; y < context.YEnd; y++)
+        {
+            UpdateVerticalRollingAverage(pixels, index, y, context, offsets, ref r, ref hits);
+
+            if (y >= context.YStart)
+            {
+                var color = (byte)(hits > 0 ? r / hits : 0);
+                newColors[y - context.YStart] = color;
+            }
+
+            index += fullWidth;
+        }
+    }
+
+    private static unsafe void UpdateVerticalRollingAverage(byte* pixels, int index, int y, BlurContext context, VerticalOffsets offsets, ref int r, ref int hits)
+    {
+        var oldPixel = y - context.HalfRange - 1;
+        if (oldPixel >= context.YStart)
+        {
+            var col = pixels[index + offsets.OldPixelOffset];
+            if (col != 0)
+            {
+                r -= col;
+            }
+            hits--;
+        }
+
+        var newPixel = y + context.HalfRange;
+        if (newPixel < context.YEnd)
+        {
+            var col = pixels[index + offsets.NewPixelOffset];
+            if (col != 0)
+            {
+                r += col;
+            }
+            hits++;
+        }
+    }
+
+    private static unsafe void ApplyVerticalColumn(byte* pixels, int fullWidth, int x, byte[] newColors, BlurContext context)
+    {
+        for (var y = context.YStart; y < context.YEnd; y++)
+        {
+            pixels[y * fullWidth + x] = newColors[y - context.YStart];
         }
     }
 
