@@ -92,27 +92,13 @@ public partial class TileController(
             if (result == null)
             {
                 // Debug: Show what tiles are actually available at this zoom level
-                var extent404 = await tileGenerator.GetTileExtentAsync(zoom);
-                if (extent404 != null)
-                {
-                    sapi.Logger.Warning($"[TileController] ❌ Tile not found: zoom={zoom}, storage=({storageTileX},{storageTileZ}). Available extent: X[{extent404.MinX}-{extent404.MaxX}], Y[{extent404.MinY}-{extent404.MaxY}]");
-                }
-                else
-                {
-                    sapi.Logger.Warning($"[TileController] ❌ Tile not found: zoom={zoom}, storage=({storageTileX},{storageTileZ}). No tiles found at zoom {zoom} - may need to run /atlas export");
-                }
-
                 context.Response.StatusCode = 404;
                 context.Response.Close();
                 return;
             }
-            else
-            {
-                sapi.Logger.Debug($"[TileController] Tile found: zoom={zoom}, storage=({storageTileX},{storageTileZ}), size={result.Length} bytes");
-            }
 
             // Generate ETag based on tile content hash (first 16 bytes for performance)
-            var etag = GenerateETag(result, zoom, storageTileX, storageTileZ);
+            var etag = GenerateETag(result, zoom, gridX, gridY);
 
             // Check If-None-Match header for conditional requests (ETag-based caching)
             var clientETag = context.Request.Headers["If-None-Match"];

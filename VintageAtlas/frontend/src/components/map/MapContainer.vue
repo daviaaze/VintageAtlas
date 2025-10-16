@@ -162,7 +162,24 @@ onUnmounted(() => {
 .ol-map {
   width: 100%;
   height: 100%;
-  background: #e8f4f8;
+  /* Parchment background color */
+  background-color: #d4b896;
+  /* Noise texture overlay */
+  background-image:
+    url('/assets/noise.svg'),
+    /* CSS fallback texture */
+    repeating-linear-gradient(0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.03) 2px,
+      rgba(0, 0, 0, 0.03) 3px),
+    repeating-linear-gradient(90deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.03) 2px,
+      rgba(0, 0, 0, 0.03) 3px);
+  background-repeat: repeat, repeat, repeat;
+  background-size: 200px 200px, 3px 3px, 3px 3px;
 }
 
 .ol-coords {
@@ -203,7 +220,9 @@ onUnmounted(() => {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .ol-loading p {
