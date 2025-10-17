@@ -89,7 +89,7 @@
     <!-- Help Dialog -->
     <Teleport to="body">
       <div v-if="showHelpDialog" class="help-overlay" @click="showHelpDialog = false"></div>
-      <div v-if="showHelpDialog" class="help-dialog" role="dialog" aria-labelledby="help-title" aria-modal="true">
+      <dialog v-if="showHelpDialog" class="help-dialog" aria-labelledby="help-title" aria-modal="true">
         <h3 id="help-title">⌨️ Keyboard Shortcuts</h3>
         <div class="shortcut-list">
           <div class="shortcut-item">
@@ -130,7 +130,7 @@
           </div>
         </div>
         <button class="close-button" @click="showHelpDialog = false" ref="closeButton">Got it!</button>
-      </div>
+      </dialog>
     </Teleport>
   </div>
 </template>
@@ -166,10 +166,6 @@ function getBool(key: string, defaultValue: boolean): boolean {
   }
 }
 
-function setBool(key: string, value: boolean): void {
-  localStorage.setItem(key, JSON.stringify(value));
-}
-
 // Reactive state with localStorage persistence
 const showPlayers = ref(getBool(SHOW_PLAYERS_KEY, true));
 const showPlayerStats = ref(getBool(SHOW_PLAYER_STATS_KEY, false));
@@ -177,23 +173,6 @@ const showAnimals = ref(getBool(SHOW_ANIMALS_KEY, true));
 const showAnimalHP = ref(getBool(SHOW_ANIMAL_HP_KEY, false));
 const showAnimalEnv = ref(getBool(SHOW_ANIMAL_ENV_KEY, false));
 const showCoords = ref(getBool(SHOW_COORDS_KEY, false));
-
-// Status icons and messages
-const statusIcons: Record<string, string> = {
-  ok: '●',
-  error: '✕',
-  warning: '⚠',
-  reconnecting: '↻',
-  loading: '⏳'
-};
-
-const statusMessages: Record<string, string> = {
-  ok: 'Connected - Live data updating',
-  error: 'Connection failed - Check server status',
-  warning: 'Connection issue - Retrying...',
-  reconnecting: 'Reconnecting...',
-  loading: 'Loading data...'
-};
 
 // Handle window resize for mobile detection
 function handleResize() {
@@ -383,39 +362,6 @@ onUnmounted(() => {
   margin: 0 4px;
 }
 
-.status-indicator {
-  color: #8f8;
-  font-size: 14px;
-  cursor: help;
-  padding: 4px 8px;
-  border-radius: 6px;
-  transition: all 0.2s ease;
-  min-width: 20px;
-  text-align: center;
-}
-
-.status-indicator:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.status-indicator.error {
-  color: #f88;
-}
-
-.status-indicator.warning {
-  color: #fd3;
-}
-
-.status-indicator.reconnecting {
-  color: #f90;
-  animation: pulse 1s ease-in-out infinite;
-}
-
-.status-indicator.loading {
-  color: #4a9eff;
-  animation: pulse 1s ease-in-out infinite;
-}
-
 @keyframes pulse {
   0%, 100% {
     opacity: 1;
@@ -538,19 +484,6 @@ onUnmounted(() => {
   outline-offset: 2px;
 }
 
-/* Screen reader only class */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border-width: 0;
-}
-
 /* Mobile styles */
 @media (max-width: 768px) {
   .live-controls {
@@ -571,12 +504,6 @@ onUnmounted(() => {
   .control-item input[type="checkbox"] {
     width: 20px;
     height: 20px;
-  }
-  
-  .status-indicator {
-    font-size: 16px;
-    min-width: 24px;
-    padding: 6px 10px;
   }
 }
 
@@ -614,14 +541,10 @@ onUnmounted(() => {
 }
 
 /* High contrast mode support */
-@media (prefers-contrast: high) {
+@media (prefers-contrast: more) {
   .live-controls {
     background: rgba(0, 0, 0, 0.9);
     border: 2px solid white;
-  }
-  
-  .status-indicator {
-    font-weight: bold;
   }
 }
 
@@ -633,15 +556,6 @@ onUnmounted(() => {
   
   .control-item {
     transition: none;
-  }
-  
-  .status-indicator {
-    transition: none;
-  }
-  
-  .status-indicator.reconnecting,
-  .status-indicator.loading {
-    animation: none;
   }
 }
 </style>

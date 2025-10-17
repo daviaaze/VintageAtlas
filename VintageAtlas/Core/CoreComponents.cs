@@ -9,6 +9,7 @@ namespace VintageAtlas.Core;
 /// </summary>
 public record CoreComponents(
     MbTilesStorage Storage,
+    MetadataStorage MetadataStorage,
     BlockColorCache ColorCache,
     MapConfigController MapConfigController,
     MapExporter MapExporter

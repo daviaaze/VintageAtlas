@@ -41,7 +41,7 @@ public class TileChunkData
 
     public TileChunkData()
     {
-        Chunks = new Dictionary<string, ChunkSnapshot>();
+        Chunks = [];
     }
 
     /// <summary>

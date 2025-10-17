@@ -73,7 +73,7 @@ onMounted(async () => {
             if(!coordinate) return '0, 0';
             
             // WebCartographer-style coordinate format
-            return toStringXY([coordinate[0], -coordinate[1]], 0);
+            return toStringXY([coordinate[0], coordinate[1]], 0);
           },
           className: 'coords',
           target: 'mousePos',

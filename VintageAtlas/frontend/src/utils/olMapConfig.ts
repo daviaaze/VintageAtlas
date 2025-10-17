@@ -37,7 +37,7 @@ export function createTileGrid(): TileGrid {
   });
 
   const grid = new TileGrid({
-    extent: olExtent,
+    extent: extent,
     origin: olOrigin,
     resolutions,
     tileSize: [tileSize, tileSize]
@@ -111,6 +111,6 @@ export function getTileUrl(z: number, x: number, y: number): string {
  */
 export function formatCoords(coord: [number, number]): string {
   const x = Math.round(coord[0]);
-  const z = Math.round(coord[1]);
+  const z = Math.round(-coord[1]);
   return `${x}, ${z}`;
 }

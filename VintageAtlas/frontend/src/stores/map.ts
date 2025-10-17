@@ -134,6 +134,11 @@ export const useMapStore = defineStore('map', () => {
   
   function toggleLayer(layerName: keyof typeof layerVisibility.value) {
     layerVisibility.value[layerName] = !layerVisibility.value[layerName];
+    map.value?.getLayers().forEach((layer: any) => {
+      if (layer.get('name') === layerName) {
+        layer.setVisible(layerVisibility.value[layerName]);
+      }
+    });
   }
   
   function setLayerVisibility(layerName: keyof typeof layerVisibility.value, visible: boolean) {

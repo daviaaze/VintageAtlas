@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
 using System.IO;
-using System.Threading;
 using Microsoft.Data.Sqlite;
 using ProtoBuf;
 using Vintagestory.API.Common;
@@ -47,7 +46,6 @@ public sealed class SavegameDataLoader : IDisposable
 
                         return conn;
                     }
-                    Thread.Sleep(500);
                     _logger.Notification("Could not find a free sqlite connection for a worker thread. Waiting...");
                 }
             }

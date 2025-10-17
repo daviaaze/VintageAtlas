@@ -16,5 +16,10 @@ public class TileResult
     /// Whether the tile was not found (404 response)
     /// </summary>
     public bool NotFound { get; set; }
+
+    public bool NotModified { get; set; }
+    public string ETag { get; set; } = "";
+    public DateTime LastModified { get; set; }
+    public string ContentType { get; set; } = "";
 }
 

@@ -7,6 +7,9 @@ using Vintagestory.API.MathTools;
 using Vintagestory.Server;
 using VintageAtlas.Core;
 using Vintagestory.Common.Database;
+using Vintagestory.GameContent;
+using Vintagestory.API.Config;
+using VintageAtlas.Models.Domain;
 
 namespace VintageAtlas.Export;
 
@@ -70,7 +73,7 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
 
                 try
                 {
-                    lock (sqliteConn.Con)
+                    lock (sqliteConn)
                     {
                         // Load all chunks for this tile
                         for (var offsetX = 0; offsetX < chunksPerTile; offsetX++)
@@ -180,6 +183,7 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
             // Load the required ServerChunks
             var loadedChunks = new Dictionary<int, ServerChunk>();
             var allBlockEntities = new Dictionary<BlockPos, BlockEntity>();
+            var allTraders = new Dictionary<long, Trader>();
             foreach (var y in chunksToLoad)
             {
                 var chunkPos = new ChunkPos(chunkX, y, chunkZ);
@@ -189,6 +193,21 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
 
                 serverChunk.Unpack_ReadOnly();
                 loadedChunks[y] = serverChunk;
+
+                if(serverChunk.EntitiesCount > 0) {
+                    foreach(var entity in serverChunk.Entities.Where(e => e is EntityTrader).Cast<EntityTrader>()) {
+                        var entityBehaviorName =
+                            entity.WatchedAttributes.GetTreeAttribute("nametag").GetString("name");
+                        // item-creature-humanoid-trader-commodities
+                        var type = Lang.Get("item-creature-" + entity.Code.Path);
+                        allTraders[entity.EntityId] = new Trader
+                            {
+                                Name = entityBehaviorName,
+                                Type = type,
+                                Pos = entity.Pos.AsBlockPos
+                        };
+                    }
+                }
 
                 // Collect block entities from this chunk
                 if (serverChunk.BlockEntities != null)
@@ -281,6 +300,7 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
                 HeightMap = heightMap,
                 BlockIds = blockIds,
                 BlockEntities = allBlockEntities,
+                Traders = allTraders,
                 IsLoaded = true
             };
         }
@@ -294,7 +314,6 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
     public void Dispose()
     {
         Dispose(true);
-        GC.SuppressFinalize(this);
     }
 
     private void Dispose(bool disposing)

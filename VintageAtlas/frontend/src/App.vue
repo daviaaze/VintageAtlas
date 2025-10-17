@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { onMounted } from 'vue';
 import AppHeader from '@/components/common/AppHeader.vue';
 import AppSidebar from '@/components/common/AppSidebar.vue';
 import { useUiStore } from '@/stores/ui';
@@ -7,10 +6,6 @@ import { useUiStore } from '@/stores/ui';
 // Initialize UI store
 const uiStore = useUiStore();
 
-// Apply theme on mount
-onMounted(() => {
-  uiStore.applyTheme(uiStore.currentTheme);
-});
 </script>
 
 <template>

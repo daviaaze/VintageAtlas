@@ -68,7 +68,8 @@ public class VintageAtlasModSystem : ModSystem
                 _coreComponents.MapExporter,
                 _coreComponents.ColorCache,
                 _coreComponents.Storage,
-                _coreComponents.MapConfigController
+                _coreComponents.MapConfigController,
+                _coreComponents.MetadataStorage
             );
 
             // Let the ServerManager handle all the setup

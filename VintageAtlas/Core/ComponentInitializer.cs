@@ -22,13 +22,14 @@ public static class ComponentInitializer
         // Initialize tile storage (shared by all tile generators)
         var dbPath = Path.Combine(config.OutputDirectory, "data", "tiles.mbtiles");
         var storage = new MbTilesStorage(dbPath);
+        var metadataStorage = new MetadataStorage(Path.Combine(config.OutputDirectory, "data", "metadata.db"));
 
         // Initialize the block color cache (needed for tile rendering)
         var colorCache = new BlockColorCache(sapi, config);
         colorCache.Initialize();
 
         // Initialize unified tile generator for full exports
-        var unifiedGenerator = new UnifiedTileGenerator(sapi, config, colorCache, storage);
+        var unifiedGenerator = new UnifiedTileGenerator(sapi, config, colorCache, storage, metadataStorage);
 
         // Initialize map config controller (needed by exporter for cache invalidation)
         var mapConfigController = new MapConfigController(sapi);
@@ -40,6 +41,7 @@ public static class ComponentInitializer
 
         return new CoreComponents(
             storage,
+            metadataStorage,
             colorCache,
             mapConfigController,
             mapExporter

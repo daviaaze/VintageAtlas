@@ -4,7 +4,6 @@
  */
 import { Style, Fill, Stroke, Text, Icon } from 'ol/style';
 import { MultiPoint, LineString } from 'ol/geom';
-import type { Feature } from 'ol';
 
 // Trader colors by wares (Spec lines 175-187)
 const TRADER_COLORS: Record<string, [number, number, number]> = {

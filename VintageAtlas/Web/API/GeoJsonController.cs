@@ -10,6 +10,7 @@ using Vintagestory.API.Server;
 using Vintagestory.GameContent;
 using VintageAtlas.Core;
 using VintageAtlas.GeoJson;
+using VintageAtlas.Storage;
 
 namespace VintageAtlas.Web.API;
 
@@ -17,7 +18,7 @@ namespace VintageAtlas.Web.API;
 /// Provides GeoJSON data dynamically via API with efficient caching
 /// Scans loaded chunks in memory to find signs, signposts, traders, and translocators
 /// </summary>
-public class GeoJsonController(ICoreServerAPI sapi, CoordinateTransformService coordinateService)
+public class GeoJsonController(ICoreServerAPI sapi, CoordinateTransformService coordinateService, MetadataStorage metadataStorage)
 {
     private readonly JsonSerializerSettings _jsonSettings = new()
     {
@@ -78,27 +79,14 @@ public class GeoJsonController(ICoreServerAPI sapi, CoordinateTransformService c
             }
         }
 
-        var traders = new TraderGeoJson();
+        var storageTraders = await metadataStorage.GetTraders();
 
-        await Task.Run(() =>
+        var traders = new TraderGeoJson
         {
-            try
-            {
-                // Get all loaded entities and filter for traders
-                foreach (var entity in sapi.World.LoadedEntities.AsReadOnly().Values)
-                {
-                    if (entity is not EntityTrader trader)
-                        continue;
-
-                    var feature = CreateTraderFeature(trader);
-                    traders.Features.Add(feature);
-                }
-            }
-            catch (Exception ex)
-            {
-                sapi.Logger.Warning($"[VintageAtlas] Error scanning for traders: {ex.Message}");
-            }
-        });
+            Features = storageTraders.ConvertAll(trader =>
+                new TraderFeature(new TraderProperties(trader.Name, trader.Type, 0),
+                    new PointGeometry(GetGeoJsonCoordinates(trader.Pos))))
+        };
 
         lock (_cacheLock)
         {
@@ -125,7 +113,7 @@ public class GeoJsonController(ICoreServerAPI sapi, CoordinateTransformService c
         // Use centralized coordinate transformation service
         // Converts game world coordinates to map display coordinates (Z-flip for north-up)
         var (x, y) = coordinateService.GameToDisplay(pos);
-        return [x, y];
+        return [x, -y];
     }
 
     private static async Task ServeGeoJson(HttpListenerContext context, string json, string etag)

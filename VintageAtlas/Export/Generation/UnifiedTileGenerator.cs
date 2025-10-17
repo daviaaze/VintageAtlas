@@ -20,11 +20,12 @@ namespace VintageAtlas.Export;
 /// Uses a single rendering implementation with pluggable data sources (IChunkDataSource)
 /// for both full exports and on-demand generation.
 /// </summary>
-public sealed class UnifiedTileGenerator : ITileGenerator
+public sealed partial class UnifiedTileGenerator : ITileGenerator
 {
     private readonly ICoreServerAPI _sapi;
     private readonly ModConfig _config;
     private readonly MbTilesStorage _storage;
+    private readonly MetadataStorage _metadataStorage;
     private readonly BlockColorCache _colorCache;
     private readonly PyramidTileDownsampler _downsampler;
 
@@ -41,12 +42,14 @@ public sealed class UnifiedTileGenerator : ITileGenerator
         ICoreServerAPI sapi,
         ModConfig config,
         BlockColorCache colorCache,
-        MbTilesStorage storage)
+        MbTilesStorage storage,
+        MetadataStorage metadataStorage)
     {
         _sapi = sapi ?? throw new ArgumentNullException(nameof(sapi));
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _colorCache = colorCache ?? throw new ArgumentNullException(nameof(colorCache));
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
+        _metadataStorage = metadataStorage ?? throw new ArgumentException(nameof(metadataStorage));
 
         // Initialize downsampler for lower zoom levels
         _downsampler = new PyramidTileDownsampler(sapi, config, this);
@@ -68,7 +71,7 @@ public sealed class UnifiedTileGenerator : ITileGenerator
     /// This is the replacement for Extractor.ExtractWorldMap().
     /// </summary>
     public async Task ExportFullMapAsync(
-        IChunkDataSource dataSource,
+        SavegameDataSource dataSource,
         IProgress<ExportProgress>? progress = null)
     {
         _sapi.Logger.Notification("[VintageAtlas] Starting full map export (unified generator)...");
@@ -81,16 +84,7 @@ public sealed class UnifiedTileGenerator : ITileGenerator
             // Query actual chunk positions from the data source
             List<TilePos> tiles;
 
-            if (dataSource is SavegameDataSource savegameSource)
-            {
-                var chunkPositions = savegameSource.GetAllMapChunkPositions();
-                tiles = CalculateTileCoverageFromChunks(chunkPositions);
-            }
-            else
-            {
-                // Fallback to estimated coverage for other data sources
-                tiles = CalculateTileCoverage();
-            }
+            tiles = CalculateTileCoverageFromChunks(dataSource.GetAllMapChunkPositions());
 
             _sapi.Logger.Notification($"[VintageAtlas] Exporting {tiles.Count} tiles at zoom {_config.BaseZoomLevel}");
 
@@ -106,12 +100,18 @@ public sealed class UnifiedTileGenerator : ITileGenerator
             {
                 try
                 {
-                    var tileData = await RenderTileAsync(
+                    var (tileData, traders) = await RenderTileAsync(
                         _config.BaseZoomLevel,
                         tile.X,
                         tile.Z,
                         dataSource
                     );
+
+                    if(traders.Count > 0) {
+                        foreach(var trader in traders) {
+                            _metadataStorage.AddTrader(trader.Key, trader.Value.Name, trader.Value.Type, trader.Value.Pos);
+                        }
+                    }
 
                     if (tileData != null)
                     {
@@ -194,17 +194,6 @@ public sealed class UnifiedTileGenerator : ITileGenerator
         }
 
         return tiles.ToList();
-    }
-
-    /// <summary>
-    /// Calculate which tiles need to be generated based on estimated world size.
-    /// Fallback for when actual chunk positions are not available.
-    /// </summary>
-    private List<TilePos> CalculateTileCoverage()
-    {
-        // Remove estimation: require actual chunk-driven coverage
-        _sapi.Logger.Warning("[VintageAtlas] CalculateTileCoverage() called without chunk positions; returning empty set");
-        return new List<TilePos>();
     }
 
     /// <summary>
@@ -375,101 +364,77 @@ public sealed class UnifiedTileGenerator : ITileGenerator
     #region Core Rendering (Single Implementation!)
 
     /// <summary>
-    /// Context for rendering a single pixel in a chunk.
-    /// </summary>
-    private readonly struct PixelContext
-    {
-        public readonly int X;
-        public readonly int Z;
-        public readonly int Height;
-        public readonly int ImgX;
-        public readonly int ImgZ;
-
-        public PixelContext(int x, int z, int height, int offsetX, int offsetZ)
-        {
-            X = x;
-            Z = z;
-            Height = height;
-            ImgX = offsetX + x;
-            ImgZ = offsetZ + z;
-        }
-    }
-
-    /// <summary>
     /// Result of block ID resolution, including snow offset handling.
     /// </summary>
-    private readonly struct BlockIdResult
+    private readonly struct BlockIdResult(int blockId, int heightOffset)
     {
-        public readonly int BlockId;
-        public readonly int HeightOffset;
-
-        public BlockIdResult(int blockId, int heightOffset)
-        {
-            BlockId = blockId;
-            HeightOffset = heightOffset;
-        }
+        public readonly int BlockId = blockId;
+        public readonly int HeightOffset = heightOffset;
     }
 
     /// <summary>
     /// Context for rendering a chunk column, grouping related parameters.
     /// Must be ref struct to hold Span<byte>.
     /// </summary>
-    private ref struct ChunkRenderContext
+    private ref struct ChunkRenderContext(
+        ChunkSnapshot snapshot,
+        int mapYHalf,
+        int mapMaxY,
+        int offsetX,
+        int offsetZ,
+        int tileSize,
+        Span<byte> shadowMap)
     {
-        public readonly int[] HeightMap;
-        public readonly int[] BlockIds;
-        public readonly int MapYHalf;
-        public readonly int MapMaxY;
-        public readonly int OffsetX;
-        public readonly int OffsetZ;
-        public readonly int TileSize;
-        public readonly Span<byte> ShadowMap;
-
-        public ChunkRenderContext(ChunkSnapshot snapshot, int mapYHalf, int mapMaxY,
-            int offsetX, int offsetZ, int tileSize, Span<byte> shadowMap)
-        {
-            HeightMap = snapshot.HeightMap;
-            BlockIds = snapshot.BlockIds;
-            MapYHalf = mapYHalf;
-            MapMaxY = mapMaxY;
-            OffsetX = offsetX;
-            OffsetZ = offsetZ;
-            TileSize = tileSize;
-            ShadowMap = shadowMap;
-        }
+        public readonly int[] HeightMap = snapshot.HeightMap;
+        public readonly int[] BlockIds = snapshot.BlockIds;
+        public readonly int MapYHalf = mapYHalf;
+        public readonly int MapMaxY = mapMaxY;
+        public readonly int OffsetX = offsetX;
+        public readonly int OffsetZ = offsetZ;
+        public readonly int TileSize = tileSize;
+        public readonly Span<byte> ShadowMap = shadowMap;
     }
 
     /// <summary>
     /// CORE RENDERING METHOD - Used by both full export and on-demand generation.
     /// This is the single source of truth for tile rendering logic.
     /// </summary>
-    private async Task<byte[]?> RenderTileAsync(
+    private async Task<(byte[]?, Dictionary<long, Trader>)> RenderTileAsync(
         int zoom,
         int tileX,
         int tileZ,
         IChunkDataSource dataSource)
     {
+        var traders = new Dictionary<long, Trader>();
+
         try
         {
             // Get chunk data from the source
             var tileData = await dataSource.GetTileChunksAsync(zoom, tileX, tileZ);
 
+            if(tileData?.Chunks.Any(c => c.Value.Traders.Count > 0) == true) {
+                traders = tileData.Chunks.SelectMany(c => c.Value.Traders).ToDictionary(k => k.Key, v => v.Value);
+            }
+
             if (tileData == null)
             {
                 _sapi.Logger.Error($"[VintageAtlas] ⚠️  Data source returned null for tile {zoom}/{tileX}_{tileZ}");
-                return null;
+                return (null, traders);
             }
 
-            if (tileData.Chunks.Count != 0)
-                return await Task.Run(() => RenderTileImage(tileData));
+            if (tileData.Chunks.Count > 0)
+            {
+                var result = await Task.Run(() => RenderTileImage(tileData));
+                return (result, traders);
+            }
 
             _sapi.Logger.Warning($"[VintageAtlas] ⚠️  No chunks found for tile {zoom}/{tileX}_{tileZ}");
-            return null;
+            return (null, traders);
         }
         catch (Exception ex)
         {
             _sapi.Logger.Error($"[VintageAtlas] Failed to render tile: {ex.Message}");
-            return null;
+            return (null, traders);
         }
     }
 
@@ -493,7 +458,7 @@ public sealed class UnifiedTileGenerator : ITileGenerator
 
             var chunksRendered = RenderAllChunksToCanvas(canvas, tileData, chunksPerTile, shadowMap, tileSize, randomForTile);
 
-            if (chunksRendered == 0)
+            if (chunksRendered <= 0)
             {
                 _sapi.Logger.Warning("[VintageAtlas] ⚠️  NO chunks were rendered!");
                 return null;
@@ -519,7 +484,7 @@ public sealed class UnifiedTileGenerator : ITileGenerator
     }
 
     /// <summary>
-    /// Initialize shadow map for hill shading modes.
+    /// Initialize the shadow map for hill shading modes.
     /// </summary>
     private Span<byte> InitializeShadowMap(int tileSize)
     {
@@ -605,19 +570,19 @@ public sealed class UnifiedTileGenerator : ITileGenerator
         var heightOffset = 0;
 
         // Handle snow blocks: look at the block underneath
-        if (_sapi.World.Blocks[blockId].BlockMaterial == EnumBlockMaterial.Snow)
+        if (_sapi.World.Blocks[blockId].BlockMaterial != EnumBlockMaterial.Snow)
+            return new BlockIdResult(blockId, heightOffset);
+        
+        heightOffset = 1;
+        var adjustedHeight = height - 1;
+        if (adjustedHeight < 0) 
+            return new BlockIdResult(blockId, heightOffset);
+        
+        var adjustedLocalY = adjustedHeight % ChunkSize;
+        var adjustedBlockIndex = adjustedLocalY * ChunkSize * ChunkSize + z * ChunkSize + x;
+        if (adjustedBlockIndex >= 0 && adjustedBlockIndex < blockIds.Length)
         {
-            heightOffset = 1;
-            var adjustedHeight = height - 1;
-            if (adjustedHeight >= 0)
-            {
-                var adjustedLocalY = adjustedHeight % ChunkSize;
-                var adjustedBlockIndex = adjustedLocalY * ChunkSize * ChunkSize + z * ChunkSize + x;
-                if (adjustedBlockIndex >= 0 && adjustedBlockIndex < blockIds.Length)
-                {
-                    blockId = blockIds[adjustedBlockIndex];
-                }
-            }
+            blockId = blockIds[adjustedBlockIndex];
         }
 
         return new BlockIdResult(blockId, heightOffset);
@@ -630,24 +595,24 @@ public sealed class UnifiedTileGenerator : ITileGenerator
     {
         uint? overrideColor = null;
 
-        if (_microBlocks.Contains(blockId))
-        {
-            var worldX = snapshot.ChunkX * ChunkSize + ctx.X;
-            var worldZ = snapshot.ChunkZ * ChunkSize + ctx.Z;
-            var blockPos = new BlockPos(worldX, ctx.Height, worldZ, 0);
+        if (!_microBlocks.Contains(blockId)) 
+            return (blockId, overrideColor);
+        
+        var worldX = snapshot.ChunkX * ChunkSize + ctx.X;
+        var worldZ = snapshot.ChunkZ * ChunkSize + ctx.Z;
+        var blockPos = new BlockPos(worldX, ctx.Height, worldZ, 0);
 
-            if (snapshot.BlockEntities.TryGetValue(blockPos, out var blockEntity) &&
-                blockEntity is BlockEntityMicroBlock { BlockIds.Length: > 0 } blockEntityChisel)
-            {
-                blockId = blockEntityChisel.BlockIds[0];
-            }
-            else
-            {
-                // Fallback parity with Extractor
-                overrideColor = _config.Mode == ImageMode.MedievalStyleWithHillShading
-                    ? MapColors.ColorsByCode["land"]
-                    : (uint)SKColors.Green;
-            }
+        if (snapshot.BlockEntities.TryGetValue(blockPos, out var blockEntity) &&
+            blockEntity is BlockEntityMicroBlock { BlockIds.Length: > 0 } blockEntityChisel)
+        {
+            blockId = blockEntityChisel.BlockIds[0];
+        }
+        else
+        {
+            // Fallback parity with Extractor
+            overrideColor = _config.Mode == ImageMode.MedievalStyleWithHillShading
+                ? MapColors.ColorsByCode["land"]
+                : (uint)SKColors.Green;
         }
 
         return (blockId, overrideColor);
@@ -683,7 +648,7 @@ public sealed class UnifiedTileGenerator : ITileGenerator
     }
 
     /// <summary>
-    /// Calculate medieval style color with water edge detection.
+    /// Calculate medieval style color with water-edge detection.
     /// </summary>
     private uint CalculateMedievalColor(int blockId, PixelContext ctx, ChunkSnapshot snapshot)
     {
@@ -692,7 +657,7 @@ public sealed class UnifiedTileGenerator : ITileGenerator
     }
 
     /// <summary>
-    /// Update shadow map for hill shading modes if applicable.
+    /// Update the shadow map for hill shading modes if applicable.
     /// </summary>
     private void UpdateShadowMap(Span<byte> shadowMap, int tileSize, int blockId,
         PixelContext ctx, ChunkSnapshot snapshot)
@@ -1011,7 +976,6 @@ public sealed class UnifiedTileGenerator : ITileGenerator
     public void Dispose()
     {
         Dispose(true);
-        GC.SuppressFinalize(this);
     }
 
     private void Dispose(bool disposing)

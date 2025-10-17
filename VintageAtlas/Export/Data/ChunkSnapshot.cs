@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using VintageAtlas.Models.Domain;
 using Vintagestory.API.Common;
 using Vintagestory.API.MathTools;
 
@@ -55,12 +56,14 @@ public class ChunkSnapshot
     /// Key: BlockPos, Value: BlockEntity
     /// </summary>
     public Dictionary<BlockPos, BlockEntity> BlockEntities { get; set; }
+    public Dictionary<long, Trader> Traders { get; set; }
 
     public ChunkSnapshot()
     {
         BlockIds = [];
         HeightMap = [];
         BlockEntities = new Dictionary<BlockPos, BlockEntity>();
+        Traders = new Dictionary<long, Trader>();
         IsLoaded = false;
         SnapshotTime = DateTime.UtcNow;
     }

@@ -19,7 +19,8 @@ public sealed class ServerManager(
     MapExporter mapExporter,
     BlockColorCache colorCache,
     MbTilesStorage storage,
-    MapConfigController? controller = null)
+    MapConfigController? controller = null,
+    MetadataStorage? metadataStorage = null)
     : IDisposable
 {
     private readonly ICoreServerAPI _sapi = sapi ?? throw new ArgumentNullException(nameof(sapi));
@@ -27,7 +28,7 @@ public sealed class ServerManager(
     private readonly MapExporter _mapExporter = mapExporter ?? throw new ArgumentNullException(nameof(mapExporter));
     private readonly BlockColorCache _colorCache = colorCache ?? throw new ArgumentNullException(nameof(colorCache));
     private readonly MbTilesStorage _storage = storage ?? throw new ArgumentNullException(nameof(storage));
-
+    private readonly MetadataStorage _metadataStorage = metadataStorage ?? throw new ArgumentNullException(nameof(metadataStorage));
     private UnifiedTileGenerator? _tileGenerator;
     private WebServer? _webServer;
 
@@ -67,7 +68,7 @@ public sealed class ServerManager(
     {
         // Initialize unified tile generator for live serving (shares storage with exporter)
         // This is the SAME generator used for full exports - no more code duplication!
-        _tileGenerator = new UnifiedTileGenerator(_sapi, _config, _colorCache, _storage);
+        _tileGenerator = new UnifiedTileGenerator(_sapi, _config, _colorCache, _storage, _metadataStorage);
 
         _sapi.Logger.Notification("[VintageAtlas] ⚠️  Background tile generation DISABLED - tiles only generated via /atlas export");
     }
@@ -98,7 +99,7 @@ public sealed class ServerManager(
         var coordinateService = new CoordinateTransformService(_sapi);
 
         // Inject coordinate service into controllers
-        var geoJsonController = new GeoJsonController(_sapi, coordinateService);
+        var geoJsonController = new GeoJsonController(_sapi, coordinateService, _metadataStorage);
         var tileController = new TileController(_sapi, _config, _tileGenerator, mapConfigController);
 
         var router = new RequestRouter(

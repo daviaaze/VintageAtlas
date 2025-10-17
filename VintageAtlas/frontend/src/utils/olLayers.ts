@@ -34,7 +34,7 @@ export function createWorldLayer(): TileLayer<XYZ> {
   
   return new TileLayer({
     source: source,
-    properties: { name: 'world',  }
+    properties: { name: 'world' }
   });
 }
 
@@ -45,7 +45,10 @@ export function createExploredChunksLayer(): VectorLayer<VectorSource> {
   return new VectorLayer({
     source: new VectorSource({
       url: '/api/geojson/chunk',
-      format: new GeoJSON()
+      format: new GeoJSON({
+        dataProjection: 'EPSG:3857',
+        featureProjection: 'EPSG:3857'
+      })
     }),
     style: exploredChunksStyle,
     opacity: 0.5,
@@ -61,10 +64,12 @@ export function createTradersLayer(): VectorLayer<VectorSource> {
   return new VectorLayer({
     source: new VectorSource({
       url: '/api/geojson/traders',
-      format: new GeoJSON()
+      format: new GeoJSON({
+        dataProjection: 'EPSG:3857',
+        featureProjection: 'EPSG:3857'
+      })
     }),
     style: tradersStyle,
-    minZoom: 3,
     properties: { name: 'traders' }
   });
 }
@@ -76,7 +81,10 @@ export function createTranslocatorsLayer(): VectorLayer<VectorSource> {
   return new VectorLayer({
     source: new VectorSource({
       url: '/api/geojson/translocators',
-      format: new GeoJSON()
+      format: new GeoJSON({
+        dataProjection: 'EPSG:3857',
+        featureProjection: 'EPSG:3857'
+      })
     }),
     style: translocatorsStyle,
     minZoom: 2,
@@ -91,7 +99,10 @@ export function createLandmarksLayer(mapInstance: any): VectorLayer<VectorSource
   return new VectorLayer({
     source: new VectorSource({
       url: '/api/geojson/landmarks',
-      format: new GeoJSON()
+      format: new GeoJSON({
+        dataProjection: 'EPSG:3857',
+        featureProjection: 'EPSG:3857'
+      })
     }),
     style: (feature) => {
       const zoom = mapInstance?.getView()?.getZoom() || 6;

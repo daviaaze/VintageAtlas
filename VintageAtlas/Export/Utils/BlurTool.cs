@@ -68,11 +68,11 @@ public static class BlurTool
         {
             UpdateHorizontalRollingAverage(pixels, index, x, context, ref r, ref hits);
 
-            if (x >= context.XStart)
-            {
-                var color = (byte)(hits > 0 ? r / hits : 0);
-                newColors[x - context.XStart] = color;
-            }
+            if (x < context.XStart) 
+                continue;
+
+            var color = (byte)(hits > 0 ? r / hits : 0);
+            newColors[x - context.XStart] = color;
         }
     }
 

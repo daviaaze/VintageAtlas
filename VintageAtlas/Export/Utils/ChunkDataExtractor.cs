@@ -27,7 +27,7 @@ public class ChunkDataExtractor
 
         // NOTE: Database fallback disabled due to lock conflicts with live server
         // The game's savegame DB is locked during runtime, causing "database is locked" errors
-        // Live map will only show currently loaded chunks (explored areas)
+        // the Live map will only show currently loaded chunks (explored areas)
         // For full map export, use /atlas export command instead
         _sapi.Logger.Notification("[VintageAtlas] ChunkDataExtractor initialized (memory-only mode)");
         _sapi.Logger.Debug("[VintageAtlas] Live map shows explored areas only. Use /atlas export for full map.");
@@ -36,7 +36,7 @@ public class ChunkDataExtractor
 
     /// <summary>
     /// Extract all chunks needed for a tile
-    /// MUST be called from main thread or via EnqueueMainThreadTask
+    /// MUST be called from the main thread or via EnqueueMainThreadTask
     ///
     /// IMPORTANT: Tile coordinates are ALWAYS in absolute chunk space.
     /// The coordinate transformation happens in MapConfigController when serving extent/config to frontend.
@@ -163,9 +163,10 @@ public class ChunkDataExtractor
 
         if (mapChunk == null || !hasData)
         {
+            var message = mapChunk is null ? "not in memory" : "empty in memory";
             _sapi.Logger.VerboseDebug(
                 _dataLoader != null
-                    ? $"[VintageAtlas] Chunk ({chunkX},{chunkZ}) {(mapChunk is null ? "not in memory" : "empty in memory")}, trying database..."
+                    ? $"[VintageAtlas] Chunk ({chunkX},{chunkZ}) {message}, trying database..."
                     : $"[VintageAtlas] Chunk ({chunkX},{chunkZ}) not available (no memory/database or no data)");
             return false;
         }
@@ -199,9 +200,9 @@ public class ChunkDataExtractor
             return;
         }
 
-        // Copy block data directly from chunk's internal array  
+        // Copy block data directly from the chunk's internal array
         // chunk.Data is IChunkBlocks - need to copy block by block
-        for (int i = 0; i < snapshot.BlockIds.Length; i++)
+        for (var i = 0; i < snapshot.BlockIds.Length; i++)
         {
             snapshot.BlockIds[i] = chunk.Data[i];
         }
@@ -265,7 +266,7 @@ public class ChunkDataExtractor
 
     /// <summary>
     /// Extract multiple tiles at once (more efficient for main thread usage)
-    /// MUST be called from main thread
+    /// MUST be called from the main thread
     /// </summary>
     public List<TileChunkData> ExtractMultipleTiles(int zoom, List<(int tileX, int tileZ)> tiles)
     {
@@ -280,7 +281,7 @@ public class ChunkDataExtractor
     }
 
     /// <summary>
-    /// Extract chunk data directly from database when not in memory
+    /// Extract chunk data directly from the database when not in memory
     /// This is slower than memory access but allows access to all chunks
     /// </summary>
     private ChunkSnapshot ExtractChunkFromDatabase(int chunkX, int chunkZ)
@@ -304,7 +305,7 @@ public class ChunkDataExtractor
 
             try
             {
-                // Load map chunk from database for height data
+                // Load map chunk from the database for height data
                 var pos = new ChunkPos(chunkX, 0, chunkZ);
                 var mapChunkData = _dataLoader.GetServerMapChunk(sqliteConn, pos);
 
@@ -340,7 +341,7 @@ public class ChunkDataExtractor
                             snapshot.BlockIds[i] = serverChunk.Data[i];
                         }
 
-                        // Extract block entities from server chunk
+                        // Extract block entities from a server chunk
                         snapshot.BlockEntities = new Dictionary<BlockPos, BlockEntity>();
                         if (serverChunk.BlockEntities != null)
                         {

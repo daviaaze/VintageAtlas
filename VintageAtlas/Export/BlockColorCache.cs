@@ -48,7 +48,7 @@ public class BlockColorCache
 
     /// <summary>
     /// Initialize the color cache
-    /// Call this once after server startup, on the main thread
+    /// Call this once after the server startup, on the main thread
     /// </summary>
     public void Initialize()
     {
@@ -83,7 +83,7 @@ public class BlockColorCache
     /// Get color variations for a block (for ColorVariations modes)
     /// Returns null if the block has no color variations
     /// </summary>
-    public List<uint>? GetColorVariations(int blockId)
+    private List<uint>? GetColorVariations(int blockId)
     {
         if (blockId < 0 || blockId >= _blockToColorIndex.Length)
             return null;
@@ -211,7 +211,7 @@ public class BlockColorCache
             try
             {
                 // Ensure colors have alpha channel set
-                var colors = value.Select(color => (color & 0xff000000) == 0 ? color | 0xff000000 : color).ToList();
+                var colors = EnsureAlphaChannel(value);
 
                 if (colors.Count == 0) continue;
 
@@ -225,7 +225,8 @@ public class BlockColorCache
 
                     foreach (var block in _sapi.World.Blocks)
                     {
-                        if (block == null || block.Id == 0) continue;
+                        if (block is { Id: 0}) 
+                            continue;
 
                         if (!regex.IsMatch(block.Code.ToString()))
                             continue;
@@ -254,8 +255,13 @@ public class BlockColorCache
         _sapi.Logger.Notification($"[VintageAtlas] Applied {appliedCount} custom color mappings");
     }
 
+    private static List<uint> EnsureAlphaChannel(uint[] value)
+    {
+        return value.Select(color => (color & 0xff000000) == 0 ? color | 0xff000000 : color).ToList();
+    }
+
     /// <summary>
-    /// Get color for Medieval style rendering with water edge detection
+    /// Get color for Medieval style rendering with water-edge detection
     /// This is the most complex color selection mode
     /// </summary>
     public uint GetMedievalStyleColor(int blockId, bool isWaterEdge = false)
@@ -269,12 +275,7 @@ public class BlockColorCache
         var baseColor = _colorPalette[colorIndex];
 
         // If this is a water edge, use darker water-edge color
-        if (isWaterEdge)
-        {
-            return MapColors.ColorsByCode["wateredge"];
-        }
-
-        return baseColor;
+        return isWaterEdge ? MapColors.ColorsByCode["water-edge"] : baseColor;
     }
 
     /// <summary>

@@ -9,7 +9,7 @@ namespace VintageAtlas.Export;
 
 /// <summary>
 /// Manages map export operations using the unified tile generation system.
-/// Exports map tiles directly to MBTiles database without intermediate PNG files.
+/// Exports map tiles directly to the MBTiles database without intermediate PNG files.
 /// </summary>
 public class MapExporter : IMapExporter
 {
@@ -18,7 +18,7 @@ public class MapExporter : IMapExporter
     private readonly UnifiedTileGenerator _tileGenerator;
     private readonly MapConfigController? _mapConfigController;
     private readonly ServerMain _server;
-    private string? _serverPassword = null;
+    private string? _serverPassword;
 
     public bool IsRunning { get; private set; }
 
