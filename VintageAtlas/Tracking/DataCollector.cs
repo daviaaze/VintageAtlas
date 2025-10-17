@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using Vintagestory.API.Common;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
-using VintageAtlas.Models;
+using VintageAtlas.Models.API;
+using VintageAtlas.Models.Domain;
 using VintageAtlas.Core;
 
 namespace VintageAtlas.Tracking;

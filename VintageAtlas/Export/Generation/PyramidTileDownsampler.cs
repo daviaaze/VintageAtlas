@@ -29,8 +29,6 @@ public class PyramidTileDownsampler(
 
         try
         {
-            sapi.Logger.VerboseDebug($"[VintageAtlas] Downsampling tile {zoom}/{tileX}_{tileZ} from zoom {zoom + 1}");
-
             // Calculate coordinates for the 4 source tiles at the next zoom level
             // In a tile pyramid, each tile is made from a 2x2 grid of tiles from the next zoom
             var higherZoom = zoom + 1;
@@ -51,15 +49,12 @@ public class PyramidTileDownsampler(
             try
             {
                 // Compose available source tiles (missing tiles leave transparent quadrants)
-                var downsampled = DownsampleTiles(sourceTiles);
-                sapi.Logger.VerboseDebug($"[VintageAtlas] Successfully downsampled tile {zoom}/{tileX}_{tileZ}");
-                return downsampled;
+                return DownsampleTiles(sourceTiles);
             }
             catch (DllNotFoundException)
             {
-                // SkiaSharp native library not available in this environment.
-                // Fallback: return the top-left source tile bytes.
-                sapi.Logger.VerboseDebug($"[VintageAtlas] SkiaSharp native library not found, using fallback for {zoom}/{tileX}_{tileZ}");
+                // SkiaSharp native library not available - fallback to top-left source tile
+                sapi.Logger.Warning($"[VintageAtlas] SkiaSharp native library not found for {zoom}/{tileX}_{tileZ}, using fallback");
                 return sourceTiles[0];
             }
         }
@@ -102,12 +97,9 @@ public class PyramidTileDownsampler(
         // Process each of the 4 source tile slots
         for (var i = 0; i < 4; i++)
         {
-            // Skip null tiles (missing at edges)
+            // Skip null tiles (missing at edges) - leaves area transparent
             if (sourceTiles[i] == null)
-            {
-                sapi.Logger.VerboseDebug($"[VintageAtlas] Source tile {i} is null, leaving area transparent");
                 continue;
-            }
 
             try
             {

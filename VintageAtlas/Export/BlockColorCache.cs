@@ -74,23 +74,9 @@ public class BlockColorCache
         var variationCount = _blockColorVariations.Count;
         var lakeCount = _blockIsLake.Count(b => b);
 
-        // Count blocks per palette color for Mode 4 debugging
-        var paletteDistribution = new Dictionary<byte, int>();
-        foreach (var colorIndex in _blockToColorIndex)
-        {
-            paletteDistribution.TryAdd(colorIndex, 0);
-            paletteDistribution[colorIndex]++;
-        }
-
         _sapi.Logger.Notification($"[VintageAtlas] Block color cache initialized: " +
             $"{variationCount} blocks with color variations, " +
             $"{lakeCount} water/lake blocks identified");
-        _sapi.Logger.Notification($"[VintageAtlas] Palette distribution (Mode 4): {paletteDistribution.Count} distinct palette colors used");
-        foreach (var kvp in paletteDistribution.OrderByDescending(x => x.Value).Take(10))
-        {
-            var colorName = MapColors.ColorsByCode.GetKeyAtIndex(kvp.Key);
-            _sapi.Logger.Notification($"[VintageAtlas]   {colorName}: {kvp.Value} blocks");
-        }
     }
 
     /// <summary>
@@ -150,31 +136,15 @@ public class BlockColorCache
         {
             _colorPalette[i] = MapColors.ColorsByCode.GetValueAtIndex(i);
         }
-
-        _sapi.Logger.Notification($"[VintageAtlas] Loaded {_colorPalette.Length} colors into palette (Mode 4 will use these)");
-
-        // Log the first few colors for debugging
-        for (var i = 0; i < Math.Min(12, _colorPalette.Length); i++)
-        {
-            var colorName = MapColors.ColorsByCode.GetKeyAtIndex(i);
-            _sapi.Logger.Notification($"[VintageAtlas]   Palette[{i}] = {colorName}: 0x{_colorPalette[i]:X8}");
-        }
     }
 
     private ExportData? LoadCustomColorMappings()
     {
         var customData = _sapi.LoadModConfig<ExportData>("blockColorMapping.json");
 
-        if (customData == null)
+        if (customData == null && _config.Mode != ImageMode.MedievalStyleWithHillShading)
         {
-            if (_config.Mode != ImageMode.MedievalStyleWithHillShading)
-            {
-                _sapi.Logger.Warning("[VintageAtlas] blockColorMapping.json not found - using material-based colors only");
-            }
-            else
-            {
-                _sapi.Logger.Debug("[VintageAtlas] Using Medieval style (no custom mapping needed)");
-            }
+            _sapi.Logger.Warning("[VintageAtlas] blockColorMapping.json not found - using material-based colors only");
         }
         else
         {
@@ -318,15 +288,7 @@ public class BlockColorCache
         if (variations == null || variations.Count == 0)
         {
             // Fallback to palette-based color
-            var fallback = GetBaseColor(blockId);
-
-            // DEBUG: Log fallback for common surface blocks
-            if (blockId is < 10 or 6961 or 3949 or 2617)
-            {
-                _sapi.Logger.Warning($"[VintageAtlas] Block {blockId} has NO variations, using palette fallback: 0x{fallback:X8}");
-            }
-
-            return fallback;
+            return GetBaseColor(blockId);
         }
 
         var selectedColor = variations[random.Next(variations.Count)];

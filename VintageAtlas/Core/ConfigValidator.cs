@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using VintageAtlas.Export;
 using Vintagestory.API.Config;
 using Vintagestory.API.Server;
 
@@ -14,7 +15,7 @@ public static class ConfigValidator
     /// <summary>
     /// Validates the configuration and returns any errors found
     /// </summary>
-    public static List<string> Validate(ModConfig config)
+    private static List<string> Validate(ModConfig config)
     {
         var errors = new List<string>();
 
@@ -160,11 +161,6 @@ public static class ConfigValidator
     /// </summary>
     private static ModConfig FinalizeConfig(ICoreServerAPI sapi, ModConfig config)
     {
-        // DEBUG: Log the actual Mode value loaded
-        sapi.Logger.Notification($"[VintageAtlas] ════════ CONFIG LOADED ════════");
-        sapi.Logger.Notification($"[VintageAtlas] Mode = {config.Mode} ({(int)config.Mode})");
-        sapi.Logger.Notification($"[VintageAtlas] ════════════════════════════════");
-
         // Validate configuration
         var validationErrors = Validate(config);
         if (validationErrors.Count > 0)
@@ -185,7 +181,7 @@ public static class ConfigValidator
     /// <summary>
     /// Apply automatic fixes to configuration where possible
     /// </summary>
-    public static void ApplyAutoFixes(ModConfig config)
+    private static void ApplyAutoFixes(ModConfig config)
     {
         // Auto-fix tile size to nearest valid value
         if (config.TileSize % 32 != 0)

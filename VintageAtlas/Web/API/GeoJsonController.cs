@@ -10,7 +10,6 @@ using Vintagestory.API.Server;
 using Vintagestory.GameContent;
 using VintageAtlas.Core;
 using VintageAtlas.GeoJson;
-using VintageAtlas.GeoJson.Trader;
 
 namespace VintageAtlas.Web.API;
 
@@ -92,10 +91,7 @@ public class GeoJsonController(ICoreServerAPI sapi, CoordinateTransformService c
                         continue;
 
                     var feature = CreateTraderFeature(trader);
-                    if (feature != null)
-                    {
-                        traders.Features.Add(feature);
-                    }
+                    traders.Features.Add(feature);
                 }
             }
             catch (Exception ex)

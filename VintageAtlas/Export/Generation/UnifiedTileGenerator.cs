@@ -9,7 +9,7 @@ using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 using Vintagestory.GameContent;
 using VintageAtlas.Core;
-using VintageAtlas.Models;
+using VintageAtlas.Models.Domain;
 using VintageAtlas.Storage;
 using Vintagestory.Common.Database;
 
@@ -1043,42 +1043,4 @@ public sealed class UnifiedTileGenerator : ITileGenerator
     }
 }
 
-/// <summary>
-/// Storage statistics for tile generation
-/// </summary>
-public class StorageStats
-{
-    public long DatabaseSizeBytes { get; set; }
-    public int MemoryCachedTiles { get; set; }
-    public long TotalTiles { get; set; }
-    public Dictionary<int, long> TilesPerZoom { get; set; } = new();
-}
-
-/// <summary>
-/// Cached tile data for in-memory storage
-/// </summary>
-public class CachedTile
-{
-    public byte[] Data { get; set; } = [];
-    public DateTime LastModified { get; set; }
-    public string ETag { get; set; } = "";
-}
-
 #endregion
-
-/// <summary>
-/// Simple struct for tile coordinates
-/// </summary>
-public record struct TilePos(int X, int Z);
-
-/// <summary>
-/// Progress information for export operations
-/// </summary>
-public class ExportProgress
-{
-    public int TilesCompleted { get; set; }
-    public int TotalTiles { get; set; }
-    public int CurrentZoomLevel { get; set; }
-    public double PercentComplete => TotalTiles > 0 ? TilesCompleted * 100.0 / TotalTiles : 0;
-}
-

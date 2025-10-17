@@ -26,16 +26,15 @@
       </div>
       
       <div class="flex items-center gap-3">
-        <div 
+        <div
           v-if="serverStore.status"
           class="flex items-center gap-2 text-sm bg-black/20 py-2 px-3 rounded-full transition-all"
+          title="Server Online"
         >
-          <span 
-            class="inline-block w-2 h-2 rounded-full bg-[#10b981] relative after:content-[''] after:absolute after:w-3 after:h-3 after:rounded-full after:bg-[#10b981]/30 after:top-1/2 after:left-1/2 after:-translate-x-1/2 after:-translate-y-1/2 after:animate-ping" 
-            ></span> 
-            <!-- TODO fix max player count -->
-            title="Server Online"
-          <span class="font-semibold">{{ serverStore.status.players.length }} / 0</span>
+          <span
+            class="inline-block w-2 h-2 rounded-full bg-[#10b981] relative after:content-[''] after:absolute after:w-3 after:h-3 after:rounded-full after:bg-[#10b981]/30 after:top-1/2 after:left-1/2 after:-translate-x-1/2 after:-translate-y-1/2 after:animate-ping"
+          ></span>
+          <span class="font-semibold">{{ serverStore.status.players.length }} {{ serverStore.status.players.length === 1 ? 'player' : 'players' }}</span>
         </div>
         <div 
           v-else

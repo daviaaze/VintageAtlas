@@ -60,8 +60,6 @@ public class ConfigController(
 
             await context.Response.OutputStream.WriteAsync(bytes);
             context.Response.Close();
-
-            sapi.Logger.Debug("[VintageAtlas] Config requested via API");
         }
         catch (Exception ex)
         {

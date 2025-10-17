@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Vintagestory.API.Server;
 using VintageAtlas.Core;
+using VintageAtlas.Web.Server.Routing;
 
 namespace VintageAtlas.Web.Server;
 
@@ -304,14 +305,4 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
         _staticRequestSemaphore?.Dispose();
         _httpListener?.Close();
     }
-}
-
-/// <summary>
-/// Request type classification for throttling
-/// </summary>
-internal enum RequestType
-{
-    Api,
-    Tile,
-    Static
 }

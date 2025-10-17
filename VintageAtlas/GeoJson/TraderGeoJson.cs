@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using Newtonsoft.Json;
 
-namespace VintageAtlas.GeoJson.Trader;
+namespace VintageAtlas.GeoJson;
 
 public record TraderGeoJson
 {

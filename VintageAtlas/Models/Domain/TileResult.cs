@@ -1,6 +1,6 @@
 using System;
 
-namespace VintageAtlas.Models;
+namespace VintageAtlas.Models.Domain;
 
 /// <summary>
 /// Result of a tile generation request

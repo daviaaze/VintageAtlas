@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Vintagestory.API.Server;
 using Vintagestory.Server;
 using VintageAtlas.Core;
+using VintageAtlas.Models.API;
 using VintageAtlas.Web.API;
 
 namespace VintageAtlas.Export;

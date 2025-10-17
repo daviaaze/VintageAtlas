@@ -1,6 +1,6 @@
 using Newtonsoft.Json;
 
-namespace VintageAtlas.GeoJson.Trader;
+namespace VintageAtlas.GeoJson;
 
 public record TraderFeature(TraderProperties Properties, PointGeometry Geometry, string Type = "Feature")
 {

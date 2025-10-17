@@ -3,8 +3,9 @@ using System.Text;
 using System.Threading.Tasks;
 using VintageAtlas.Core;
 using VintageAtlas.Web.API;
+using VintageAtlas.Web.Server.Routing;
 
-namespace VintageAtlas.Web.Server;
+namespace VintageAtlas.Web.Server.Routing;
 
 /// <summary>
 /// Routes HTTP requests to appropriate handlers

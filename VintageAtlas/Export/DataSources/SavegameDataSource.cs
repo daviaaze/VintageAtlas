@@ -80,9 +80,8 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
                                 var chunkX = startChunkX + offsetX;
                                 var chunkZ = startChunkZ + offsetZ;
 
-                                // We need to determine the chunk Y coordinate
-                                // For map tiles, we typically want the surface (Y=0 in map chunk coords)
-                                // TODO: Check why this is always 0
+                                // Map chunks always use Y=0 (they represent the 2D surface view)
+                                // The actual 3D world chunks are loaded dynamically based on height
                                 const int chunkY = 0;
 
                                 var chunkPos = new ChunkPos(chunkX, chunkY, chunkZ);
@@ -108,11 +107,7 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
                     sqliteConn.Free();
                 }
 
-                if (tileData.Chunks.Count != 0)
-                    return tileData;
-
-                logger.VerboseDebug($"[VintageAtlas] SavegameDataSource: No chunks found for tile {zoom}/{tileX}_{tileZ}");
-                return null;
+                return tileData.Chunks.Count != 0 ? tileData : null;
             }
             catch (Exception ex)
             {

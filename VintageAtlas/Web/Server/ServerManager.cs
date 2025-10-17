@@ -5,7 +5,9 @@ using VintageAtlas.Core;
 using VintageAtlas.Export;
 using VintageAtlas.Storage;
 using VintageAtlas.Tracking;
+using VintageAtlas.Models.API;
 using VintageAtlas.Web.API;
+using VintageAtlas.Web.Server.Routing;
 
 namespace VintageAtlas.Web.Server;
 

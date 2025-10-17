@@ -9,7 +9,7 @@ namespace VintageAtlas.Export;
 /// Used for on-demand tile generation (web requests).
 /// Requires main thread access to read game state safely.
 /// </summary>
-public class adedChunksDataSource(ICoreServerAPI sapi, ModConfig config) : IChunkDataSource
+public class LoadedChunksDataSource(ICoreServerAPI sapi, ModConfig config) : IChunkDataSource
 {
     private readonly ChunkDataExtractor _extractor = new(sapi, config);
 
