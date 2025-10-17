@@ -10,5 +10,5 @@ public class StorageStats
     public long DatabaseSizeBytes { get; set; }
     public int MemoryCachedTiles { get; set; }
     public long TotalTiles { get; set; }
-    public Dictionary<int, long> TilesPerZoom { get; set; } = new();
+    public Dictionary<int, long> TilesPerZoom { get; set; } = [];
 }

@@ -5,7 +5,6 @@ using VintageAtlas.Core;
 using VintageAtlas.Export;
 using VintageAtlas.Storage;
 using VintageAtlas.Tracking;
-using VintageAtlas.Models.API;
 using VintageAtlas.Web.API;
 using VintageAtlas.Web.Server.Routing;
 
@@ -29,10 +28,7 @@ public sealed class ServerManager(
     private readonly BlockColorCache _colorCache = colorCache ?? throw new ArgumentNullException(nameof(colorCache));
     private readonly MbTilesStorage _storage = storage ?? throw new ArgumentNullException(nameof(storage));
 
-    // Server components
-    private DataCollector? _dataCollector;
     private UnifiedTileGenerator? _tileGenerator;
-    private TileGenerationState? _tileState;
     private WebServer? _webServer;
 
     /// <summary>
@@ -69,15 +65,9 @@ public sealed class ServerManager(
 
     private void InitializeServices()
     {
-        // Initialize data collector
-        _dataCollector = new DataCollector(_sapi);
-
         // Initialize unified tile generator for live serving (shares storage with exporter)
         // This is the SAME generator used for full exports - no more code duplication!
         _tileGenerator = new UnifiedTileGenerator(_sapi, _config, _colorCache, _storage);
-
-        // Initialize tile generation state database
-        _tileState = new TileGenerationState(_sapi, _config.OutputDirectory);
 
         _sapi.Logger.Notification("[VintageAtlas] ⚠️  Background tile generation DISABLED - tiles only generated via /atlas export");
     }
@@ -92,14 +82,13 @@ public sealed class ServerManager(
 
     private void CreateWebServerComponents()
     {
-        if (_tileGenerator == null || _dataCollector == null)
+        if (_tileGenerator == null)
         {
             throw new InvalidOperationException("Services must be initialized before creating web server components");
         }
 
         // Create web server components
         var staticFileServer = new StaticFileServer(_sapi, _config);
-        var statusController = new StatusController(_sapi, _dataCollector);
         var configController = new ConfigController(_sapi, _config, _mapExporter);
 
         // Use the existing mapConfigController instance (created earlier)
@@ -113,8 +102,6 @@ public sealed class ServerManager(
         var tileController = new TileController(_sapi, _config, _tileGenerator, mapConfigController);
 
         var router = new RequestRouter(
-            _config,
-            statusController,
             configController,
             geoJsonController,
             mapConfigController,
@@ -138,6 +125,5 @@ public sealed class ServerManager(
     public void Dispose()
     {
         _webServer?.Dispose();
-        _tileState?.Dispose();
     }
 }

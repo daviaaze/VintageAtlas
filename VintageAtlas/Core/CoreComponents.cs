@@ -1,6 +1,5 @@
 using VintageAtlas.Export;
 using VintageAtlas.Storage;
-using VintageAtlas.Models.API;
 using VintageAtlas.Web.API;
 
 namespace VintageAtlas.Core;

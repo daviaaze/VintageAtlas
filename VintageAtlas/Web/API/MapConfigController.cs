@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using Vintagestory.API.Server;
-using System.Linq;
 using VintageAtlas.Export;
 using VintageAtlas.Models.API;
 
@@ -113,7 +112,6 @@ public class MapConfigController(ICoreServerAPI sapi, ITileGenerator? tileGenera
 
     private MapConfigData GenerateMapConfig()
     {
-        var tileStats = CalculateTileStatistics();
         var spawn = sapi.World.DefaultSpawnPosition.AsBlockPos;
 
         var mapSizeX = sapi.World.BlockAccessor.MapSizeX / 2;
@@ -178,26 +176,11 @@ public class MapConfigController(ICoreServerAPI sapi, ITileGenerator? tileGenera
 
             SpawnPosition = [spawn.X, spawn.Z],
 
-            TileStats = tileStats,
-
             ServerName = sapi.Server.Config.ServerName,
             WorldName = sapi.World.SavegameIdentifier
         };
     }
 
-    private TileStatistics CalculateTileStatistics()
-    {
-        var stats = new TileStatistics
-        {
-            ZoomLevels = []
-        };
-
-        // Note: VintageAtlas stores tiles in MBTiles database, not as files
-        // For now, return empty stats - could be enhanced to query database
-        sapi.Logger.Debug("[VintageAtlas] Tile statistics calculation skipped (tiles stored in database)");
-
-        return stats;
-    }
 
     /// <summary>
     /// Invalidate cache to force recalculation

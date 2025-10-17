@@ -820,26 +820,6 @@ public sealed class UnifiedTileGenerator : ITileGenerator
         await _storage.DeleteTileAsync(zoom, tileX, tileZ);
     }
 
-    /// <summary>
-    /// Get storage statistics
-    /// </summary>
-    public async Task<StorageStats> GetStatsAsync()
-    {
-        var stats = new StorageStats
-        {
-            DatabaseSizeBytes = _storage.GetDatabaseSize(),
-            MemoryCachedTiles = _memoryCache.Count,
-            TotalTiles = await _storage.GetTileCountAsync()
-        };
-
-        for (var z = 0; z <= _config.BaseZoomLevel; z++)
-        {
-            stats.TilesPerZoom[z] = await _storage.GetTileCountAsync(z);
-        }
-
-        return stats;
-    }
-
     private void CacheInMemory(string key, byte[] data, string etag, DateTime lastModified)
     {
         if (_memoryCache.Count >= MaxCacheSize)

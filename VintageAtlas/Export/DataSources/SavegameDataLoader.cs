@@ -117,35 +117,6 @@ public sealed class SavegameDataLoader : IDisposable
         return posList;
     }
 
-    public IEnumerable<DblChunk<ServerMapRegion>> GetAllServerMapRegions(SqliteThreadCon sqliteConn)
-    {
-        using var cmd = sqliteConn.Con.CreateCommand();
-        cmd.CommandText = "SELECT position, data FROM mapregion";
-
-        using var sqliteDataReader = ReadReaderSafely(cmd);
-        while (sqliteDataReader != null && ExecuteReaderSafely(sqliteDataReader))
-        {
-            ServerMapRegion serverMapRegion;
-            ChunkPos position;
-            try
-            {
-                var pos = (long)sqliteDataReader["position"];
-                position = ChunkPos.FromChunkIndex_saveGamev2((ulong)pos);
-                var obj = sqliteDataReader["data"];
-                serverMapRegion = ServerMapRegion.FromBytes(obj as byte[]);
-            }
-            catch (Exception e)
-            {
-                ServerMain.Logger.Error(
-                    "VintageAtlas error while reading MapRegion, region will not be processed.");
-                ServerMain.Logger.Error(e.Message);
-                continue;
-            }
-
-            yield return new DblChunk<ServerMapRegion>(position, serverMapRegion);
-        }
-    }
-
     private static SqliteDataReader? ReadReaderSafely(SqliteCommand cmd)
     {
         try

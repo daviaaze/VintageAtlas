@@ -1,9 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
-using VintageAtlas.Core;
 using VintageAtlas.Web.API;
-using VintageAtlas.Web.Server.Routing;
 
 namespace VintageAtlas.Web.Server.Routing;
 
@@ -11,8 +9,6 @@ namespace VintageAtlas.Web.Server.Routing;
 /// Routes HTTP requests to appropriate handlers
 /// </summary>
 public class RequestRouter(
-    ModConfig config,
-    StatusController statusController,
     ConfigController configController,
     GeoJsonController geoJsonController,
     MapConfigController mapConfigController,
@@ -20,8 +16,6 @@ public class RequestRouter(
     StaticFileServer staticFileServer)
 {
     private readonly ApiRouter _apiRouter = BuildApiRouter(
-        config, 
-        statusController, 
         configController, 
         geoJsonController, 
         mapConfigController);
@@ -59,29 +53,11 @@ public class RequestRouter(
     /// Build the API routing table with all endpoint configurations
     /// </summary>
     private static ApiRouter BuildApiRouter(
-        ModConfig config,
-        StatusController statusController,
         ConfigController configController,
         GeoJsonController geoJsonController,
         MapConfigController mapConfigController)
     {
         var router = new ApiRouter();
-
-        // Main status endpoint (configurable path)
-        router.AddRoute(config.LiveServerEndpoint, statusController.ServeStatus);
-
-        // Health check endpoint
-        router.AddRoute("health", statusController.ServeHealth);
-
-        // Live endpoints - summary
-        router.AddRoute("live", statusController.ServeLiveSummary);
-
-        // Live endpoints - split data
-        router.AddRoute(["live/players", "players"], statusController.ServePlayers);
-        router.AddRoute(["live/animals", "animals"], statusController.ServeAnimals);
-        router.AddRoute(["live/weather", "weather"], statusController.ServeWeather);
-        router.AddRoute(["live/date", "date"], statusController.ServeDate);
-        router.AddRoute(["live/spawn", "spawn"], statusController.ServeSpawn);
 
         // Configuration endpoints (method-specific)
         router.AddRoute("config", configController.GetConfig, "GET");

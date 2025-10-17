@@ -2,7 +2,6 @@ using System.IO;
 using Vintagestory.API.Server;
 using VintageAtlas.Export;
 using VintageAtlas.Storage;
-using VintageAtlas.Models.API;
 using VintageAtlas.Web.API;
 
 namespace VintageAtlas.Core;

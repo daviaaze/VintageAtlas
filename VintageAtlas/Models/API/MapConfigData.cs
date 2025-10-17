@@ -54,7 +54,6 @@ public class MapConfigData
     public int MapSizeX { get; set; }
     public int MapSizeZ { get; set; }
     public int MapSizeY { get; set; }
-    public TileStatistics? TileStats { get; set; }
     public string? ServerName { get; set; }
     public string? WorldName { get; set; }
 }
