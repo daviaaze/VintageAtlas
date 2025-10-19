@@ -3,9 +3,11 @@
  * Based on OPENLAYERS_SPECIFICATION.md
  */
 import TileLayer from 'ol/layer/Tile';
+import WebGLTileLayer from 'ol/layer/WebGLTile';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
 import XYZ from 'ol/source/XYZ';
+import DataTile from 'ol/source/DataTile';
 import GeoJSON from 'ol/format/GeoJSON';
 import { createTileGrid, getTileUrl } from './olMapConfig';
 import {
@@ -14,7 +16,6 @@ import {
   translocatorsStyle,
   landmarksStyle
 } from './olStyles';
-import TileGrid from 'ol/tilegrid/TileGrid';
 
 /**
  * Create world tile layer (Spec lines 89-108)
@@ -39,33 +40,100 @@ export function createWorldLayer(): TileLayer<XYZ> {
   });
 }
 
-export function createRainLayer(): TileLayer<XYZ> {
+/**
+ * Create rain layer with data sampling capability
+ * Uses WebGLTileLayer for efficient pixel data access via getData()
+ */
+export function createRainLayer(): WebGLTileLayer {
   const tileGrid = createTileGrid(512, 1);
 
-  const source = new XYZ({
+  const source = new DataTile({
     tileGrid: tileGrid,
     wrapX: false,
-    interpolate: false,
-    tileUrlFunction: ([_, x, y]) => `/rain-tiles/${x}_${y}.png`
+    interpolate: true, // Enable for smoother rendering
+    loader: async (_z, x, y) => {
+      const url = `/rain-tiles/${x}_${y}.png`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to load rain tile: ${url}`);
+      }
+      const blob = await response.blob();
+      const imageBitmap = await createImageBitmap(blob);
+      
+      // Extract pixel data from the image
+      const canvas = document.createElement('canvas');
+      canvas.width = imageBitmap.width;
+      canvas.height = imageBitmap.height;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(imageBitmap, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      
+      return imageData.data;
+    }
   });
-  return new TileLayer({
+  
+  return new WebGLTileLayer({
     source: source,
-    visible: true,
+    visible: false,
+    opacity: 0.6,
+    style: {
+      color: [
+        'array',
+        0,    // Red
+        0,    // Green
+        ['/', ['band', 1], 255], // Blue (rainfall value normalized)
+        ['/', ['band', 1], 255]  // Alpha (rainfall value normalized)
+      ]
+    },
     properties: { name: 'rain' }
   });
 }
 
-export function createTemperatureLayer(): TileLayer<XYZ> {
+/**
+ * Create temperature layer with data sampling capability
+ * Uses WebGLTileLayer for efficient pixel data access via getData()
+ */
+export function createTemperatureLayer(): WebGLTileLayer {
   const tileGrid = createTileGrid(512, 1);
-  const source = new XYZ({
+  
+  const source = new DataTile({
     tileGrid: tileGrid,
     wrapX: false,
-    interpolate: false,
-    tileUrlFunction: ([_, x, y]) => `/temperature-tiles/${x}_${y}.png`
+    interpolate: true, // Enable for smoother rendering
+    loader: async (_z, x, y) => {
+      const url = `/temperature-tiles/${x}_${y}.png`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to load temperature tile: ${url}`);
+      }
+      const blob = await response.blob();
+      const imageBitmap = await createImageBitmap(blob);
+      
+      // Extract pixel data from the image
+      const canvas = document.createElement('canvas');
+      canvas.width = imageBitmap.width;
+      canvas.height = imageBitmap.height;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(imageBitmap, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      
+      return imageData.data;
+    }
   });
-  return new TileLayer({
+  
+  return new WebGLTileLayer({
     source: source,
-    visible: true,
+    visible: false,
+    opacity: 0.6,
+    style: {
+      color: [
+        'array',
+        ['/', ['band', 1], 255], // Red (temperature value normalized)
+        0,    // Green
+        0,    // Blue
+        ['/', ['band', 1], 255]  // Alpha (temperature value normalized)
+      ]
+    },
     properties: { name: 'temperature' }
   });
 }

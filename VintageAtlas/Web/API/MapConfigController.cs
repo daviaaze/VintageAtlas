@@ -1,12 +1,11 @@
 using System;
 using System.Net;
-using System.Text;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Serialization;
 using Vintagestory.API.Server;
 using VintageAtlas.Export;
 using VintageAtlas.Models.API;
+using VintageAtlas.Web.API.Base;
+using VintageAtlas.Web.API.Helpers;
 
 namespace VintageAtlas.Web.API;
 
@@ -14,22 +13,17 @@ namespace VintageAtlas.Web.API;
 /// Provides dynamic map configuration (extent, center, zoom levels, etc.)
 /// Replaces hardcoded values in frontend mapConfig.ts
 /// </summary>
-public class MapConfigController(ICoreServerAPI sapi, ITileGenerator? tileGenerator = null)
+public class MapConfigController : JsonController
 {
-    private readonly ITileGenerator? _tileGenerator = tileGenerator;
-    private readonly JsonSerializerSettings _jsonSettings = new()
-    {
-        ContractResolver = new DefaultContractResolver
-        {
-            NamingStrategy = new CamelCaseNamingStrategy()
-        },
-        Formatting = Formatting.Indented,
-        NullValueHandling = NullValueHandling.Ignore
-    };
-
+    private readonly ITileGenerator? _tileGenerator;
     private MapConfigData? _cachedConfig;
     private long _lastConfigUpdate;
     private readonly object _cacheLock = new();
+
+    public MapConfigController(ICoreServerAPI sapi, ITileGenerator? tileGenerator = null) : base(sapi)
+    {
+        _tileGenerator = tileGenerator;
+    }
 
     /// <summary>
     /// Serve map configuration as JSON
@@ -39,20 +33,11 @@ public class MapConfigController(ICoreServerAPI sapi, ITileGenerator? tileGenera
         try
         {
             var mapConfig = GetMapConfig();
-            var json = JsonConvert.SerializeObject(mapConfig, _jsonSettings);
-            var bytes = Encoding.UTF8.GetBytes(json);
-
-            context.Response.StatusCode = 200;
-            context.Response.ContentType = "application/json";
-            context.Response.ContentLength64 = bytes.Length;
-            context.Response.Headers.Add("Cache-Control", "public, max-age=300"); // Cache for 5 minutes
-
-            await context.Response.OutputStream.WriteAsync(bytes);
-            context.Response.Close();
+            await ServeJson(context, mapConfig, cacheControl: CacheHelper.ForMapData());
         }
         catch (Exception ex)
         {
-            sapi.Logger.Error($"[VintageAtlas] Error serving map config: {ex.Message}");
+            LogError($"Error serving map config: {ex.Message}", ex);
             await ServeError(context, "Failed to get map configuration");
         }
     }
@@ -65,7 +50,7 @@ public class MapConfigController(ICoreServerAPI sapi, ITileGenerator? tileGenera
     public virtual MapConfigData? GetCurrentConfig()
     {
         // Check if the world is ready
-        if (sapi.World?.BlockAccessor == null)
+        if (Sapi.World?.BlockAccessor == null)
         {
             return null; // Return null if world not initialized yet
         }
@@ -83,12 +68,12 @@ public class MapConfigController(ICoreServerAPI sapi, ITileGenerator? tileGenera
     private MapConfigData GetMapConfig()
     {
         // Check if the world is ready (can be null during early startup)
-        if (sapi.World?.BlockAccessor == null)
+        if (Sapi.World?.BlockAccessor == null)
         {
             throw new InvalidOperationException("World not yet initialized");
         }
 
-        var now = sapi.World.ElapsedMilliseconds;
+        var now = Sapi.World.ElapsedMilliseconds;
 
         lock (_cacheLock)
         {
@@ -112,10 +97,10 @@ public class MapConfigController(ICoreServerAPI sapi, ITileGenerator? tileGenera
 
     private MapConfigData GenerateMapConfig()
     {
-        var spawn = sapi.World.DefaultSpawnPosition.AsBlockPos;
+        var spawn = Sapi.World.DefaultSpawnPosition.AsBlockPos;
 
-        var mapSizeX = sapi.World.BlockAccessor.MapSizeX / 2;
-        var mapSizeZ = sapi.World.BlockAccessor.MapSizeZ / 2;
+        var mapSizeX = Sapi.World.BlockAccessor.MapSizeX / 2;
+        var mapSizeZ = Sapi.World.BlockAccessor.MapSizeZ / 2;
 
         // Legacy WebCartographer coordinate system
         int[] worldExtent = [-mapSizeX, -mapSizeZ, mapSizeX, mapSizeZ];
@@ -151,7 +136,7 @@ public class MapConfigController(ICoreServerAPI sapi, ITileGenerator? tileGenera
             }
 
             originTiles[zoom] = [originTileX, originTileY];
-            sapi.Logger.Debug($"[MapConfig] Zoom {zoom} origin offset: ({originTileX},{originTileY})");
+            LogDebug($"Zoom {zoom} origin offset: ({originTileX},{originTileY})");
         }
 
         return new MapConfigData
@@ -170,14 +155,14 @@ public class MapConfigController(ICoreServerAPI sapi, ITileGenerator? tileGenera
             ViewResolutions = webCartographerResolutions,
             OriginTilesPerZoom = originTiles,
 
-            MapSizeX = sapi.World.BlockAccessor.MapSizeX,
-            MapSizeZ = sapi.World.BlockAccessor.MapSizeZ,
-            MapSizeY = sapi.World.BlockAccessor.MapSizeY,
+            MapSizeX = Sapi.World.BlockAccessor.MapSizeX,
+            MapSizeZ = Sapi.World.BlockAccessor.MapSizeZ,
+            MapSizeY = Sapi.World.BlockAccessor.MapSizeY,
 
             SpawnPosition = [spawn.X, spawn.Z],
 
-            ServerName = sapi.Server.Config.ServerName,
-            WorldName = sapi.World.SavegameIdentifier
+            ServerName = Sapi.Server.Config.ServerName,
+            WorldName = Sapi.World.SavegameIdentifier
         };
     }
 
@@ -192,27 +177,7 @@ public class MapConfigController(ICoreServerAPI sapi, ITileGenerator? tileGenera
             _cachedConfig = null;
         }
 
-        sapi.Logger.Debug("[VintageAtlas] Map config cache invalidated");
-    }
-
-    private async Task ServeError(HttpListenerContext context, string message, int statusCode = 500)
-    {
-        try
-        {
-            context.Response.StatusCode = statusCode;
-            context.Response.ContentType = "application/json";
-
-            var errorJson = JsonConvert.SerializeObject(new { error = message }, _jsonSettings);
-            var errorBytes = Encoding.UTF8.GetBytes(errorJson);
-
-            context.Response.ContentLength64 = errorBytes.Length;
-            await context.Response.OutputStream.WriteAsync(errorBytes);
-            context.Response.Close();
-        }
-        catch
-        {
-            // Silently fail
-        }
+        LogDebug("Map config cache invalidated");
     }
 }
 

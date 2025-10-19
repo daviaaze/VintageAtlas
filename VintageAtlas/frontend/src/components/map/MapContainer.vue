@@ -11,7 +11,11 @@
     <ToolsBar v-if="mapInstance" />
     
     <!-- Mouse position display (Spec lines 510-520) -->
-    <div class="ol-coords">{{ mouseCoords }}</div>
+    <div class="ol-coords">
+      <div>{{ mouseCoords }}</div>
+      <div v-if="climateInfo" class="climate-info">{{ climateInfo.temperatureCelsius }}°C</div>
+      <div v-if="climateInfo" class="climate-info">{{ climateInfo.rainfall }}</div>
+    </div>
     
     <!-- Loading indicator -->
     <div v-if="loading" class="ol-loading">
@@ -27,6 +31,7 @@ import Map from 'ol/Map';
 import View from 'ol/View';
 import { MousePosition } from 'ol/control';
 import { useMapStore } from '@/stores/map';
+import { useClimateData } from '@/composables/useClimateData';
 
 // Live data layer components
 import ToolsBar from '@/components/map/ToolsBar.vue';
@@ -38,24 +43,26 @@ import {
   getViewCenter, 
   getViewZoom,
   getViewExtent,
-  formatCoords,
-  createTileGrid
+  formatCoords
 } from '@/utils/olMapConfig';
 
 import {
   createWorldLayer,
   createTradersLayer,
   createRainLayer,
+  createTemperatureLayer,
 } from '@/utils/olLayers';
 import { toStringXY } from 'ol/coordinate';
-import { TileDebug } from 'ol/source';
-import TileLayer from 'ol/layer/Tile';
 
 // Refs
 const mapElement = ref<HTMLElement>();
 const mapInstance = shallowRef<Map>();
 const loading = ref(true);
 const mouseCoords = ref('0, 0');
+
+// Climate data
+const { sampleClimateAtPixel, formatClimateData } = useClimateData();
+const climateInfo = ref<{ temperatureCelsius: string; rainfall: string } | null>(null);
 
 // Initialize map
 onMounted(async () => {
@@ -89,13 +96,7 @@ onMounted(async () => {
         worldLayer,
         tradersLayer,
         rainLayer,
-        new TileLayer({
-          source: new TileDebug({
-            tileGrid: createTileGrid(512, 1)
-          }),
-          visible: true,
-          properties: { name: 'rain' }
-        }),
+        temperatureLayer,
       ],
       view: new View({
         center: getViewCenter(),
@@ -128,6 +129,16 @@ onMounted(async () => {
     mapInstance.value.on('pointermove', (evt) => {
       if (evt.coordinate) {
         mouseCoords.value = formatCoords(evt.coordinate as [number, number]);
+        
+        // Sample climate data at cursor position
+        if (mapInstance.value && evt.pixel) {
+          try {
+            const data = sampleClimateAtPixel(mapInstance.value, evt.pixel);
+            climateInfo.value = formatClimateData(data);
+          } catch (e) {
+            climateInfo.value = null;
+          }
+        }
       }
     });
     
@@ -200,14 +211,26 @@ onUnmounted(() => {
   position: absolute;
   bottom: 16px;
   left: 16px;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 8px 12px;
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 10px 14px;
+  border-radius: 6px;
   font-family: monospace;
   font-size: 12px;
   font-weight: 600;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   z-index: 10;
+}
+
+.ol-coords > div {
+  line-height: 1.6;
+}
+
+.climate-info {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  color: #555;
+  font-size: 11px;
 }
 
 .ol-loading {

@@ -1,16 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Text;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Serialization;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
-using Vintagestory.GameContent;
 using VintageAtlas.Core;
 using VintageAtlas.GeoJson;
 using VintageAtlas.Storage;
+using VintageAtlas.Web.API.Base;
+using VintageAtlas.Web.API.Helpers;
 
 namespace VintageAtlas.Web.API;
 
@@ -18,24 +16,26 @@ namespace VintageAtlas.Web.API;
 /// Provides GeoJSON data dynamically via API with efficient caching
 /// Scans loaded chunks in memory to find signs, signposts, traders, and translocators
 /// </summary>
-public class GeoJsonController(ICoreServerAPI sapi, CoordinateTransformService coordinateService, MetadataStorage metadataStorage)
+public class GeoJsonController : JsonController
 {
-    private readonly JsonSerializerSettings _jsonSettings = new()
-    {
-        ContractResolver = new DefaultContractResolver
-        {
-            NamingStrategy = new CamelCaseNamingStrategy()
-        },
-        Formatting = Formatting.None, // Compact JSON for network transfer
-        NullValueHandling = NullValueHandling.Ignore
-    };
+    private readonly CoordinateTransformService _coordinateService;
+    private readonly MetadataStorage _metadataStorage;
 
     // Cache GeoJSON data with timestamps (in milliseconds)
     private TraderGeoJson? _cachedTraders;
     private long _lastTraderUpdate;
     private readonly object _cacheLock = new();
 
-    private const int TraderCacheMs = 600000; // 1 minute - traders can move/spawn
+    private const int TraderCacheMs = 600000; // 10 minutes - traders can move/spawn
+
+    public GeoJsonController(
+        ICoreServerAPI sapi,
+        CoordinateTransformService coordinateService,
+        MetadataStorage metadataStorage) : base(sapi)
+    {
+        _coordinateService = coordinateService ?? throw new ArgumentNullException(nameof(coordinateService));
+        _metadataStorage = metadataStorage ?? throw new ArgumentNullException(nameof(metadataStorage));
+    }
 
     /// <summary>
     /// Get all traders as GeoJSON
@@ -44,32 +44,27 @@ public class GeoJsonController(ICoreServerAPI sapi, CoordinateTransformService c
     {
         try
         {
-            var ifNoneMatch = context.Request.Headers["If-None-Match"];
             var geoJson = await GetTradersGeoJsonAsync();
+            var etag = ETagHelper.GenerateFromTimestamp(_lastTraderUpdate);
 
-            var json = JsonConvert.SerializeObject(geoJson, _jsonSettings);
-            var etag = GenerateETag(json);
-
-            if (ifNoneMatch == etag)
+            // Check ETag and return 304 if match
+            if (CheckETagMatch(context, etag))
             {
-                context.Response.StatusCode = 304;
-                context.Response.Headers.Add("ETag", etag);
-                context.Response.Close();
                 return;
             }
 
-            await ServeGeoJson(context, json, etag);
+            await ServeGeoJson(context, geoJson, etag, CacheHelper.ForGeoJson());
         }
         catch (Exception ex)
         {
-            sapi.Logger.Error($"[VintageAtlas] Error serving traders GeoJSON: {ex.Message}");
+            LogError($"Error serving traders GeoJSON: {ex.Message}", ex);
             await ServeError(context, "Failed to generate traders data");
         }
     }
 
     private async Task<TraderGeoJson> GetTradersGeoJsonAsync()
     {
-        var now = sapi.World.ElapsedMilliseconds;
+        var now = Sapi.World.ElapsedMilliseconds;
 
         lock (_cacheLock)
         {
@@ -79,7 +74,7 @@ public class GeoJsonController(ICoreServerAPI sapi, CoordinateTransformService c
             }
         }
 
-        var storageTraders = await metadataStorage.GetTraders();
+        var storageTraders = await _metadataStorage.GetTraders();
 
         var traders = new TraderGeoJson
         {
@@ -97,43 +92,12 @@ public class GeoJsonController(ICoreServerAPI sapi, CoordinateTransformService c
         return traders;
     }
 
-    private TraderFeature CreateTraderFeature(EntityTrader trader)
-    {
-        var name = trader.WatchedAttributes.GetTreeAttribute("nametag")?.GetString("name") ?? "Trader";
-        var wares = Vintagestory.API.Config.Lang.Get("item-creature-" + trader.Code.Path);
-
-        return new TraderFeature(
-            new TraderProperties(name, wares, trader.Pos.AsBlockPos.Y),
-            new PointGeometry(GetGeoJsonCoordinates(trader.Pos.AsBlockPos))
-        );
-    }
-
     private List<int> GetGeoJsonCoordinates(BlockPos pos)
     {
         // Use centralized coordinate transformation service
         // Converts game world coordinates to map display coordinates (Z-flip for north-up)
-        var (x, y) = coordinateService.GameToDisplay(pos);
+        var (x, y) = _coordinateService.GameToDisplay(pos);
         return [x, -y];
-    }
-
-    private static async Task ServeGeoJson(HttpListenerContext context, string json, string etag)
-    {
-        var bytes = Encoding.UTF8.GetBytes(json);
-
-        context.Response.StatusCode = 200;
-        context.Response.ContentType = "application/geo+json";
-        context.Response.ContentLength64 = bytes.Length;
-        context.Response.Headers.Add("ETag", etag);
-        context.Response.Headers.Add("Cache-Control", "public, max-age=30");
-
-        await context.Response.OutputStream.WriteAsync(bytes);
-        context.Response.Close();
-    }
-
-    private static string GenerateETag(string content)
-    {
-        var hash = content.GetHashCode();
-        return $"\"{hash}\"";
     }
 
     /// <summary>
@@ -146,26 +110,6 @@ public class GeoJsonController(ICoreServerAPI sapi, CoordinateTransformService c
             _cachedTraders = null;
         }
 
-        sapi.Logger.Debug("[VintageAtlas] GeoJSON cache invalidated");
-    }
-
-    private async Task ServeError(HttpListenerContext context, string message, int statusCode = 500)
-    {
-        try
-        {
-            context.Response.StatusCode = statusCode;
-            context.Response.ContentType = "application/json";
-
-            var errorJson = JsonConvert.SerializeObject(new { error = message }, _jsonSettings);
-            var errorBytes = Encoding.UTF8.GetBytes(errorJson);
-
-            context.Response.ContentLength64 = errorBytes.Length;
-            await context.Response.OutputStream.WriteAsync(errorBytes);
-            context.Response.Close();
-        }
-        catch
-        {
-            // Silently fail
-        }
+        LogDebug("GeoJSON cache invalidated");
     }
 }

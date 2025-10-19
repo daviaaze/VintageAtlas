@@ -34,7 +34,7 @@
           <span
             class="inline-block w-2 h-2 rounded-full bg-[#10b981] relative after:content-[''] after:absolute after:w-3 after:h-3 after:rounded-full after:bg-[#10b981]/30 after:top-1/2 after:left-1/2 after:-translate-x-1/2 after:-translate-y-1/2 after:animate-ping"
           ></span>
-          <span class="font-semibold">{{ serverStore.status.players.length }} {{ serverStore.status.players.length === 1 ? 'player' : 'players' }}</span>
+          <!-- <span class="font-semibold">{{ serverStore.status.players.length }} {{ serverStore.status.players.length === 1 ? 'player' : 'players' }}</span> -->
         </div>
         <div 
           v-else

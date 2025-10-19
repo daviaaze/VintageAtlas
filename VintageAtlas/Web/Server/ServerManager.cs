@@ -4,8 +4,8 @@ using Vintagestory.API.Server;
 using VintageAtlas.Core;
 using VintageAtlas.Export;
 using VintageAtlas.Storage;
-using VintageAtlas.Tracking;
 using VintageAtlas.Web.API;
+using VintageAtlas.Web.API.Controllers;
 using VintageAtlas.Web.Server.Routing;
 
 namespace VintageAtlas.Web.Server;
@@ -99,12 +99,19 @@ public sealed class ServerManager(
         var coordinateService = new CoordinateTransformService(_sapi);
 
         // Inject coordinate service into controllers
+        var statusController = new StatusController(_sapi);
+        var weatherController = new WeatherController(_sapi, coordinateService);
         var geoJsonController = new GeoJsonController(_sapi, coordinateService, _metadataStorage);
         var tileController = new TileController(_sapi, _config, _tileGenerator, mapConfigController);
-        var rainTileController = new RainTileController(_sapi, _storage);
-        var tempTileController = new TempTileController(_sapi, _storage);
+        
+        // Use generic climate layer tile controllers
+        var rainTileController = new ClimateLayerTileController(_sapi, _storage, ClimateLayerType.Rain);
+        var tempTileController = new ClimateLayerTileController(_sapi, _storage, ClimateLayerType.Temperature);
+        
         var router = new RequestRouter(
             configController,
+            statusController,
+            weatherController,
             geoJsonController,
             mapConfigController,
             tileController,

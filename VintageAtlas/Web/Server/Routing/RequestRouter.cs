@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using VintageAtlas.Web.API;
+using VintageAtlas.Web.API.Controllers;
 
 namespace VintageAtlas.Web.Server.Routing;
 
@@ -10,30 +11,36 @@ namespace VintageAtlas.Web.Server.Routing;
 /// </summary>
 public class RequestRouter(
     ConfigController configController,
+    StatusController statusController,
+    WeatherController weatherController,
     GeoJsonController geoJsonController,
     MapConfigController mapConfigController,
     TileController tileController,
-    RainTileController rainTileController,
-    TempTileController tempTileController,
+    ClimateLayerTileController rainTileController,
+    ClimateLayerTileController tempTileController,
     StaticFileServer staticFileServer)
 {
     private readonly ApiRouter _apiRouter = BuildApiRouter(
-        configController, 
+        configController,
+        statusController,
+        weatherController,
         geoJsonController, 
         mapConfigController);
+    
     public async Task RouteRequest(HttpListenerContext context)
     {
         var path = context.Request.Url?.AbsolutePath ?? "/";
 
-        if (RainTileController.IsRainTilePath(path))
+        // Route climate layer tiles (rain/temperature)
+        if (rainTileController.IsMatchingPath(path))
         {
-            await rainTileController.ServeRainTile(context, path);
+            await rainTileController.ServeTile(context, path);
             return;
         }
 
-        if (TempTileController.IsTempTilePath(path))
+        if (tempTileController.IsMatchingPath(path))
         {
-            await tempTileController.ServeTempTile(context, path);
+            await tempTileController.ServeTile(context, path);
             return;
         }
 
@@ -68,10 +75,18 @@ public class RequestRouter(
     /// </summary>
     private static ApiRouter BuildApiRouter(
         ConfigController configController,
+        StatusController statusController,
+        WeatherController weatherController,
         GeoJsonController geoJsonController,
         MapConfigController mapConfigController)
     {
         var router = new ApiRouter();
+
+        // Status endpoint (game state: calendar, season, time)
+        router.AddRoute("status", statusController.GetStatus, "GET");
+
+        // Weather endpoint (precipitation at coordinates)
+        router.AddRoute(["weather", "weather/at"], weatherController.GetWeatherAtLocation, "GET");
 
         // Configuration endpoints (method-specific)
         router.AddRoute("config", configController.GetConfig, "GET");

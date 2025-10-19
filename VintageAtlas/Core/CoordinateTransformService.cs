@@ -28,4 +28,9 @@ public class CoordinateTransformService(ICoreServerAPI api)
     {
         return (gamePos.X - _offsetX, gamePos.Z - _offsetY);
     }
+
+    internal (int displayX, int displayZ) DisplayToGame(int x, int z)
+    {
+        return (x + _offsetX, z + _offsetY);
+    }
 }
