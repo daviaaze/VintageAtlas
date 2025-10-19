@@ -25,6 +25,14 @@ export default defineConfig({
       '/tiles': {
         target: 'http://localhost:42422',
         changeOrigin: true
+      },
+      '/rain-tiles': {
+        target: 'http://localhost:42422',
+        changeOrigin: true
+      },
+      '/temperature-tiles': {
+        target: 'http://localhost:42422',
+        changeOrigin: true
       }
     }
   },

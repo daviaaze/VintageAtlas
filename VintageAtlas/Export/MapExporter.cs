@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Vintagestory.API.Server;
 using Vintagestory.Server;
 using VintageAtlas.Core;
+using VintageAtlas.Storage;
 using VintageAtlas.Web.API;
 
 namespace VintageAtlas.Export;
@@ -16,6 +17,8 @@ public class MapExporter : IMapExporter
     private readonly ICoreServerAPI _sapi;
     private readonly ModConfig _config;
     private readonly UnifiedTileGenerator _tileGenerator;
+    private readonly MbTilesStorage _mbTileStorage;
+    private readonly ClimateLayerGenerator _climateLayerGenerator;
     private readonly MapConfigController? _mapConfigController;
     private readonly ServerMain _server;
     private string? _serverPassword;
@@ -26,13 +29,17 @@ public class MapExporter : IMapExporter
         ICoreServerAPI sapi,
         ModConfig config,
         UnifiedTileGenerator tileGenerator,
-        MapConfigController? mapConfigController = null)
+        MapConfigController mapConfigController,
+        MbTilesStorage storage,
+        ClimateLayerGenerator climateLayerGenerator)
     {
         _sapi = sapi;
         _config = config;
         _tileGenerator = tileGenerator;
         _mapConfigController = mapConfigController;
+        _climateLayerGenerator = climateLayerGenerator;
         _server = (ServerMain)_sapi.World;
+        _mbTileStorage = storage;
     }
 
     public void StartExport()
@@ -46,7 +53,7 @@ public class MapExporter : IMapExporter
         Task.Run(ExecuteExportAsync);
     }
 
-    private async Task ExecuteExportAsync()
+    private void ExecuteExportAsync()
     {
         if (IsRunning) return;
 
@@ -65,7 +72,9 @@ public class MapExporter : IMapExporter
             using var dataSource = new SavegameDataSource(_server, _config, _sapi.Logger);
 
             // Generate tiles directly to MBTiles storage
-            await _tileGenerator.ExportFullMapAsync(dataSource);
+            // await _tileGenerator.ExportFullMapAsync(dataSource);
+            
+            _climateLayerGenerator.GenerateClimateLayerAsync(dataSource, _mbTileStorage, _sapi);
 
             // CRITICAL: Invalidate map config cache so frontend gets updated extent
             _mapConfigController?.InvalidateCache();
@@ -128,4 +137,3 @@ public class MapExporter : IMapExporter
     }
 
 }
-

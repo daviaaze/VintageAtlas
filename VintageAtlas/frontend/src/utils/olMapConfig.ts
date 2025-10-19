@@ -19,15 +19,14 @@ export async function initOLConfig() {
  * Create tile grid for world tiles - WebCartographer approach
  * Uses fixed extent and origin exactly like WebCartographer
  */
-export function createTileGrid(): TileGrid {
+export function createTileGrid(tileSize: number, resolution?: number): TileGrid {
   if (!serverConfig) throw new Error('Config not initialized');
   
   const extent = serverConfig.worldExtent as [number, number, number, number];
   const origin = serverConfig.worldOrigin as [number, number];
   const olExtent: [number, number, number, number] = [extent[0], extent[1], extent[2], extent[3]];
   const olOrigin: [number, number] = [origin[0], origin[1]];
-  const resolutions = serverConfig.tileResolutions;
-  const tileSize = serverConfig.tileSize;
+  const resolutions = resolution ? [resolution] : serverConfig.tileResolutions;
 
   console.log('[createTileGrid] Creating WebCartographer-style tile grid with:', {
     extent: olExtent,
@@ -39,7 +38,7 @@ export function createTileGrid(): TileGrid {
   const grid = new TileGrid({
     extent: extent,
     origin: olOrigin,
-    resolutions,
+    resolutions: resolutions,
     tileSize: [tileSize, tileSize]
   });
   

@@ -13,6 +13,8 @@ public class RequestRouter(
     GeoJsonController geoJsonController,
     MapConfigController mapConfigController,
     TileController tileController,
+    RainTileController rainTileController,
+    TempTileController tempTileController,
     StaticFileServer staticFileServer)
 {
     private readonly ApiRouter _apiRouter = BuildApiRouter(
@@ -22,6 +24,18 @@ public class RequestRouter(
     public async Task RouteRequest(HttpListenerContext context)
     {
         var path = context.Request.Url?.AbsolutePath ?? "/";
+
+        if (RainTileController.IsRainTilePath(path))
+        {
+            await rainTileController.ServeRainTile(context, path);
+            return;
+        }
+
+        if (TempTileController.IsTempTilePath(path))
+        {
+            await tempTileController.ServeTempTile(context, path);
+            return;
+        }
 
         // Route tile requests (with caching)
         if (TileController.IsTilePath(path))

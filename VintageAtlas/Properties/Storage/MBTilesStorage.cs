@@ -134,6 +134,20 @@ public sealed class MbTilesStorage : IDisposable
                                                   name TEXT PRIMARY KEY,
                                                   value TEXT
                                               );
+
+                                            CREATE TABLE IF NOT EXISTS rain_tiles (
+                                                tile_column INTEGER NOT NULL,
+                                                tile_row INTEGER NOT NULL,
+                                                tile_data BLOB NOT NULL,
+                                                PRIMARY KEY (tile_column, tile_row)
+                                            );
+
+                                              CREATE TABLE IF NOT EXISTS temp_tiles (
+                                                  tile_column INTEGER NOT NULL,
+                                                  tile_row INTEGER NOT NULL,
+                                                  tile_data BLOB NOT NULL,
+                                                  PRIMARY KEY (tile_column, tile_row)
+                                              );
                                           
                               """;
 
@@ -160,7 +174,6 @@ public sealed class MbTilesStorage : IDisposable
         await EnsureInitializedAsync(); // CRITICAL: Initialize DB before first write
 
         await using var connection = CreateConnection();
-        await Task.CompletedTask; // Already opened in CreateConnection()
 
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
@@ -190,7 +203,6 @@ public sealed class MbTilesStorage : IDisposable
 
         // Use absolute tile coordinates (no TMS conversion needed)
         await using var connection = CreateConnection();
-        await Task.CompletedTask; // Already opened in CreateConnection()
 
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
@@ -206,33 +218,6 @@ public sealed class MbTilesStorage : IDisposable
 
         var result = await cmd.ExecuteScalarAsync();
         return result as byte[];
-    }
-
-    /// <summary>
-    /// Check if a tile exists
-    /// </summary>
-    public async Task<bool> TileExistsAsync(int zoom, int x, int y)
-    {
-        await EnsureInitializedAsync(); // Ensure database is initialized
-
-        // Use absolute tile coordinates (no TMS conversion needed)
-        await using var connection = CreateConnection();
-        await Task.CompletedTask; // Already opened in CreateConnection()
-
-        await using var cmd = connection.CreateCommand();
-        cmd.CommandText = """
-
-                                      SELECT COUNT(*) FROM tiles
-                                      WHERE zoom_level = @zoom AND tile_column = @x AND tile_row = @y
-                                  
-                          """;
-
-        cmd.Parameters.AddWithValue("@zoom", zoom);
-        cmd.Parameters.AddWithValue("@x", x);
-        cmd.Parameters.AddWithValue("@y", y); // Use absolute tile coordinates
-
-        var count = (long)(await cmd.ExecuteScalarAsync() ?? 0L);
-        return count > 0;
     }
 
     /// <summary>
@@ -259,31 +244,77 @@ public sealed class MbTilesStorage : IDisposable
         await cmd.ExecuteNonQueryAsync();
     }
 
-    /// <summary>
-    /// Get tile count for a specific zoom level
-    /// </summary>
-    public async Task<long> GetTileCountAsync(int? zoom = null)
+    public async Task<byte[]?> GetRainTileAsync(int x, int y)
     {
-        await EnsureInitializedAsync(); // Ensure database is initialized
-
         await using var connection = CreateConnection();
-        await Task.CompletedTask; // Already opened in CreateConnection()
-
+        
         await using var cmd = connection.CreateCommand();
-
-        if (zoom.HasValue)
-        {
-            cmd.CommandText = "SELECT COUNT(*) FROM tiles WHERE zoom_level = @zoom";
-            cmd.Parameters.AddWithValue("@zoom", zoom.Value);
-        }
-        else
-        {
-            cmd.CommandText = "SELECT COUNT(*) FROM tiles";
-        }
-
-        return (long)(await cmd.ExecuteScalarAsync() ?? 0L);
+        cmd.CommandText = """
+                          SELECT tile_data FROM rain_tiles where tile_column = @x and tile_row = @y
+                          """;
+        
+        cmd.Parameters.AddWithValue("@x", x);
+        cmd.Parameters.AddWithValue("@y", y);
+        
+        var result = await cmd.ExecuteScalarAsync();
+        return result as byte[];
     }
 
+    public void PutRainTile(int x, int y, byte[] tileData)
+    {
+        using var connection = CreateConnection();
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+
+                                      INSERT OR REPLACE INTO rain_tiles (tile_column, tile_row, tile_data)
+                                      VALUES (@x, @y, @data)
+                                  
+                          """;
+
+        cmd.Parameters.AddWithValue("@x", x);
+        cmd.Parameters.AddWithValue("@y", y); // Use absolute tile coordinates
+        cmd.Parameters.AddWithValue("@data", tileData);
+
+        cmd.ExecuteNonQuery();
+    }
+
+    public async Task<byte[]?> GetTempTileAsync(int x, int y)
+    {
+        await EnsureInitializedAsync();
+        
+        await using var connection = CreateConnection();
+        
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT tile_data FROM temp_tiles where tile_column = @x and tile_row = @y
+                          """;
+        
+        cmd.Parameters.AddWithValue("@x", x);
+        cmd.Parameters.AddWithValue("@y", y);
+        
+        var result = await cmd.ExecuteScalarAsync();
+        return result as byte[];
+    }
+
+    public void PutTempTile(int x, int y, byte[] tileData)
+    {
+        using var connection = CreateConnection();
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+
+                                      INSERT OR REPLACE INTO temp_tiles (tile_column, tile_row, tile_data)
+                                      VALUES (@x, @y, @data)
+                                  
+                          """;
+
+        cmd.Parameters.AddWithValue("@x", x);
+        cmd.Parameters.AddWithValue("@y", y); // Use absolute tile coordinates
+        cmd.Parameters.AddWithValue("@data", tileData);
+
+        cmd.ExecuteNonQuery();
+    }
     /// <summary>
     /// Get tile extent (min/max coordinates) for a specific zoom level
     /// </summary>

@@ -17,6 +17,34 @@
             <span class="toggle-slider"></span>
           </label>
         </div>
+        <div 
+          class="nav-item" 
+          :class="{ 'active': mapStore.layerVisibility.rain }"
+          @click="toggleLayer('rain')"
+        >
+          <span class="nav-icon">
+            <i class="fa-solid fa-cloud-rain"></i>
+          </span>
+          <span class="nav-label">Rain</span>
+          <label class="toggle-switch">
+            <input type="checkbox" :checked="mapStore.layerVisibility.rain" @change="toggleLayer('rain')">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div 
+          class="nav-item" 
+          :class="{ 'active': mapStore.layerVisibility.temperature }"
+          @click="toggleLayer('temperature')"
+        >
+          <span class="nav-icon">
+            <i class="fa-solid fa-temperature-high"></i>
+          </span>
+          <span class="nav-label">Temperature</span>
+          <label class="toggle-switch">
+            <input type="checkbox" :checked="mapStore.layerVisibility.temperature" @change="toggleLayer('temperature')">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
       </div>
     </nav>
   </aside>
@@ -27,7 +55,7 @@ import { useMapStore } from '@/stores/map';
 
 const mapStore = useMapStore();
 
-function toggleLayer(layer: 'terrain') {
+function toggleLayer(layer: keyof typeof mapStore.layerVisibility) {
   mapStore.toggleLayer(layer);
 }
 </script>

@@ -38,14 +38,18 @@ import {
   getViewCenter, 
   getViewZoom,
   getViewExtent,
-  formatCoords
+  formatCoords,
+  createTileGrid
 } from '@/utils/olMapConfig';
 
 import {
   createWorldLayer,
   createTradersLayer,
+  createRainLayer,
 } from '@/utils/olLayers';
 import { toStringXY } from 'ol/coordinate';
+import { TileDebug } from 'ol/source';
+import TileLayer from 'ol/layer/Tile';
 
 // Refs
 const mapElement = ref<HTMLElement>();
@@ -64,6 +68,8 @@ onMounted(async () => {
     // Create layers in order (Spec lines 332-341)
     const worldLayer = createWorldLayer();
     const tradersLayer = createTradersLayer();
+    const rainLayer = createRainLayer();
+    const temperatureLayer = createTemperatureLayer();
     
     mapInstance.value = new Map({
       target: mapElement.value,
@@ -82,6 +88,14 @@ onMounted(async () => {
       layers: [
         worldLayer,
         tradersLayer,
+        rainLayer,
+        new TileLayer({
+          source: new TileDebug({
+            tileGrid: createTileGrid(512, 1)
+          }),
+          visible: true,
+          properties: { name: 'rain' }
+        }),
       ],
       view: new View({
         center: getViewCenter(),

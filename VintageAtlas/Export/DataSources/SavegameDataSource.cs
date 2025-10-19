@@ -46,6 +46,36 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
         return positions;
     }
 
+    public List<ChunkPos> GetAllMapRegionPositions()
+    {
+        List<ChunkPos> positions;
+        var sqliteConn = _loader.SqliteThreadConn;
+        lock (sqliteConn)
+        {
+            positions = _loader.GetAllMapRegions(sqliteConn).ToList();
+        }
+        
+        sqliteConn.Free();
+        logger.Notification($"[VintageAtlas] Found {positions.Count} map regions in savegame database");
+        return positions;
+    }
+
+    public ServerMapRegion? GetServerMapRegion(ulong position)
+    {
+        var sqliteConn = _loader.SqliteThreadConn;
+        try
+        {
+            lock (sqliteConn.Con)
+            {
+                return _loader.GetServerMapRegion(sqliteConn, position);
+            }
+        }
+        finally
+        {
+            sqliteConn.Free();
+        }
+    }
+
     /// <summary>
     /// Get chunks for a tile from the savegame database.
     /// This can be called from any thread (does not require the main thread).

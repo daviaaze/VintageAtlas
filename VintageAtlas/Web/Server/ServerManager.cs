@@ -101,12 +101,15 @@ public sealed class ServerManager(
         // Inject coordinate service into controllers
         var geoJsonController = new GeoJsonController(_sapi, coordinateService, _metadataStorage);
         var tileController = new TileController(_sapi, _config, _tileGenerator, mapConfigController);
-
+        var rainTileController = new RainTileController(_sapi, _storage);
+        var tempTileController = new TempTileController(_sapi, _storage);
         var router = new RequestRouter(
             configController,
             geoJsonController,
             mapConfigController,
             tileController,
+            rainTileController,
+            tempTileController,
             staticFileServer
         );
 

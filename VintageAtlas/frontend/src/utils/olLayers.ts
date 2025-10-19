@@ -14,12 +14,13 @@ import {
   translocatorsStyle,
   landmarksStyle
 } from './olStyles';
+import TileGrid from 'ol/tilegrid/TileGrid';
 
 /**
  * Create world tile layer (Spec lines 89-108)
  */
 export function createWorldLayer(): TileLayer<XYZ> {
-  const tileGrid = createTileGrid();
+  const tileGrid = createTileGrid(256);
   
   const source = new XYZ({
     tileGrid: tileGrid,
@@ -35,6 +36,37 @@ export function createWorldLayer(): TileLayer<XYZ> {
   return new TileLayer({
     source: source,
     properties: { name: 'world' }
+  });
+}
+
+export function createRainLayer(): TileLayer<XYZ> {
+  const tileGrid = createTileGrid(512, 1);
+
+  const source = new XYZ({
+    tileGrid: tileGrid,
+    wrapX: false,
+    interpolate: false,
+    tileUrlFunction: ([_, x, y]) => `/rain-tiles/${x}_${y}.png`
+  });
+  return new TileLayer({
+    source: source,
+    visible: true,
+    properties: { name: 'rain' }
+  });
+}
+
+export function createTemperatureLayer(): TileLayer<XYZ> {
+  const tileGrid = createTileGrid(512, 1);
+  const source = new XYZ({
+    tileGrid: tileGrid,
+    wrapX: false,
+    interpolate: false,
+    tileUrlFunction: ([_, x, y]) => `/temperature-tiles/${x}_${y}.png`
+  });
+  return new TileLayer({
+    source: source,
+    visible: true,
+    properties: { name: 'temperature' }
   });
 }
 

@@ -115,6 +115,35 @@ public sealed class SavegameDataLoader : IDisposable
         return posList;
     }
 
+    public IEnumerable<ChunkPos> GetAllMapRegions(SqliteThreadCon sqliteConn)
+    {
+        using var cmd = sqliteConn.Con.CreateCommand();
+        cmd.CommandText = "SELECT position FROM mapregion";
+        using var sqliteDataReader = cmd.ExecuteReader();
+        var posList = new List<ChunkPos>();
+        while (sqliteDataReader.Read())
+        {
+            var pos = (long)sqliteDataReader["position"];
+            posList.Add(ChunkPos.FromChunkIndex_saveGamev2((ulong)pos));
+        }
+        return posList;
+    }
+
+    public ServerMapRegion? GetServerMapRegion(SqliteThreadCon sqliteConn, ulong position)
+    {
+        using var cmd = sqliteConn.Con.CreateCommand();
+        cmd.CommandText = "SELECT data FROM mapregion WHERE position = @position";
+        cmd.Parameters.AddWithValue("@position", position);
+        using var sqliteDataReader = cmd.ExecuteReader();
+        if (sqliteDataReader.Read())
+        {
+            var bytes = sqliteDataReader["data"] as byte[];
+            var serverMapRegion = ServerMapRegion.FromBytes(bytes);
+            return serverMapRegion;
+        }
+        return null;
+    }
+
     private static SqliteDataReader? ReadReaderSafely(SqliteCommand cmd)
     {
         try
@@ -278,9 +307,9 @@ public sealed class SavegameDataLoader : IDisposable
 
     private void Dispose(bool disposing)
     {
-        if (!disposing) 
+        if (!disposing)
             return;
-        
+
         foreach (var con in _sqliteConnections)
         {
             con.Con.Dispose();
