@@ -22,8 +22,8 @@ public class ClimateLayerGenerator()
 
         Parallel.ForEach(tiles, parallelOptions, (tile, _) =>
         {
-            var tilePos = tile.ToChunkIndex();
-            var serverMapRegion = dataSource.GetServerMapRegion(tilePos);
+            var Vec2i = tile.ToChunkIndex();
+            var serverMapRegion = dataSource.GetServerMapRegion(Vec2i);
             if (serverMapRegion == null) 
                 return;
             

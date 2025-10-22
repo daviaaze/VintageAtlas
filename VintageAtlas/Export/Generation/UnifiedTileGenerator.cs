@@ -82,7 +82,7 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
         try
         {
             // Query actual chunk positions from the data source
-            List<TilePos> tiles;
+            List<Vec2i> tiles;
 
             tiles = CalculateTileCoverageFromChunks(dataSource.GetAllMapChunkPositions());
 
@@ -103,7 +103,7 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
                     var (tileData, traders) = await RenderTileAsync(
                         _config.BaseZoomLevel,
                         tile.X,
-                        tile.Z,
+                        tile.Y,
                         dataSource
                     );
 
@@ -116,7 +116,7 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
                     if (tileData != null)
                     {
                         // Write tile using absolute world coordinates (matching legacy extractor)
-                        await _storage.PutTileAsync(_config.BaseZoomLevel, tile.X, tile.Z, tileData);
+                        await _storage.PutTileAsync(_config.BaseZoomLevel, tile.X, tile.Y, tileData);
 
                         var completed = System.Threading.Interlocked.Increment(ref totalTiles);
 
@@ -136,7 +136,7 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
                 }
                 catch (Exception ex)
                 {
-                    _sapi.Logger.Error($"[VintageAtlas] Failed to export tile {tile.X}_{tile.Z}: {ex.Message}");
+                    _sapi.Logger.Error($"[VintageAtlas] Failed to export tile {tile.X}_{tile.Y}: {ex.Message}");
                 }
             });
 
@@ -170,7 +170,7 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
     /// Calculate which tiles need to be generated based on actual chunks in the savegame.
     /// This is the accurate method that avoids generating empty tiles.
     /// </summary>
-    private List<TilePos> CalculateTileCoverageFromChunks(List<ChunkPos> chunkPositions)
+    private List<Vec2i> CalculateTileCoverageFromChunks(List<ChunkPos> chunkPositions)
     {
         if (chunkPositions.Count == 0)
         {
@@ -178,7 +178,7 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
             return [];
         }
 
-        var tiles = new HashSet<TilePos>();
+        var tiles = new HashSet<Vec2i>();
         var chunksPerTile = _config.TileSize / ChunkSize;
 
         _sapi.Logger.Notification($"[VintageAtlas] Calculating tile coverage from {chunkPositions.Count} chunks...");
@@ -188,9 +188,9 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
         {
             // Calculate which tile this chunk belongs to
             var tileX = chunkPos.X / chunksPerTile;
-            var tileZ = chunkPos.Z / chunksPerTile;
+            var tileY = chunkPos.Z / chunksPerTile;
 
-            tiles.Add(new TilePos(tileX, tileZ));
+            tiles.Add(new Vec2i(tileX, tileY));
         }
 
         return tiles.ToList();
@@ -234,12 +234,12 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
     /// <summary>
     /// Calculate which tiles need to be generated at a zoom level based on the source extent.
     /// </summary>
-    private static List<TilePos> CalculateTargetTilesForZoom(TileExtent extent)
+    private static List<Vec2i> CalculateTargetTilesForZoom(TileExtent extent)
     {
         // FORGIVING APPROACH: Generate tiles even if not all 4 source tiles exist
         // This matches old Extractor.cs behavior where edge tiles with partial coverage
         // are still created (with transparent areas for missing source tiles)
-        var targetTiles = new List<TilePos>();
+        var targetTiles = new List<Vec2i>();
 
         // Simple division by 2 (matches old Extractor.cs)
         // Edge tiles will have some null source tiles, which is OK
@@ -247,7 +247,7 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
         {
             for (var tileZ = extent.MinY / 2; tileZ <= extent.MaxY / 2; tileZ++)
             {
-                targetTiles.Add(new TilePos(tileX, tileZ));
+                targetTiles.Add(new Vec2i(tileX, tileZ));
             }
         }
 
@@ -257,7 +257,7 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
     /// <summary>
     /// Generate downsampled tiles in parallel.
     /// </summary>
-    private async Task<int> GenerateDownsampledTilesAsync(int zoom, List<TilePos> targetTiles,
+    private async Task<int> GenerateDownsampledTilesAsync(int zoom, List<Vec2i> targetTiles,
         IProgress<ExportProgress>? progress)
     {
         var generated = 0;
@@ -266,11 +266,11 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
         {
             try
             {
-                var downsampled = await _downsampler.GenerateTileByDownsamplingAsync(zoom, tile.X, tile.Z);
+                var downsampled = await _downsampler.GenerateTileByDownsamplingAsync(zoom, tile.X, tile.Y);
 
                 if (downsampled != null)
                 {
-                    await _storage.PutTileAsync(zoom, tile.X, tile.Z, downsampled);
+                    await _storage.PutTileAsync(zoom, tile.X, tile.Y, downsampled);
                     var count = System.Threading.Interlocked.Increment(ref generated);
 
                     if (count % 100 == 0)
@@ -286,7 +286,7 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Error($"[VintageAtlas] Failed to generate zoom tile {zoom}/{tile.X}_{tile.Z}: {ex.Message}");
+                _sapi.Logger.Error($"[VintageAtlas] Failed to generate zoom tile {zoom}/{tile.X}_{tile.Y}: {ex.Message}");
             }
         });
 
