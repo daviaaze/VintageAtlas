@@ -31,13 +31,14 @@ public static class ComponentInitializer
         // Initialize unified tile generator for full exports
         var unifiedGenerator = new UnifiedTileGenerator(sapi, config, colorCache, storage, metadataStorage);
 
-        var climateLayerGenerator = new ClimateLayerGenerator();
+        // Initialize climate GeoJSON generator (replaces old PNG tile generator)
+        var climateGeoJsonGenerator = new ClimateGeoJsonGenerator(sapi, metadataStorage);
 
         // Initialize map config controller (needed by exporter for cache invalidation)
         var mapConfigController = new MapConfigController(sapi);
 
         // Initialize map exporter with unified generator and map config controller
-        var mapExporter = new MapExporter(sapi, config, unifiedGenerator, mapConfigController, storage, climateLayerGenerator);
+        var mapExporter = new MapExporter(sapi, config, unifiedGenerator, mapConfigController, storage, climateGeoJsonGenerator);
 
         sapi.Logger.Notification("[VintageAtlas] Core components initialized successfully");
 

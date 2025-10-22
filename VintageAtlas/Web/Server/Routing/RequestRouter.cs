@@ -14,6 +14,7 @@ public class RequestRouter(
     StatusController statusController,
     WeatherController weatherController,
     GeoJsonController geoJsonController,
+    ClimateGeoJsonController climateGeoJsonController,
     MapConfigController mapConfigController,
     TileController tileController,
     ClimateLayerTileController rainTileController,
@@ -24,7 +25,8 @@ public class RequestRouter(
         configController,
         statusController,
         weatherController,
-        geoJsonController, 
+        geoJsonController,
+        climateGeoJsonController,
         mapConfigController);
     
     public async Task RouteRequest(HttpListenerContext context)
@@ -78,6 +80,7 @@ public class RequestRouter(
         StatusController statusController,
         WeatherController weatherController,
         GeoJsonController geoJsonController,
+        ClimateGeoJsonController climateGeoJsonController,
         MapConfigController mapConfigController)
     {
         var router = new ApiRouter();
@@ -100,6 +103,10 @@ public class RequestRouter(
 
         // GeoJSON endpoints
         router.AddRoute(["geojson/traders", "traders.geojson"], geoJsonController.ServeTraders);
+        
+        // Climate GeoJSON endpoints (for heatmap visualization)
+        router.AddRoute(["geojson/climate/temperature", "climate-temperature.geojson"], climateGeoJsonController.ServeTemperature);
+        router.AddRoute(["geojson/climate/rainfall", "climate-rainfall.geojson"], climateGeoJsonController.ServeRainfall);
 
         return router;
     }

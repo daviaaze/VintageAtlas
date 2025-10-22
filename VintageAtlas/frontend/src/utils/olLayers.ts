@@ -36,7 +36,7 @@ export function createWorldLayer(): TileLayer<XYZ> {
   
   return new TileLayer({
     source: source,
-    properties: { name: 'world' }
+    properties: { name: 'terrain' }
   });
 }
 

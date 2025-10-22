@@ -2,10 +2,6 @@
   <div class="ol-map-container">
     <!-- Map element -->
     <div ref="mapElement" class="ol-map"></div>
-    
-    <!-- Live data layers -->
-    <PlayerLayer v-if="mapInstance" />
-    <AnimalLayer v-if="mapInstance" />
 
     <!-- Tools Bar overlay -->
     <ToolsBar v-if="mapInstance" />
@@ -13,8 +9,6 @@
     <!-- Mouse position display (Spec lines 510-520) -->
     <div class="ol-coords">
       <div>{{ mouseCoords }}</div>
-      <div v-if="climateInfo" class="climate-info">{{ climateInfo.temperatureCelsius }}°C</div>
-      <div v-if="climateInfo" class="climate-info">{{ climateInfo.rainfall }}</div>
     </div>
     
     <!-- Loading indicator -->
@@ -31,7 +25,7 @@ import Map from 'ol/Map';
 import View from 'ol/View';
 import { MousePosition } from 'ol/control';
 import { useMapStore } from '@/stores/map';
-import { useClimateData } from '@/composables/useClimateData';
+import { useClimateHeatmap } from '@/composables/useClimateHeatmap';
 
 // Live data layer components
 import ToolsBar from '@/components/map/ToolsBar.vue';
@@ -49,8 +43,6 @@ import {
 import {
   createWorldLayer,
   createTradersLayer,
-  createRainLayer,
-  createTemperatureLayer,
 } from '@/utils/olLayers';
 import { toStringXY } from 'ol/coordinate';
 
@@ -60,9 +52,13 @@ const mapInstance = shallowRef<Map>();
 const loading = ref(true);
 const mouseCoords = ref('0, 0');
 
-// Climate data
-const { sampleClimateAtPixel, formatClimateData } = useClimateData();
-const climateInfo = ref<{ temperatureCelsius: string; rainfall: string } | null>(null);
+// Climate heatmap layers (vector heatmaps)
+const {
+  loadTemperatureHeatmap,
+  loadRainfallHeatmap,
+  toggleTemperatureHeatmap,
+  toggleRainfallHeatmap
+} = useClimateHeatmap();
 
 // Initialize map
 onMounted(async () => {
@@ -75,8 +71,6 @@ onMounted(async () => {
     // Create layers in order (Spec lines 332-341)
     const worldLayer = createWorldLayer();
     const tradersLayer = createTradersLayer();
-    const rainLayer = createRainLayer();
-    const temperatureLayer = createTemperatureLayer();
     
     mapInstance.value = new Map({
       target: mapElement.value,
@@ -95,8 +89,6 @@ onMounted(async () => {
       layers: [
         worldLayer,
         tradersLayer,
-        rainLayer,
-        temperatureLayer,
       ],
       view: new View({
         center: getViewCenter(),
@@ -129,16 +121,6 @@ onMounted(async () => {
     mapInstance.value.on('pointermove', (evt) => {
       if (evt.coordinate) {
         mouseCoords.value = formatCoords(evt.coordinate as [number, number]);
-        
-        // Sample climate data at cursor position
-        if (mapInstance.value && evt.pixel) {
-          try {
-            const data = sampleClimateAtPixel(mapInstance.value, evt.pixel);
-            climateInfo.value = formatClimateData(data);
-          } catch (e) {
-            climateInfo.value = null;
-          }
-        }
       }
     });
     
@@ -158,8 +140,24 @@ onMounted(async () => {
     loading.value = false;
     
     // Store map instance for child components
-    // (PlayerLayer and AnimalLayer will access it via mapStore)
     mapStore.setMap(mapInstance.value);
+    
+    // Load heatmap layers (async, won't block map initialization)
+    // Uses default OpenLayers projection (EPSG:3857)
+    // Layers start hidden and can be toggled via sidebar
+    loadTemperatureHeatmap(mapInstance.value, 'EPSG:3857').then(() => {
+      // Set initial visibility from store
+      toggleTemperatureHeatmap(mapStore.layerVisibility.temperature);
+    }).catch((error) => {
+      console.warn('[ClimateHeatmap] Failed to load temperature heatmap:', error);
+    });
+    
+    loadRainfallHeatmap(mapInstance.value, 'EPSG:3857').then(() => {
+      // Set initial visibility from store
+      toggleRainfallHeatmap(mapStore.layerVisibility.rain);
+    }).catch((error) => {
+      console.warn('[ClimateHeatmap] Failed to load rainfall heatmap:', error);
+    });
     
   } catch (error) {
     console.error('[CleanMap] ❌ Failed to initialize:', error);
@@ -223,14 +221,6 @@ onUnmounted(() => {
 
 .ol-coords > div {
   line-height: 1.6;
-}
-
-.climate-info {
-  margin-top: 4px;
-  padding-top: 6px;
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
-  color: #555;
-  font-size: 11px;
 }
 
 .ol-loading {

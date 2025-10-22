@@ -18,7 +18,7 @@ public class MapExporter : IMapExporter
     private readonly ModConfig _config;
     private readonly UnifiedTileGenerator _tileGenerator;
     private readonly MbTilesStorage _mbTileStorage;
-    private readonly ClimateLayerGenerator _climateLayerGenerator;
+    private readonly ClimateGeoJsonGenerator _climateGeoJsonGenerator;
     private readonly MapConfigController? _mapConfigController;
     private readonly ServerMain _server;
     private string? _serverPassword;
@@ -31,13 +31,13 @@ public class MapExporter : IMapExporter
         UnifiedTileGenerator tileGenerator,
         MapConfigController mapConfigController,
         MbTilesStorage storage,
-        ClimateLayerGenerator climateLayerGenerator)
+        ClimateGeoJsonGenerator climateGeoJsonGenerator)
     {
         _sapi = sapi;
         _config = config;
         _tileGenerator = tileGenerator;
         _mapConfigController = mapConfigController;
-        _climateLayerGenerator = climateLayerGenerator;
+        _climateGeoJsonGenerator = climateGeoJsonGenerator;
         _server = (ServerMain)_sapi.World;
         _mbTileStorage = storage;
     }
@@ -53,7 +53,7 @@ public class MapExporter : IMapExporter
         Task.Run(ExecuteExportAsync);
     }
 
-    private void ExecuteExportAsync()
+    private async Task ExecuteExportAsync()
     {
         if (IsRunning) return;
 
@@ -74,7 +74,8 @@ public class MapExporter : IMapExporter
             // Generate tiles directly to MBTiles storage
             // await _tileGenerator.ExportFullMapAsync(dataSource);
             
-            _climateLayerGenerator.GenerateClimateLayerAsync(dataSource, _mbTileStorage, _sapi);
+            // Generate climate GeoJSON data (vector heatmap data) from actual chunks
+            await _climateGeoJsonGenerator.GenerateClimateGeoJsonAsync(dataSource);
 
             // CRITICAL: Invalidate map config cache so frontend gets updated extent
             _mapConfigController?.InvalidateCache();
