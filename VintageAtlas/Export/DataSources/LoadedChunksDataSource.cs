@@ -1,8 +1,10 @@
 using System.Threading.Tasks;
 using Vintagestory.API.Server;
 using VintageAtlas.Core;
+using VintageAtlas.Export.Data;
+using VintageAtlas.Export.Utils;
 
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.DataSources;
 
 /// <summary>
 /// Chunk data source that reads from currently loaded game chunks.

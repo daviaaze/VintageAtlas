@@ -6,6 +6,9 @@ using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 using Vintagestory.GameContent;
 using VintageAtlas.Core;
+using VintageAtlas.Export.Colors;
+using VintageAtlas.Export.Data;
+using VintageAtlas.Export.Utils;
 
 namespace VintageAtlas.Export.Rendering;
 
@@ -36,7 +39,7 @@ public sealed class FastBitmapRenderer
         _microBlocks = microBlocks ?? throw new ArgumentNullException(nameof(microBlocks));
         
         var mapYHalf = sapi.WorldManager.MapSizeY / 2;
-        _colorResolver = new PixelColorResolver(colorCache, config, mapYHalf);
+        _colorResolver = new PixelColorResolver(_colorCache, config, mapYHalf);
     }
 
     /// <summary>

@@ -1,6 +1,7 @@
 using System.Threading.Tasks;
+using VintageAtlas.Export.Data;
 
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.DataSources;
 
 /// <summary>
 /// Abstraction for chunk data sources used by UnifiedTileGenerator.

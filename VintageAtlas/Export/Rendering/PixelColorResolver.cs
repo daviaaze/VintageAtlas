@@ -1,6 +1,8 @@
 using System;
 using Vintagestory.API.MathTools;
 using VintageAtlas.Core;
+using VintageAtlas.Export.Colors;
+using VintageAtlas.Export.Data;
 
 namespace VintageAtlas.Export.Rendering;
 

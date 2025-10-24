@@ -1,4 +1,4 @@
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.Rendering;
 
 /// <summary>
 /// Context for rendering a single pixel in a chunk.

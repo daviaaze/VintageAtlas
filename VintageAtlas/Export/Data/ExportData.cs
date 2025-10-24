@@ -3,7 +3,7 @@ using System.Linq;
 using Newtonsoft.Json;
 using ProtoBuf;
 
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.Data;
 
 [ProtoContract(ImplicitFields = ImplicitFields.AllPublic)]
 public class ExportData
