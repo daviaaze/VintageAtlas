@@ -69,9 +69,9 @@ public class ExportOrchestrator : IDisposable
 
         // Detect if we need to load chunks into game memory (for OnDemand climate)
         var climateExtractor = _extractors.OfType<ClimateExtractor>().FirstOrDefault();
-        var needsLoadedChunks = climateExtractor != null && 
+        var needsLoadedChunks = climateExtractor != null &&
                                _config.ClimateMode == ClimateExtractionMode.OnDemand;
-        
+
         if (needsLoadedChunks)
         {
             _sapi.Logger.Notification("[VintageAtlas] 🔄 UNIFIED PROCESSING: Loading chunks into game memory for OnDemand climate");
@@ -226,23 +226,23 @@ public class ExportOrchestrator : IDisposable
             var batch = chunkPositions.Skip(i).Take(batchSize).ToList();
             var batchNum = (i / batchSize) + 1;
             var totalBatches = (chunkPositions.Count + batchSize - 1) / batchSize;
-            
+
             _sapi.Logger.Debug($"[VintageAtlas] Loading batch {batchNum}/{totalBatches} ({batch.Count} chunks)");
-            
+
             // Load batch of chunks into game memory
             foreach (var chunkPos in batch)
             {
                 try
                 {
                     var isLoaded = _sapi.World.BlockAccessor.GetChunk(chunkPos.X, 0, chunkPos.Y) != null;
-                    
+
                     if (!isLoaded)
                     {
                         var loadCompletionSource = new TaskCompletionSource<bool>();
-                        
+
                         _sapi.WorldManager.LoadChunkColumnPriority(
-                            chunkPos.X * ChunkSize, 
-                            chunkPos.Y * ChunkSize, 
+                            chunkPos.X * ChunkSize,
+                            chunkPos.Y * ChunkSize,
                             new ChunkLoadOptions
                             {
                                 KeepLoaded = true,
@@ -264,11 +264,11 @@ public class ExportOrchestrator : IDisposable
                     // Process this chunk with ALL extractors
                     var worldMap = ((Vintagestory.Server.ServerMain)_sapi.World).WorldMap;
                     var mapChunk = worldMap.GetMapChunk(chunkPos.X, chunkPos.Y);
-                    
+
                     if (mapChunk != null)
                     {
                         var snapshot = CreateChunkSnapshot(chunkPos.X, chunkPos.Y, mapChunk);
-                        
+
                         foreach (var extractor in _extractors)
                         {
                             try
@@ -345,7 +345,7 @@ public class ExportOrchestrator : IDisposable
     private ChunkSnapshot CreateChunkSnapshot(int chunkX, int chunkZ, Vintagestory.API.Common.IMapChunk mapChunk)
     {
         var heightMap = new int[ChunkSize * ChunkSize];
-        
+
         if (mapChunk.RainHeightMap != null)
         {
             for (var i = 0; i < Math.Min(heightMap.Length, mapChunk.RainHeightMap.Length); i++)
@@ -421,7 +421,7 @@ public class ExportOrchestrator : IDisposable
                         $"({chunk.ChunkX},{chunk.ChunkZ}): {ex.Message}");
                 }
             }
-            
+
             processedChunks++;
             if (processedChunks % 100 == 0)
             {
@@ -456,7 +456,7 @@ public class ExportOrchestrator : IDisposable
         // Get loaded chunk positions from the server's world map
         // We'll iterate through a reasonable area around spawn and check which chunks are loaded
         var worldMap = _server.WorldMap;
-        
+
         // Get all players to determine active areas
         var players = _sapi.World.AllOnlinePlayers;
         var activeChunks = new HashSet<Vec2i>();
@@ -465,10 +465,10 @@ public class ExportOrchestrator : IDisposable
         foreach (var player in players)
         {
             if (player?.Entity == null) continue;
-            
+
             var playerChunkX = (int)player.Entity.Pos.X / 32;
             var playerChunkZ = (int)player.Entity.Pos.Z / 32;
-            
+
             // Get chunks in a radius around the player (typical view distance)
             var radius = 12; // chunks
             for (var dx = -radius; dx <= radius; dx++)
@@ -491,7 +491,7 @@ public class ExportOrchestrator : IDisposable
 
                 // Get the map chunk (contains height map)
                 var mapChunk = worldMap.GetMapChunk(chunkPos.X, chunkPos.Y);
-                
+
                 if (mapChunk == null || mapChunk.RainHeightMap == null)
                     continue;
 

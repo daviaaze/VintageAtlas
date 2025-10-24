@@ -4,7 +4,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
+using VintageAtlas.Export.Data;
 
 namespace VintageAtlas.Export.Generation;
 

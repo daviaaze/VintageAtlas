@@ -14,12 +14,12 @@ public enum ClimateExtractionMode
     /// Fast extraction using world generation values (no chunk loading required)
     /// </summary>
     Fast,
-    
+
     /// <summary>
     /// On-demand chunk loading for accurate seasonal/calendar climate data
     /// </summary>
     OnDemand,
-    
+
     /// <summary>
     /// Only use currently loaded chunks (for real-time updates)
     /// </summary>

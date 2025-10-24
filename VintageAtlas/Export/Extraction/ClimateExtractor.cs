@@ -32,7 +32,7 @@ public class ClimateExtractor : IDataExtractor
     private readonly List<ClimatePoint> _rainfallPoints = new();
     private int _offsetX;
     private int _offsetZ;
-    
+
     // For live extraction: track which chunks are loaded
     private bool _useLiveChunks;
 
@@ -73,7 +73,7 @@ public class ClimateExtractor : IDataExtractor
         {
             return ProcessLiveChunkAsync(chunk);
         }
-        
+
         // For Fast mode, skip processing here - extract via MapRegions in Finalize
         return Task.CompletedTask;
     }
@@ -86,7 +86,7 @@ public class ClimateExtractor : IDataExtractor
     {
         var chunkWorldX = chunk.ChunkX * ChunkSize;
         var chunkWorldZ = chunk.ChunkZ * ChunkSize;
-        
+
         // Check if this chunk column is actually loaded
         var chunkColumn = _sapi.World.BlockAccessor.GetChunk(chunk.ChunkX, 0, chunk.ChunkZ);
         if (chunkColumn == null)
@@ -97,7 +97,7 @@ public class ClimateExtractor : IDataExtractor
         // Use caching block accessor for better performance (10-50% faster in loops)
         var cba = _sapi.World.GetCachingBlockAccessor(false, false);
         cba.Begin(); // CRITICAL: Must call before loop
-        
+
         try
         {
             // Sample multiple points within the chunk
@@ -188,7 +188,7 @@ public class ClimateExtractor : IDataExtractor
         await Task.Run(() =>
         {
             var worldMap = ((Vintagestory.Server.ServerMain)_sapi.World).WorldMap;
-            
+
             if (worldMap == null)
             {
                 _sapi.Logger.Error("[VintageAtlas] Cannot access world map for climate extraction");
@@ -208,7 +208,7 @@ public class ClimateExtractor : IDataExtractor
                     try
                     {
                         var mapRegion = worldMap.GetMapRegion(regionX, regionZ);
-                        
+
                         if (mapRegion == null)
                             continue;
 
@@ -253,8 +253,8 @@ public class ClimateExtractor : IDataExtractor
         for (var i = 0; i < chunkPositions.Count; i += batchSize)
         {
             var batch = chunkPositions.Skip(i).Take(batchSize).ToList();
-            _sapi.Logger.Debug($"[VintageAtlas] Loading batch {(i/batchSize) + 1}/{(chunkPositions.Count + batchSize - 1)/batchSize} ({batch.Count} chunks)");
-            
+            _sapi.Logger.Debug($"[VintageAtlas] Loading batch {(i / batchSize) + 1}/{(chunkPositions.Count + batchSize - 1) / batchSize} ({batch.Count} chunks)");
+
             // Load batch of chunks
             foreach (var chunkPos in batch)
             {
@@ -262,15 +262,15 @@ public class ClimateExtractor : IDataExtractor
                 {
                     var pointsBefore = _temperaturePoints.Count;
                     var isLoaded = _sapi.World.BlockAccessor.GetChunk(chunkPos.X, 0, chunkPos.Y) != null;
-                    
+
                     if (!isLoaded)
                     {
                         // Load chunk and keep it loaded temporarily
                         var loadCompletionSource = new TaskCompletionSource<bool>();
-                        
+
                         _sapi.WorldManager.LoadChunkColumnPriority(
-                            chunkPos.X * ChunkSize, 
-                            chunkPos.Y * ChunkSize, 
+                            chunkPos.X * ChunkSize,
+                            chunkPos.Y * ChunkSize,
                             new ChunkLoadOptions
                             {
                                 KeepLoaded = true,
@@ -300,7 +300,7 @@ public class ClimateExtractor : IDataExtractor
                     {
                         var snapshot = CreateChunkSnapshot(chunkPos.X, chunkPos.Y, mapChunk);
                         await ProcessLiveChunkAsync(snapshot);
-                        
+
                         var pointsAdded = _temperaturePoints.Count - pointsBefore;
                         dataPointsCollected += pointsAdded;
                     }
@@ -351,7 +351,7 @@ public class ClimateExtractor : IDataExtractor
     private ChunkSnapshot CreateChunkSnapshot(int chunkX, int chunkZ, Vintagestory.API.Common.IMapChunk mapChunk)
     {
         var heightMap = new int[ChunkSize * ChunkSize];
-        
+
         if (mapChunk.RainHeightMap != null)
         {
             for (var i = 0; i < Math.Min(mapChunk.RainHeightMap.Length, heightMap.Length); i++)
@@ -383,7 +383,7 @@ public class ClimateExtractor : IDataExtractor
         // MapRegion covers 16x16 chunks
         // Sample at a coarser resolution for performance
         var sampleStep = 2; // Sample every 2 chunks
-        
+
         for (var chunkOffsetX = 0; chunkOffsetX < RegionChunkSize; chunkOffsetX += sampleStep)
         {
             for (var chunkOffsetZ = 0; chunkOffsetZ < RegionChunkSize; chunkOffsetZ += sampleStep)
@@ -403,7 +403,7 @@ public class ClimateExtractor : IDataExtractor
                         new BlockPos(worldX, worldY, worldZ),
                         EnumGetClimateMode.WorldGenValues
                     );
-                    
+
                     if (climate != null)
                     {
                         AddClimatePoint(worldX, worldZ, climate);
