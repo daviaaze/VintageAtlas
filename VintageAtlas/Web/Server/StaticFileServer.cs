@@ -49,13 +49,9 @@ public class StaticFileServer(ICoreServerAPI sapi, ModConfig config)
 
         if (Directory.Exists(modHtml) && File.Exists(Path.Combine(modHtml, "index.html")))
         {
-            sapi.Logger.Notification($"[VintageAtlas] Serving static files from mod directory: {modHtml}");
-            sapi.Logger.Notification($"[VintageAtlas] Generated data will be stored in: {config.OutputDirectory}");
             return modHtml;
         }
 
-        sapi.Logger.Error($"[VintageAtlas] Could not find HTML files in mod directory: {modHtml}");
-        sapi.Logger.Error("[VintageAtlas] Please ensure the mod was built correctly with embedded HTML files.");
         return null;
     }
 

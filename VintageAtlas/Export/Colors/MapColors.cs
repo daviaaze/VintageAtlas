@@ -3,7 +3,7 @@ using Vintagestory.API.Common;
 using Vintagestory.API.Datastructures;
 using System;
 
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.Colors;
 
 public static class MapColors
 {

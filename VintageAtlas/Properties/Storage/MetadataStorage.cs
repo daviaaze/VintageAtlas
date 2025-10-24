@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
-using VintageAtlas.Export;
+using VintageAtlas.Export.Climate;
 using VintageAtlas.Models.Domain;
 using Vintagestory.API.MathTools;
 
@@ -77,7 +77,7 @@ public sealed class MetadataStorage : IDisposable
     {
         using var connection = CreateConnection();
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = "INSERT INTO traders (id, name, type, pos) VALUES (@id, @name, @type, @pos)";
+        cmd.CommandText = "INSERT OR REPLACE INTO traders (id, name, type, pos) VALUES (@id, @name, @type, @pos)";
         cmd.Parameters.AddWithValue("@id", id);
         cmd.Parameters.AddWithValue("@name", name);
         cmd.Parameters.AddWithValue("@type", type);

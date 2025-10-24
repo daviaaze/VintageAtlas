@@ -1,15 +1,17 @@
 using System;
 using System.Threading.Tasks;
 using SkiaSharp;
+using VintageAtlas.Export.DataSources;
 using VintageAtlas.Storage;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.Climate;
 
 public class ClimateLayerGenerator()
 {
-    internal void GenerateClimateLayerAsync(SavegameDataSource dataSource, MbTilesStorage mbTilesStorage, ICoreServerAPI api)
+    internal void GenerateClimateLayerAsync(SavegameDataSource
+     dataSource, MbTilesStorage mbTilesStorage, ICoreServerAPI api)
     {
         var tiles = dataSource.GetAllMapRegionPositions();
 
@@ -77,10 +79,10 @@ public class ClimateLayerGenerator()
             
             // Note: These still create individual database connections which can cause contention
             // Consider batching if performance is still an issue
-            mbTilesStorage.PutTempTile(tile.X, tile.Z, tempData.ToArray());
-            mbTilesStorage.PutRainTile(tile.X, tile.Z, rainData.ToArray());
+            mbTilesStorage.PutTempTile(tile.X, tile.Y, tempData.ToArray());
+            mbTilesStorage.PutRainTile(tile.X, tile.Y, rainData.ToArray());
             
-            api.Logger.Debug($"[VintageAtlas] Generated climate layer for {tile.X}-{tile.Z}");
+            api.Logger.Debug($"[VintageAtlas] Generated climate layer for {tile.X}-{tile.Y}");
         });
     }
 }

@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.Data;
 
 /// <summary>
 /// Collection of chunk snapshots for a tile

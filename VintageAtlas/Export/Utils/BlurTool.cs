@@ -1,6 +1,6 @@
 using System;
 
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.Utils;
 
 public static class BlurTool
 {

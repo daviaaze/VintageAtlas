@@ -1,6 +1,6 @@
 using Vintagestory.API.Server;
 
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.Utils;
 
 public class RegionDataExtractor
 {

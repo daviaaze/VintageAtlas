@@ -1,11 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using VintageAtlas.Export.DataSources.Repositories;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
 using Vintagestory.Common.Database;
 
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.Utils;
 
 /// <summary>
 /// Extracts chunk version information from the savegame database.
@@ -14,7 +15,7 @@ namespace VintageAtlas.Export;
 /// 2. Use SaveGame global version as proxy
 /// 3. Store custom tracking via moddata (future enhancement)
 /// </summary>
-public class ChunkVersionExtractor(SavegameDataLoader loader, ILogger logger)
+public class ChunkVersionExtractor(ISavegameRepository repository, ILogger logger)
 {
     private string? _worldVersion;
 
@@ -26,64 +27,52 @@ public class ChunkVersionExtractor(SavegameDataLoader loader, ILogger logger)
     {
         logger.Notification("[VintageAtlas] Extracting chunk version data...");
 
-        var sqliteConn = loader.SqliteThreadConn;
         var chunkVersions = new Dictionary<ChunkPos, string>();
 
-        try
+        // Get the current game version as fallback for chunks without version data
+        _worldVersion = GameVersion.ShortGameVersion;
+        logger.Notification($"[VintageAtlas] Default version (fallback): {_worldVersion}");
+
+        // Get all map chunk positions
+        var allPositions = repository.GetAllMapChunkPositions().ToList();
+        logger.Notification($"[VintageAtlas] Found {allPositions.Count} map chunks to process");
+
+        var processed = 0;
+        var withVersion = 0;
+
+        foreach (var pos in allPositions)
         {
-            lock (sqliteConn.Con)
+            // Try to determine the game version that this chunk was generated with
+            var version = GetChunkVersion(pos);
+
+            if (version != null)
             {
-                // Get the current game version as fallback for chunks without version data
-                _worldVersion = GameVersion.ShortGameVersion;
+                chunkVersions[pos] = version;
+                withVersion++;
+            }
 
-                logger.Notification($"[VintageAtlas] Default version (fallback): {_worldVersion}");
+            processed++;
 
-                // Get all map chunk positions
-                var allPositions = loader.GetAllMapChunkPositions(sqliteConn).ToList();
-                logger.Notification($"[VintageAtlas] Found {allPositions.Count} map chunks to process");
-
-                var processed = 0;
-                var withVersion = 0;
-
-                foreach (var pos in allPositions)
-                {
-                    // Try to determine the game version that this chunk was generated with
-                    var version = GetChunkVersion(sqliteConn, pos);
-
-                    if (version != null)
-                    {
-                        chunkVersions[pos] = version;
-                        withVersion++;
-                    }
-
-                    processed++;
-
-                    if (processed % 1000 == 0)
-                    {
-                        logger.Notification($"[VintageAtlas] Processed {processed}/{allPositions.Count} chunks...");
-                    }
-                }
-
-                logger.Notification($"[VintageAtlas] Chunk version extraction complete:");
-                logger.Notification($"[VintageAtlas]   Total chunks: {processed}");
-                logger.Notification($"[VintageAtlas]   Chunks with version: {withVersion}");
-                logger.Notification($"[VintageAtlas]   Unique versions: {chunkVersions.Values.Distinct().Count()}");
-
-                // Log version distribution
-                var versionCounts = chunkVersions.Values
-                    .GroupBy(v => v)
-                    .OrderByDescending(g => g.Count())
-                    .ToDictionary(g => g.Key, g => g.Count());
-
-                foreach (var (version, count) in versionCounts.Take(10))
-                {
-                    logger.Notification($"[VintageAtlas]     {version}: {count} chunks ({count * 100.0 / processed:F1}%)");
-                }
+            if (processed % 1000 == 0)
+            {
+                logger.Notification($"[VintageAtlas] Processed {processed}/{allPositions.Count} chunks...");
             }
         }
-        finally
+
+        logger.Notification($"[VintageAtlas] Chunk version extraction complete:");
+        logger.Notification($"[VintageAtlas]   Total chunks: {processed}");
+        logger.Notification($"[VintageAtlas]   Chunks with version: {withVersion}");
+        logger.Notification($"[VintageAtlas]   Unique versions: {chunkVersions.Values.Distinct().Count()}");
+
+        // Log version distribution
+        var versionCounts = chunkVersions.Values
+            .GroupBy(v => v)
+            .OrderByDescending(g => g.Count())
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        foreach (var (version, count) in versionCounts.Take(10))
         {
-            sqliteConn.Free();
+            logger.Notification($"[VintageAtlas]     {version}: {count} chunks ({count * 100.0 / processed:F1}%)");
         }
 
         return chunkVersions;
@@ -93,13 +82,12 @@ public class ChunkVersionExtractor(SavegameDataLoader loader, ILogger logger)
     /// Get a version for a specific chunk using the GameVersionCreated property.
     /// Falls back to the world version if chunk data is unavailable.
     /// </summary>
-    private string? GetChunkVersion(SqliteThreadCon sqliteConn, ChunkPos pos)
+    private string? GetChunkVersion(ChunkPos pos)
     {
         try
         {
             // Load the actual ServerChunk to get GameVersionCreated
-            var chunkIndex = pos.ToChunkIndex();
-            var serverChunk = loader.GetServerChunk(sqliteConn, chunkIndex);
+            var serverChunk = repository.GetChunk(pos);
 
             if (serverChunk == null)
                 return _worldVersion;
@@ -140,30 +128,17 @@ public class ChunkVersionExtractor(SavegameDataLoader loader, ILogger logger)
     {
         try
         {
-            var sqliteConn = loader.SqliteThreadConn;
+            var serverChunk = repository.GetChunk(pos);
 
-            try
+            if (serverChunk != null)
             {
-                lock (sqliteConn.Con)
-                {
-                    var chunkIndex = pos.ToChunkIndex();
-                    var serverChunk = loader.GetServerChunk(sqliteConn, chunkIndex);
+                serverChunk.Unpack_ReadOnly();
 
-                    if (serverChunk != null)
-                    {
-                        serverChunk.Unpack_ReadOnly();
+                // Store version in moddata
+                var versionBytes = System.Text.Encoding.UTF8.GetBytes(gameVersion);
+                serverChunk.SetServerModdata("vintageatlas:chunkversion", versionBytes);
 
-                        // Store version in moddata
-                        var versionBytes = System.Text.Encoding.UTF8.GetBytes(gameVersion);
-                        serverChunk.SetServerModdata("vintageatlas:chunkversion", versionBytes);
-
-                        logger.Debug($"[VintageAtlas] Tracked chunk {pos} as version {gameVersion}");
-                    }
-                }
-            }
-            finally
-            {
-                sqliteConn.Free();
+                logger.Debug($"[VintageAtlas] Tracked chunk {pos} as version {gameVersion}");
             }
         }
         catch (Exception ex)
