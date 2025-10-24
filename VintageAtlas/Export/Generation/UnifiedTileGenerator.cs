@@ -36,9 +36,12 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
     private const int MaxCacheSize = 100;
 
     /// <summary>
-    /// Expose logger for extractors.
+    /// Expose properties for extractors and incremental zoom tracker.
     /// </summary>
     public ILogger Logger => _sapi.Logger;
+    public ICoreServerAPI Sapi => _sapi;
+    public ModConfig Config => _config;
+    public MbTilesStorage Storage => _storage;
 
     public UnifiedTileGenerator(
         ICoreServerAPI sapi,

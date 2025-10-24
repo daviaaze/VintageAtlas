@@ -7,6 +7,7 @@ using VintageAtlas.Export.Data;
 using VintageAtlas.Export.Generation;
 using VintageAtlas.Storage;
 using VintageAtlas.Web.API;
+using Vintagestory.API.Server;
 
 namespace VintageAtlas.Export.Extraction;
 
@@ -20,7 +21,7 @@ public class TileExtractor : IDataExtractor
     private readonly ModConfig _config;
     private readonly MbTilesStorage _storage;
     private readonly MapConfigController? _mapConfigController;
-    
+    private readonly ICoreServerAPI _sapi;
     // Organize chunks by tile coordinates (tileX, tileZ) -> TileChunkData
     private readonly Dictionary<(int, int), TileChunkData> _tileChunks = new();
     
@@ -33,12 +34,14 @@ public class TileExtractor : IDataExtractor
         UnifiedTileGenerator tileGenerator,
         ModConfig config,
         MbTilesStorage storage,
+        ICoreServerAPI sapi,
         MapConfigController? mapConfigController = null)
     {
         _tileGenerator = tileGenerator ?? throw new ArgumentNullException(nameof(tileGenerator));
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
         _mapConfigController = mapConfigController;
+        _sapi = sapi ?? throw new ArgumentNullException(nameof(sapi));
     }
 
     public Task InitializeAsync()
@@ -87,6 +90,24 @@ public class TileExtractor : IDataExtractor
         var tiles = _tileChunks.Values.ToList();
         var tilesCompleted = 0;
 
+        // Create incremental zoom tracker (if enabled)
+        IncrementalZoomTracker? zoomTracker = null;
+        if (_config.CreateZoomLevels)
+        {
+            zoomTracker = new IncrementalZoomTracker(
+                _sapi,
+                _tileGenerator,
+                _config.BaseZoomLevel,
+                minZoom: 0,
+                maxConcurrentZoomTiles: Math.Max(2, _config.MaxDegreeOfParallelism / 4)
+            );
+            _tileGenerator.Logger.Notification("[VintageAtlas] ⚡ Incremental zoom generation enabled - tiles will render in zoom-optimized order");
+            
+            // Sort tiles by parent zoom tile to maximize early zoom generation
+            tiles = SortTilesByZoomParent(tiles);
+            _tileGenerator.Logger.Notification("[VintageAtlas] ✨ Tiles sorted by parent zoom coordinates for optimal generation order");
+        }
+
         // Render all accumulated tiles
         var parallelOptions = new ParallelOptions
         {
@@ -106,6 +127,9 @@ public class TileExtractor : IDataExtractor
                 {
                     // Write tile to storage
                     await _storage.PutTileAsync(_config.BaseZoomLevel, tileData.TileX, tileData.TileZ, tileImage);
+
+                    // Notify zoom tracker about completion (triggers cascade)
+                    zoomTracker?.NotifyTileComplete(_config.BaseZoomLevel, tileData.TileX, tileData.TileZ);
 
                     var completed = System.Threading.Interlocked.Increment(ref tilesCompleted);
 
@@ -132,11 +156,16 @@ public class TileExtractor : IDataExtractor
 
         _tileGenerator.Logger.Notification($"[VintageAtlas] Tile rendering complete: {tilesCompleted} tiles generated");
 
-        // Generate zoom levels by downsampling
-        if (_config.CreateZoomLevels)
+        // Wait for incremental zoom generation to complete
+        if (zoomTracker != null)
         {
-            _tileGenerator.Logger.Notification("[VintageAtlas] Generating zoom levels...");
-            await _tileGenerator.GenerateZoomLevelsAsync(progress);
+            await zoomTracker.WaitForCompletionAsync();
+            
+            var (total, perZoom) = zoomTracker.GetStatistics();
+            if (total > 0)
+            {
+                _tileGenerator.Logger.Notification($"[VintageAtlas] ⚡ Incremental zoom optimization: {total} zoom tiles generated concurrently with base tiles");
+            }
         }
 
         // Checkpoint WAL to commit all tiles
@@ -147,5 +176,20 @@ public class TileExtractor : IDataExtractor
         _mapConfigController?.InvalidateCache();
         
         _tileGenerator.Logger.Notification("[VintageAtlas] Tile extraction complete");
+    }
+
+    /// <summary>
+    /// Sort tiles by their parent zoom tile coordinates to optimize zoom generation.
+    /// Groups tiles into 2x2 blocks that share the same parent zoom tile.
+    /// This ensures zoom tiles can be generated as early as possible.
+    /// </summary>
+    private List<TileChunkData> SortTilesByZoomParent(List<TileChunkData> tiles)
+    {
+        return tiles
+            .OrderBy(t => t.TileX / 2)  // Parent X coordinate
+            .ThenBy(t => t.TileZ / 2)   // Parent Z coordinate
+            .ThenBy(t => t.TileX % 2)   // Position within parent (0=left, 1=right)
+            .ThenBy(t => t.TileZ % 2)   // Position within parent (0=top, 1=bottom)
+            .ToList();
     }
 }
