@@ -31,14 +31,17 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
     /// Get all map chunk positions that exist in the savegame database.
     /// Used to calculate the actual world extent for tile generation.
     /// </summary>
-    public List<ChunkPos> GetAllMapChunkPositions()
+    public List<Vec2i> GetAllMapChunkPositions()
     {
         var sqliteConn = _loader.SqliteThreadConn;
-        List<ChunkPos> positions;
+        List<Vec2i> positions;
 
         lock (sqliteConn.Con)
         {
-            positions = _loader.GetAllMapChunkPositions(sqliteConn).ToList();
+            // Convert ChunkPos to Vec2i (ChunkPos.X -> Vec2i.X, ChunkPos.Z -> Vec2i.Y)
+            positions = _loader.GetAllMapChunkPositions(sqliteConn)
+                .Select(p => new Vec2i(p.X, p.Z))
+                .ToList();
         }
 
         sqliteConn.Free();
@@ -46,9 +49,9 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
         return positions;
     }
 
-    public List<ChunkPos> GetAllMapRegionPositions()
+    public List<Vec2i> GetAllMapRegionPositions()
     {
-        List<ChunkPos> positions;
+        List<Vec2i> positions;
         var sqliteConn = _loader.SqliteThreadConn;
         lock (sqliteConn)
         {

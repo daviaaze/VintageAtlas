@@ -72,7 +72,7 @@ public class MapExporter : IMapExporter
             using var dataSource = new SavegameDataSource(_server, _config, _sapi.Logger);
 
             // Generate tiles directly to MBTiles storage
-            // await _tileGenerator.ExportFullMapAsync(dataSource);
+            await _tileGenerator.ExportFullMapAsync(dataSource);
             
             // Generate climate GeoJSON data (vector heatmap data) from actual chunks
             await _climateGeoJsonGenerator.GenerateClimateGeoJsonAsync(dataSource);
