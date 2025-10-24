@@ -5,12 +5,16 @@ using System.Linq;
 using System.Threading.Tasks;
 using Vintagestory.API.Server;
 using VintageAtlas.Core;
-using VintageAtlas.Models.Domain;
-using VintageAtlas.Storage;
+using VintageAtlas.Export.Colors;
 using VintageAtlas.Export.Rendering;
+using VintageAtlas.Storage;
 using Vintagestory.API.MathTools;
+using VintageAtlas.Export.Data;
+using VintageAtlas.Export.DataSources;
+using VintageAtlas.Models.Domain;
+using Vintagestory.API.Common;
 
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.Generation;
 
 /// <summary>
 /// Unified tile generation system that replaces both Extractor and DynamicTileGenerator.
@@ -22,7 +26,6 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
     private readonly ICoreServerAPI _sapi;
     private readonly ModConfig _config;
     private readonly MbTilesStorage _storage;
-    private readonly MetadataStorage _metadataStorage;
     private readonly PyramidTileDownsampler _downsampler;
     private readonly FastBitmapRenderer _renderer;
 
@@ -32,17 +35,20 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
     private const int ChunkSize = 32;
     private const int MaxCacheSize = 100;
 
+    /// <summary>
+    /// Expose logger for extractors.
+    /// </summary>
+    public ILogger Logger => _sapi.Logger;
+
     public UnifiedTileGenerator(
         ICoreServerAPI sapi,
         ModConfig config,
         BlockColorCache colorCache,
-        MbTilesStorage storage,
-        MetadataStorage metadataStorage)
+        MbTilesStorage storage)
     {
         _sapi = sapi ?? throw new ArgumentNullException(nameof(sapi));
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
-        _metadataStorage = metadataStorage ?? throw new ArgumentException(nameof(metadataStorage));
 
         // Initialize downsampler for lower zoom levels
         _downsampler = new PyramidTileDownsampler(sapi, config, this);
@@ -94,18 +100,12 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
             {
                 try
                 {
-                    var (tileData, traders) = await RenderTileAsync(
+                    var tileData = await RenderTileAsync(
                         _config.BaseZoomLevel,
                         tile.X,
                         tile.Y,
                         dataSource
                     );
-
-                    if(traders.Count > 0) {
-                        foreach(var trader in traders) {
-                            _metadataStorage.AddTrader(trader.Key, trader.Value.Name, trader.Value.Type, trader.Value.Pos);
-                        }
-                    }
 
                     if (tileData != null)
                     {
@@ -193,8 +193,9 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
     /// <summary>
     /// Generate lower zoom levels by downsampling from the base zoom.
     /// Reads from and writes to MBTiles database only.
+    /// Exposed publicly for use by TileExtractor.
     /// </summary>
-    private async Task GenerateZoomLevelsAsync(IProgress<ExportProgress>? progress)
+    public async Task GenerateZoomLevelsAsync(IProgress<ExportProgress>? progress)
     {
         for (var zoom = _config.BaseZoomLevel - 1; zoom >= 0; zoom--)
         {
@@ -350,46 +351,63 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
     }
 
     /// <summary>
-    /// CORE RENDERING METHOD - Used by both full export and on-demand generation.
-    /// This is the single source of truth for tile rendering logic.
-    /// Now delegates to FastBitmapRenderer for optimized rendering.
+    /// Render a tile from pre-loaded chunk data.
+    /// Used by TileExtractor to render tiles from accumulated chunks.
     /// </summary>
-    private async Task<(byte[]?, Dictionary<long, Trader>)> RenderTileAsync(
-        int zoom,
-        int tileX,
-        int tileZ,
-        IChunkDataSource dataSource)
+    public async Task<byte[]?> RenderTileFromChunkDataAsync(TileChunkData tileData)
     {
-        var traders = new Dictionary<long, Trader>();
-
         try
         {
-            // Get chunk data from the source
-            var tileData = await dataSource.GetTileChunksAsync(zoom, tileX, tileZ);
-
-            if(tileData?.Chunks.Any(c => c.Value.Traders.Count > 0) == true) {
-                traders = tileData.Chunks.SelectMany(c => c.Value.Traders).ToDictionary(k => k.Key, v => v.Value);
-            }
-
             if (tileData == null)
             {
-                _sapi.Logger.Error($"[VintageAtlas] ⚠️  Data source returned null for tile {zoom}/{tileX}_{tileZ}");
-                return (null, traders);
+                _sapi.Logger.Error("[VintageAtlas] ⚠️  Tile data is null");
+                return null;
             }
 
             if (tileData.Chunks.Count > 0)
             {
                 var result = await Task.Run(() => _renderer.RenderTileImage(tileData));
-                return (result, traders);
+                return result;
             }
 
-            _sapi.Logger.Warning($"[VintageAtlas] ⚠️  No chunks found for tile {zoom}/{tileX}_{tileZ}");
-            return (null, traders);
+            _sapi.Logger.Warning($"[VintageAtlas] ⚠️  No chunks found for tile {tileData.TileX},{tileData.TileZ}");
+            return null;
         }
         catch (Exception ex)
         {
             _sapi.Logger.Error($"[VintageAtlas] Failed to render tile: {ex.Message}");
-            return (null, traders);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// CORE RENDERING METHOD - Used by both full export and on-demand generation.
+    /// This is the single source of truth for tile rendering logic.
+    /// Now delegates to FastBitmapRenderer for optimized rendering.
+    /// </summary>
+    private async Task<byte[]?> RenderTileAsync(
+        int zoom,
+        int tileX,
+        int tileZ,
+        IChunkDataSource dataSource)
+    {
+        try
+        {
+            // Get chunk data from the source
+            var tileData = await dataSource.GetTileChunksAsync(zoom, tileX, tileZ);
+
+            if (tileData == null)
+            {
+                _sapi.Logger.Error($"[VintageAtlas] ⚠️  Data source returned null for tile {zoom}/{tileX}_{tileZ}");
+                return null;
+            }
+
+            return await RenderTileFromChunkDataAsync(tileData);
+        }
+        catch (Exception ex)
+        {
+            _sapi.Logger.Error($"[VintageAtlas] Failed to render tile: {ex.Message}");
+            return null;
         }
     }
 

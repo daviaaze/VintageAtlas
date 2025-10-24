@@ -1,6 +1,6 @@
 using System;
 
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.Data;
 
 /// <summary>
 /// Cached tile data for in-memory storage

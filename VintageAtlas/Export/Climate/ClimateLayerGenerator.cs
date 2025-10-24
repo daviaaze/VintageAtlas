@@ -1,15 +1,17 @@
 using System;
 using System.Threading.Tasks;
 using SkiaSharp;
+using VintageAtlas.Export.DataSources;
 using VintageAtlas.Storage;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.Climate;
 
 public class ClimateLayerGenerator()
 {
-    internal void GenerateClimateLayerAsync(SavegameDataSource dataSource, MbTilesStorage mbTilesStorage, ICoreServerAPI api)
+    internal void GenerateClimateLayerAsync(SavegameDataSource
+     dataSource, MbTilesStorage mbTilesStorage, ICoreServerAPI api)
     {
         var tiles = dataSource.GetAllMapRegionPositions();
 

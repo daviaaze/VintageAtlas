@@ -3,6 +3,8 @@ using System.IO;
 using Vintagestory.API.Server;
 using VintageAtlas.Core;
 using VintageAtlas.Export;
+using VintageAtlas.Export.Colors;
+using VintageAtlas.Export.Generation;
 using VintageAtlas.Storage;
 using VintageAtlas.Web.API;
 using VintageAtlas.Web.API.Controllers;
@@ -29,7 +31,7 @@ public sealed class ServerManager(
     private readonly BlockColorCache _colorCache = colorCache ?? throw new ArgumentNullException(nameof(colorCache));
     private readonly MbTilesStorage _storage = storage ?? throw new ArgumentNullException(nameof(storage));
     private readonly MetadataStorage _metadataStorage = metadataStorage ?? throw new ArgumentNullException(nameof(metadataStorage));
-    private UnifiedTileGenerator? _tileGenerator;
+    private ITileGenerator? _tileGenerator;
     private WebServer? _webServer;
 
     /// <summary>
@@ -68,7 +70,7 @@ public sealed class ServerManager(
     {
         // Initialize unified tile generator for live serving (shares storage with exporter)
         // This is the SAME generator used for full exports - no more code duplication!
-        _tileGenerator = new UnifiedTileGenerator(_sapi, _config, _colorCache, _storage, _metadataStorage);
+        _tileGenerator = new UnifiedTileGenerator(_sapi, _config, _colorCache, _storage);
 
         _sapi.Logger.Notification("[VintageAtlas] ⚠️  Background tile generation DISABLED - tiles only generated via /atlas export");
     }

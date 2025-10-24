@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using VintageAtlas.Export;
+using VintageAtlas.Export.Colors;
 using Vintagestory.API.Config;
 using Vintagestory.API.Server;
 

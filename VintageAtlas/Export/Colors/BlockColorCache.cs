@@ -4,8 +4,9 @@ using System.Linq;
 using Vintagestory.API.Common;
 using Vintagestory.API.Server;
 using VintageAtlas.Core;
+using VintageAtlas.Export.Data;
 
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.Colors;
 
 /// <summary>
 /// Caches block colors for fast terrain rendering

@@ -1,4 +1,4 @@
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.Colors;
 
 /// <summary>
 /// Image rendering modes for map export

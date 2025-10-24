@@ -1,4 +1,4 @@
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.Data;
 
 /// <summary>
 /// Progress information for export operations

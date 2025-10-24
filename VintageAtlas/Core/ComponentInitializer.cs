@@ -1,6 +1,9 @@
 using System.IO;
 using Vintagestory.API.Server;
 using VintageAtlas.Export;
+using VintageAtlas.Export.Colors;
+using VintageAtlas.Export.Extraction;
+using VintageAtlas.Export.Generation;
 using VintageAtlas.Storage;
 using VintageAtlas.Web.API;
 
@@ -28,17 +31,28 @@ public static class ComponentInitializer
         var colorCache = new BlockColorCache(sapi, config);
         colorCache.Initialize();
 
-        // Initialize unified tile generator for full exports
-        var unifiedGenerator = new UnifiedTileGenerator(sapi, config, colorCache, storage, metadataStorage);
-
-        // Initialize climate GeoJSON generator (replaces old PNG tile generator)
-        var climateGeoJsonGenerator = new ClimateGeoJsonGenerator(sapi, metadataStorage);
+        // Initialize unified tile generator for tile rendering operations
+        var unifiedGenerator = new UnifiedTileGenerator(sapi, config, colorCache, storage);
 
         // Initialize map config controller (needed by exporter for cache invalidation)
         var mapConfigController = new MapConfigController(sapi);
 
-        // Initialize map exporter with unified generator and map config controller
-        var mapExporter = new MapExporter(sapi, config, unifiedGenerator, mapConfigController, storage, climateGeoJsonGenerator);
+        // ═══════════════════════════════════════════════════════════════
+        // EXTRACTION ORCHESTRATION SETUP
+        // ═══════════════════════════════════════════════════════════════
+        
+        // Create orchestrator for managing the extraction pipeline
+        var orchestrator = new ExportOrchestrator(sapi, config);
+
+        // Register all extractors in the desired execution order
+        orchestrator.RegisterExtractor(new TileExtractor(unifiedGenerator, config, storage, mapConfigController));
+        orchestrator.RegisterExtractor(new TraderExtractor(sapi, config, metadataStorage));
+        orchestrator.RegisterExtractor(new ClimateExtractor(sapi, config, metadataStorage, samplesPerChunk: 2));
+
+        sapi.Logger.Notification($"[VintageAtlas] Registered {orchestrator.GetExtractors().Count} extractors");
+
+        // Initialize map exporter with orchestrator
+        var mapExporter = new MapExporter(sapi, config, orchestrator);
 
         sapi.Logger.Notification("[VintageAtlas] Core components initialized successfully");
 

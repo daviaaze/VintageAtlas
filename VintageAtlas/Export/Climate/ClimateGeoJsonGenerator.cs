@@ -2,12 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using VintageAtlas.Export.DataSources;
 using VintageAtlas.Storage;
 using Vintagestory.API.Common;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.Climate;
 
 /// <summary>
 /// Generates GeoJSON point features with climate data for heatmap visualization
@@ -136,13 +137,4 @@ public class ClimateGeoJsonGenerator(ICoreServerAPI sapi, MetadataStorage metada
 
         _sapi.Logger.Notification($"[VintageAtlas] Climate GeoJSON generation complete! Generated {temperaturePoints.Count} climate points.");
     }
-}
-
-
-public class ClimatePoint
-{
-    public int X { get; set; }
-    public int Z { get; set; }
-    public float Value { get; set; }
-    public float RealValue { get; set; }
 }

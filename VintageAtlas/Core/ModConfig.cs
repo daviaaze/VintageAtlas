@@ -1,6 +1,6 @@
 using System.IO;
 using Newtonsoft.Json;
-using VintageAtlas.Export;
+using VintageAtlas.Export.Colors;
 using Vintagestory.API.Config;
 
 namespace VintageAtlas.Core;

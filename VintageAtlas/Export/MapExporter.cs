@@ -3,23 +3,19 @@ using System.Threading.Tasks;
 using Vintagestory.API.Server;
 using Vintagestory.Server;
 using VintageAtlas.Core;
-using VintageAtlas.Storage;
-using VintageAtlas.Web.API;
+using VintageAtlas.Export.Extraction;
 
 namespace VintageAtlas.Export;
 
 /// <summary>
-/// Manages map export operations using the unified tile generation system.
-/// Exports map tiles directly to the MBTiles database without intermediate PNG files.
+/// Manages map export operations using the extraction orchestrator.
+/// Coordinates the extraction pipeline with appropriate server modes (save mode, etc.)
 /// </summary>
 public class MapExporter : IMapExporter
 {
     private readonly ICoreServerAPI _sapi;
     private readonly ModConfig _config;
-    private readonly UnifiedTileGenerator _tileGenerator;
-    private readonly MbTilesStorage _mbTileStorage;
-    private readonly ClimateGeoJsonGenerator _climateGeoJsonGenerator;
-    private readonly MapConfigController? _mapConfigController;
+    private readonly ExportOrchestrator _orchestrator;
     private readonly ServerMain _server;
     private string? _serverPassword;
 
@@ -28,18 +24,12 @@ public class MapExporter : IMapExporter
     public MapExporter(
         ICoreServerAPI sapi,
         ModConfig config,
-        UnifiedTileGenerator tileGenerator,
-        MapConfigController mapConfigController,
-        MbTilesStorage storage,
-        ClimateGeoJsonGenerator climateGeoJsonGenerator)
+        ExportOrchestrator orchestrator)
     {
         _sapi = sapi;
         _config = config;
-        _tileGenerator = tileGenerator;
-        _mapConfigController = mapConfigController;
-        _climateGeoJsonGenerator = climateGeoJsonGenerator;
+        _orchestrator = orchestrator;
         _server = (ServerMain)_sapi.World;
-        _mbTileStorage = storage;
     }
 
     public void StartExport()
@@ -61,25 +51,17 @@ public class MapExporter : IMapExporter
 
         try
         {
-            _sapi.Logger.Notification("[VintageAtlas] Starting map export...");
+            _sapi.Logger.Notification("[VintageAtlas] Starting full map export...");
 
             if (_config.SaveMode)
             {
                 EnableSaveMode();
             }
 
-            // Create the data source for reading from the savegame database
-            using var dataSource = new SavegameDataSource(_server, _config, _sapi.Logger);
+            // Execute all registered extractors through the orchestrator
+            await _orchestrator.ExecuteFullExportAsync();
 
-            // Generate tiles directly to MBTiles storage
-            await _tileGenerator.ExportFullMapAsync(dataSource);
-            
-            // Generate climate GeoJSON data (vector heatmap data) from actual chunks
-            await _climateGeoJsonGenerator.GenerateClimateGeoJsonAsync(dataSource);
-
-            // CRITICAL: Invalidate map config cache so frontend gets updated extent
-            _mapConfigController?.InvalidateCache();
-            _sapi.Logger.Debug("[VintageAtlas] Map config cache invalidated after export");
+            _sapi.Logger.Notification("[VintageAtlas] Full map export completed successfully!");
         }
         catch (Exception e)
         {
@@ -136,5 +118,4 @@ public class MapExporter : IMapExporter
         _server.Suspend(false);
         _sapi.Server.Config.Password = _serverPassword;
     }
-
 }

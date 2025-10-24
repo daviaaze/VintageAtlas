@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
-using VintageAtlas.Export;
+using VintageAtlas.Export.Climate;
 using VintageAtlas.Models.Domain;
 using Vintagestory.API.MathTools;
 

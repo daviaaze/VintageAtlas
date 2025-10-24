@@ -10,22 +10,36 @@ using Vintagestory.Common.Database;
 using Vintagestory.GameContent;
 using Vintagestory.API.Config;
 using VintageAtlas.Models.Domain;
+using VintageAtlas.Export.Data;
+using VintageAtlas.Export.DataSources.Repositories;
 
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.DataSources;
 
 /// <summary>
 /// Chunk data source that reads directly from the savegame database.
 /// Used for full map exports where we need to access all chunks, even unloaded ones.
 /// Does NOT require main thread access (reads from the database directly).
 /// </summary>
-public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILogger logger)
-    : IChunkDataSource, IDisposable
+public sealed class SavegameDataSource : IChunkDataSource, IDisposable
 {
-    private readonly SavegameDataLoader _loader = new(server, config.MaxDegreeOfParallelism, logger);
+    private readonly ISavegameRepository _repository;
+    private readonly ServerMain _server;
+    private readonly ModConfig _config;
+    private readonly ILogger _logger;
     private readonly int _chunkSize = MagicNum.ServerChunkSize;
 
     public string SourceName => "SavegameDatabase";
     public bool RequiresMainThread => false;
+
+    public SavegameDataSource(ServerMain server, ModConfig config, ILogger logger)
+    {
+        _server = server;
+        _config = config;
+        _logger = logger;
+        
+        // Create repository with pool size from config
+        _repository = new SavegameRepository(server, config.MaxDegreeOfParallelism, logger);
+    }
 
     /// <summary>
     /// Get all map chunk positions that exist in the savegame database.
@@ -33,50 +47,30 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
     /// </summary>
     public List<Vec2i> GetAllMapChunkPositions()
     {
-        var sqliteConn = _loader.SqliteThreadConn;
-        List<Vec2i> positions;
-
-        lock (sqliteConn.Con)
-        {
-            // Convert ChunkPos to Vec2i (ChunkPos.X -> Vec2i.X, ChunkPos.Z -> Vec2i.Y)
-            positions = _loader.GetAllMapChunkPositions(sqliteConn)
-                .Select(p => new Vec2i(p.X, p.Z))
-                .ToList();
-        }
-
-        sqliteConn.Free();
-        logger.Notification($"[VintageAtlas] Found {positions.Count} map chunks in savegame database");
+        var positions = _repository.GetAllMapChunkPositions()
+            .Select(p => new Vec2i(p.X, p.Z))
+            .ToList();
+        
+        _logger.Notification($"[VintageAtlas] Found {positions.Count} map chunks in savegame database");
         return positions;
     }
 
+    /// <summary>
+    /// Get all map region positions that exist in the savegame database.
+    /// </summary>
     public List<Vec2i> GetAllMapRegionPositions()
     {
-        List<Vec2i> positions;
-        var sqliteConn = _loader.SqliteThreadConn;
-        lock (sqliteConn)
-        {
-            positions = _loader.GetAllMapRegions(sqliteConn).ToList();
-        }
-        
-        sqliteConn.Free();
-        logger.Notification($"[VintageAtlas] Found {positions.Count} map regions in savegame database");
+        var positions = _repository.GetAllMapRegionPositions().ToList();
+        _logger.Notification($"[VintageAtlas] Found {positions.Count} map regions in savegame database");
         return positions;
     }
 
+    /// <summary>
+    /// Get a specific map region by position index.
+    /// </summary>
     public ServerMapRegion? GetServerMapRegion(ulong position)
     {
-        var sqliteConn = _loader.SqliteThreadConn;
-        try
-        {
-            lock (sqliteConn.Con)
-            {
-                return _loader.GetServerMapRegion(sqliteConn, position);
-            }
-        }
-        finally
-        {
-            sqliteConn.Free();
-        }
+        return _repository.GetMapRegion(position);
     }
 
     /// <summary>
@@ -89,7 +83,7 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
         {
             try
             {
-                var chunksPerTile = config.TileSize / _chunkSize;
+                var chunksPerTile = _config.TileSize / _chunkSize;
                 var startChunkX = tileX * chunksPerTile;
                 var startChunkZ = tileZ * chunksPerTile;
 
@@ -98,56 +92,43 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
                     Zoom = zoom,
                     TileX = tileX,
                     TileZ = tileZ,
-                    TileSize = config.TileSize,
+                    TileSize = _config.TileSize,
                     ChunksPerTileEdge = chunksPerTile
                 };
 
-                var sqliteConn = _loader.SqliteThreadConn;
-
-                try
+                // Load all chunks for this tile
+                for (var offsetX = 0; offsetX < chunksPerTile; offsetX++)
                 {
-                    lock (sqliteConn)
+                    for (var offsetZ = 0; offsetZ < chunksPerTile; offsetZ++)
                     {
-                        // Load all chunks for this tile
-                        for (var offsetX = 0; offsetX < chunksPerTile; offsetX++)
+                        var chunkX = startChunkX + offsetX;
+                        var chunkZ = startChunkZ + offsetZ;
+
+                        // Map chunks always use Y=0 (they represent the 2D surface view)
+                        const int chunkY = 0;
+
+                        var chunkPos = new ChunkPos(chunkX, chunkY, chunkZ);
+
+                        // Get ServerMapChunk (contains height map and top block IDs)
+                        var mapChunk = _repository.GetMapChunk(chunkPos);
+
+                        if (mapChunk is null)
+                            continue;
+
+                        // Create a snapshot from ServerMapChunk
+                        var snapshot = CreateSnapshotFromMapChunk(mapChunk, chunkX, chunkY, chunkZ);
+                        if (snapshot != null)
                         {
-                            for (var offsetZ = 0; offsetZ < chunksPerTile; offsetZ++)
-                            {
-                                var chunkX = startChunkX + offsetX;
-                                var chunkZ = startChunkZ + offsetZ;
-
-                                // Map chunks always use Y=0 (they represent the 2D surface view)
-                                // The actual 3D world chunks are loaded dynamically based on height
-                                const int chunkY = 0;
-
-                                var chunkPos = new ChunkPos(chunkX, chunkY, chunkZ);
-
-                                // Get ServerMapChunk (contains height map and top block IDs)
-                                var mapChunk = _loader.GetServerMapChunk(sqliteConn, chunkPos);
-
-                                if (mapChunk is null)
-                                    continue;
-
-                                // Create a snapshot from ServerMapChunk
-                                var snapshot = CreateSnapshotFromMapChunk(mapChunk, chunkX, chunkY, chunkZ, sqliteConn);
-                                if (snapshot != null)
-                                {
-                                    tileData.AddChunk(snapshot);
-                                }
-                            }
+                            tileData.AddChunk(snapshot);
                         }
                     }
-                }
-                finally
-                {
-                    sqliteConn.Free();
                 }
 
                 return tileData.Chunks.Count != 0 ? tileData : null;
             }
             catch (Exception ex)
             {
-                logger.Error($"[VintageAtlas] SavegameDataSource: Failed to load tile data: {ex.Message}");
+                _logger.Error($"[VintageAtlas] SavegameDataSource: Failed to load tile data: {ex.Message}");
                 return null;
             }
         });
@@ -157,7 +138,7 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
     /// Create a ChunkSnapshot from ServerMapChunk data.
     /// ServerMapChunk contains a RainHeightMap with surface heights.
     /// </summary>
-    private ChunkSnapshot? CreateSnapshotFromMapChunk(ServerMapChunk mapChunk, int chunkX, int chunkY, int chunkZ, SqliteThreadCon sqliteConn)
+    private ChunkSnapshot? CreateSnapshotFromMapChunk(ServerMapChunk mapChunk, int chunkX, int chunkY, int chunkZ)
     {
         try
         {
@@ -169,10 +150,7 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
 
             var heightMap = new int[_chunkSize * _chunkSize];
 
-            // For full rendering, we'd need to load ServerChunk data for block IDs
-            // For now, we'll just populate the height map
-            // The rendering code will need access to actual ServerChunks for block colors
-
+            // Populate height map from RainHeightMap
             for (var x = 0; x < _chunkSize; x++)
             {
                 for (var z = 0; z < _chunkSize; z++)
@@ -192,7 +170,6 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
             // 2. Calculate which vertical chunk (chunkY) contains that height
             // 3. Load that ServerChunk from the database
             // 4. Extract the block ID at that position
-            // This matches how Extractor.cs does it in ExtractWorldMap()
             // ═══════════════════════════════════════════════════════════════
 
             var blockIds = new int[_chunkSize * _chunkSize * _chunkSize];
@@ -217,27 +194,30 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
             var loadedChunks = new Dictionary<int, ServerChunk>();
             var allBlockEntities = new Dictionary<BlockPos, BlockEntity>();
             var allTraders = new Dictionary<long, Trader>();
+            
             foreach (var y in chunksToLoad)
             {
                 var chunkPos = new ChunkPos(chunkX, y, chunkZ);
-                var serverChunk = _loader.GetServerChunk(sqliteConn, chunkPos.ToChunkIndex());
+                var serverChunk = _repository.GetChunk(chunkPos);
                 if (serverChunk == null)
                     continue;
 
                 serverChunk.Unpack_ReadOnly();
                 loadedChunks[y] = serverChunk;
 
-                if(serverChunk.EntitiesCount > 0) {
-                    foreach(var entity in serverChunk.Entities.Where(e => e is EntityTrader).Cast<EntityTrader>()) {
+                // Collect traders from this chunk
+                if (serverChunk.EntitiesCount > 0)
+                {
+                    foreach (var entity in serverChunk.Entities.Where(e => e is EntityTrader).Cast<EntityTrader>())
+                    {
                         var entityBehaviorName =
                             entity.WatchedAttributes.GetTreeAttribute("nametag").GetString("name");
-                        // item-creature-humanoid-trader-commodities
                         var type = Lang.Get("item-creature-" + entity.Code.Path);
                         allTraders[entity.EntityId] = new Trader
-                            {
-                                Name = entityBehaviorName,
-                                Type = type,
-                                Pos = entity.Pos.AsBlockPos
+                        {
+                            Name = entityBehaviorName,
+                            Type = type,
+                            Pos = entity.Pos.AsBlockPos
                         };
                     }
                 }
@@ -279,8 +259,8 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
                     }
 
                     // If surface block is snow, also fetch the block underneath (height-1)
-                    // This mirrors Extractor.cs behavior for snow-covered terrain
-                    if (server.World.Blocks[blockId].BlockMaterial == EnumBlockMaterial.Snow)
+                    // This mirrors extractor behavior for snow-covered terrain
+                    if (_server.World.Blocks[blockId].BlockMaterial == EnumBlockMaterial.Snow)
                     {
                         var adjustedHeight = height - 1;
                         if (adjustedHeight >= 0)
@@ -292,7 +272,7 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
                             if (!loadedChunks.TryGetValue(adjustedChunkY, out var adjustedChunk))
                             {
                                 var adjPos = new ChunkPos(chunkX, adjustedChunkY, chunkZ);
-                                adjustedChunk = _loader.GetServerChunk(sqliteConn, adjPos.ToChunkIndex());
+                                adjustedChunk = _repository.GetChunk(adjPos);
                                 if (adjustedChunk != null)
                                 {
                                     adjustedChunk.Unpack_ReadOnly();
@@ -339,22 +319,13 @@ public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILog
         }
         catch (Exception ex)
         {
-            logger.Error($"[VintageAtlas] Failed to create snapshot from map chunk: {ex.Message}");
+            _logger.Error($"[VintageAtlas] Failed to create snapshot from map chunk: {ex.Message}");
             return null;
         }
     }
 
     public void Dispose()
     {
-        Dispose(true);
-    }
-
-    private void Dispose(bool disposing)
-    {
-        if (disposing)
-        {
-            _loader.Dispose();
-        }
+        (_repository as IDisposable)?.Dispose();
     }
 }
-

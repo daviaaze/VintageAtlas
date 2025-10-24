@@ -1,4 +1,5 @@
 using VintageAtlas.Export;
+using VintageAtlas.Export.Colors;
 using VintageAtlas.Storage;
 using VintageAtlas.Web.API;
 

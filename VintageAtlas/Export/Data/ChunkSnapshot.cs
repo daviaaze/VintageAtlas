@@ -4,7 +4,7 @@ using VintageAtlas.Models.Domain;
 using Vintagestory.API.Common;
 using Vintagestory.API.MathTools;
 
-namespace VintageAtlas.Export;
+namespace VintageAtlas.Export.Data;
 
 /// <summary>
 /// Thread-safe snapshot of chunk data for tile rendering
