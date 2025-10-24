@@ -17,11 +17,6 @@ export interface ServerStatus {
     hoursPerDay: number;
     speedOfTime: number;
   };
-  temperature: {
-    seasonModifier: number; // °C modifier for current season
-    timeOfDayModifier: number; // °C modifier for current time
-    totalModifier: number; // Combined modifier to add to base temperature
-  };
   server: {
     playersOnline: number;
     serverName: string;

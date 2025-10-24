@@ -17,8 +17,6 @@ export const useMapStore = defineStore('map', () => {
   // Layer visibility state
   const layerVisibility = ref({
     terrain: true,
-    rain: true,
-    temperature: true,
     spawn: true,
     traders: true,
   });

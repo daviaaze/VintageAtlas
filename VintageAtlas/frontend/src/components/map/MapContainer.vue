@@ -25,7 +25,6 @@ import Map from 'ol/Map';
 import View from 'ol/View';
 import { MousePosition } from 'ol/control';
 import { useMapStore } from '@/stores/map';
-import { useClimateHeatmap } from '@/composables/useClimateHeatmap';
 
 // Live data layer components
 import ToolsBar from '@/components/map/ToolsBar.vue';
@@ -51,14 +50,6 @@ const mapElement = ref<HTMLElement>();
 const mapInstance = shallowRef<Map>();
 const loading = ref(true);
 const mouseCoords = ref('0, 0');
-
-// Climate heatmap layers (vector heatmaps)
-const {
-  loadTemperatureHeatmap,
-  loadRainfallHeatmap,
-  toggleTemperatureHeatmap,
-  toggleRainfallHeatmap
-} = useClimateHeatmap();
 
 // Initialize map
 onMounted(async () => {
@@ -138,26 +129,6 @@ onMounted(async () => {
     });
     
     loading.value = false;
-    
-    // Store map instance for child components
-    mapStore.setMap(mapInstance.value);
-    
-    // Load heatmap layers (async, won't block map initialization)
-    // Uses default OpenLayers projection (EPSG:3857)
-    // Layers start hidden and can be toggled via sidebar
-    loadTemperatureHeatmap(mapInstance.value, 'EPSG:3857').then(() => {
-      // Set initial visibility from store
-      toggleTemperatureHeatmap(mapStore.layerVisibility.temperature);
-    }).catch((error) => {
-      console.warn('[ClimateHeatmap] Failed to load temperature heatmap:', error);
-    });
-    
-    loadRainfallHeatmap(mapInstance.value, 'EPSG:3857').then(() => {
-      // Set initial visibility from store
-      toggleRainfallHeatmap(mapStore.layerVisibility.rain);
-    }).catch((error) => {
-      console.warn('[ClimateHeatmap] Failed to load rainfall heatmap:', error);
-    });
     
   } catch (error) {
     console.error('[CleanMap] ❌ Failed to initialize:', error);

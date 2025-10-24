@@ -47,7 +47,10 @@ public static class ComponentInitializer
         // Register all extractors in the desired execution order
         orchestrator.RegisterExtractor(new TileExtractor(unifiedGenerator, config, storage, mapConfigController));
         orchestrator.RegisterExtractor(new TraderExtractor(sapi, config, metadataStorage));
-        orchestrator.RegisterExtractor(new ClimateExtractor(sapi, config, metadataStorage, samplesPerChunk: 2));
+        
+        // Climate extraction temporarily disabled (moved to feature/climate-extraction branch)
+        // Issue: Only generating data in spawn area - needs investigation
+        // orchestrator.RegisterExtractor(new ClimateExtractor(sapi, config, metadataStorage, samplesPerChunk: 2));
 
         sapi.Logger.Notification($"[VintageAtlas] Registered {orchestrator.GetExtractors().Count} extractors");
 
