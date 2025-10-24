@@ -115,16 +115,17 @@ public sealed class SavegameDataLoader : IDisposable
         return posList;
     }
 
-    public IEnumerable<ChunkPos> GetAllMapRegions(SqliteThreadCon sqliteConn)
+    public IEnumerable<Vec2i> GetAllMapRegions(SqliteThreadCon sqliteConn)
     {
         using var cmd = sqliteConn.Con.CreateCommand();
         cmd.CommandText = "SELECT position FROM mapregion";
         using var sqliteDataReader = cmd.ExecuteReader();
-        var posList = new List<ChunkPos>();
+        var posList = new List<Vec2i>();
         while (sqliteDataReader.Read())
         {
             var pos = (long)sqliteDataReader["position"];
-            posList.Add(ChunkPos.FromChunkIndex_saveGamev2((ulong)pos));
+            var vec2i = new Vec2i((int)(pos % 16), (int)(pos / 16));
+            posList.Add(vec2i);
         }
         return posList;
     }

@@ -77,10 +77,10 @@ public class ClimateLayerGenerator()
             
             // Note: These still create individual database connections which can cause contention
             // Consider batching if performance is still an issue
-            mbTilesStorage.PutTempTile(tile.X, tile.Z, tempData.ToArray());
-            mbTilesStorage.PutRainTile(tile.X, tile.Z, rainData.ToArray());
+            mbTilesStorage.PutTempTile(tile.X, tile.Y, tempData.ToArray());
+            mbTilesStorage.PutRainTile(tile.X, tile.Y, rainData.ToArray());
             
-            api.Logger.Debug($"[VintageAtlas] Generated climate layer for {tile.X}-{tile.Z}");
+            api.Logger.Debug($"[VintageAtlas] Generated climate layer for {tile.X}-{tile.Y}");
         });
     }
 }

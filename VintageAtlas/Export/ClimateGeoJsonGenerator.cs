@@ -125,7 +125,7 @@ public class ClimateGeoJsonGenerator(ICoreServerAPI sapi, MetadataStorage metada
                 }
                 catch (Exception ex)
                 {
-                    _sapi.Logger.Debug($"[VintageAtlas] Failed to get climate at {chunkPos.X},{chunkPos.Z}: {ex.Message}");
+                    _sapi.Logger.Debug($"[VintageAtlas] Failed to get climate at {chunkPos.X},{chunkPos.Y}: {ex.Message}");
                 }
             }
         }
