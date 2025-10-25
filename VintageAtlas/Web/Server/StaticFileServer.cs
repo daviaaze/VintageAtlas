@@ -104,7 +104,7 @@ public class StaticFileServer(ICoreServerAPI sapi, ModConfig config)
             await using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true))
             {
                 buffer = new byte[fs.Length];
-                await fs.ReadExactlyAsync(buffer, 0, buffer.Length);
+                await fs.ReadExactlyAsync(buffer, 0, buffer.Length).ConfigureAwait(false);
             }
 
             // Inject a base path into HTML files for nginx sub-path support
@@ -141,7 +141,7 @@ public class StaticFileServer(ICoreServerAPI sapi, ModConfig config)
                 context.Response.Headers.Add("Cache-Control", "public, max-age=3600, immutable");  // 1 hour
             }
 
-            await context.Response.OutputStream.WriteAsync(buffer);
+            await context.Response.OutputStream.WriteAsync(buffer).ConfigureAwait(false);
 
             return true;
         }

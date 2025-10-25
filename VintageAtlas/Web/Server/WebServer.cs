@@ -113,7 +113,7 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
         {
             try
             {
-                var context = await _httpListener.GetContextAsync();
+                var context = await _httpListener.GetContextAsync().ConfigureAwait(false);
 
                 // Determine the request type and apply appropriate throttling
                 var rawPath = context.Request.Url?.AbsolutePath ?? "/";
@@ -124,14 +124,14 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
                 // Request throttling with type-specific limits
                 // Wait up to 100ms for a slot (better than immediate rejection)
                 var timeout = requestType == RequestType.Tile ? 50 : 100; // Shorter for tiles
-                if (semaphore != null && await semaphore.WaitAsync(TimeSpan.FromMilliseconds(timeout)))
+                if (semaphore != null && await semaphore.WaitAsync(TimeSpan.FromMilliseconds(timeout)).ConfigureAwait(false))
                 {
                     // Slot acquired - process request
                     _ = Task.Run(async () =>
                     {
                         try
                         {
-                            await ProcessRequestAsync(context);
+                            await ProcessRequestAsync(context).ConfigureAwait(false);
                         }
                         finally
                         {
@@ -143,7 +143,7 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
                 else
                 {
                     // Server too busy for this request type - waited but no slot available
-                    await RejectRequest(context, requestType);
+                    await RejectRequest(context, requestType).ConfigureAwait(false);
                 }
             }
             catch (Exception ex)
@@ -224,7 +224,7 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
             try
             {
                 // Route the request with timeout
-                await router.RouteRequest(context).WaitAsync(cts.Token);
+                await router.RouteRequest(context).WaitAsync(cts.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {

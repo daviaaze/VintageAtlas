@@ -158,8 +158,19 @@ public class ChunkDataExtractor
     {
         validMapChunk = null!;
 
-        var hasData = mapChunk is { RainHeightMap: not null } &&
-                      mapChunk.RainHeightMap.Any(h => h > 0);
+        // Avoid LINQ Any() allocation - check manually for better performance
+        var hasData = false;
+        if (mapChunk is { RainHeightMap: not null })
+        {
+            foreach (var h in mapChunk.RainHeightMap)
+            {
+                if (h > 0)
+                {
+                    hasData = true;
+                    break;
+                }
+            }
+        }
 
         if (mapChunk == null || !hasData)
         {

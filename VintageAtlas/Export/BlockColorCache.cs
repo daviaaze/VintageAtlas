@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Vintagestory.API.Common;
 using Vintagestory.API.Server;
 using VintageAtlas.Core;
@@ -93,7 +94,9 @@ public class BlockColorCache
 
     /// <summary>
     /// Get base color for a block (for Medieval style and simple modes)
+    /// Inlined for better performance in hot rendering path.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public uint GetBaseColor(int blockId)
     {
         if (blockId < 0 || blockId >= _blockToColorIndex.Length)
@@ -112,7 +115,9 @@ public class BlockColorCache
 
     /// <summary>
     /// Check if a block is water/lake
+    /// Inlined for better performance in hot rendering path.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool IsLake(int blockId)
     {
         if (blockId < 0 || blockId >= _blockIsLake.Length)
