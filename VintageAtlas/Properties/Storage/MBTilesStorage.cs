@@ -164,8 +164,23 @@ public sealed class MbTilesStorage : IDisposable
     /// <summary>
     /// Store a tile in the database
     /// </summary>
+    /// <summary>
+    /// Store a tile in the database
+    /// </summary>
+    /// <param name="zoom">Zoom level</param>
+    /// <param name="x">Tile column (absolute world coordinates)</param>
+    /// <param name="y">Tile row (absolute world coordinates)</param>
+    /// <param name="tileData">PNG encoded tile data</param>
+    /// <exception cref="ArgumentNullException">Thrown when tileData is null</exception>
+    /// <exception cref="ArgumentException">Thrown when tileData is empty</exception>
     public async Task PutTileAsync(int zoom, int x, int y, byte[] tileData)
     {
+        ArgumentNullException.ThrowIfNull(tileData);
+        if (tileData.Length == 0)
+        {
+            throw new ArgumentException("Tile data cannot be empty", nameof(tileData));
+        }
+
         // NOTE: VintageAtlas uses ABSOLUTE world tile coordinates (e.g., 2000, 3000),
         // not zoom-relative coordinates (0 to 2^zoom-1).
         // Standard TMS conversion doesn't apply here - we store coordinates as-is.
@@ -260,8 +275,22 @@ public sealed class MbTilesStorage : IDisposable
         return result as byte[];
     }
 
+    /// <summary>
+    /// Store a rainfall climate tile in the database
+    /// </summary>
+    /// <param name="x">Tile column (absolute world coordinates)</param>
+    /// <param name="y">Tile row (absolute world coordinates)</param>
+    /// <param name="tileData">PNG encoded tile data</param>
+    /// <exception cref="ArgumentNullException">Thrown when tileData is null</exception>
+    /// <exception cref="ArgumentException">Thrown when tileData is empty</exception>
     public void PutRainTile(int x, int y, byte[] tileData)
     {
+        ArgumentNullException.ThrowIfNull(tileData);
+        if (tileData.Length == 0)
+        {
+            throw new ArgumentException("Tile data cannot be empty", nameof(tileData));
+        }
+
         using var connection = CreateConnection();
 
         using var cmd = connection.CreateCommand();
@@ -297,8 +326,22 @@ public sealed class MbTilesStorage : IDisposable
         return result as byte[];
     }
 
+    /// <summary>
+    /// Store a temperature climate tile in the database
+    /// </summary>
+    /// <param name="x">Tile column (absolute world coordinates)</param>
+    /// <param name="y">Tile row (absolute world coordinates)</param>
+    /// <param name="tileData">PNG encoded tile data</param>
+    /// <exception cref="ArgumentNullException">Thrown when tileData is null</exception>
+    /// <exception cref="ArgumentException">Thrown when tileData is empty</exception>
     public void PutTempTile(int x, int y, byte[] tileData)
     {
+        ArgumentNullException.ThrowIfNull(tileData);
+        if (tileData.Length == 0)
+        {
+            throw new ArgumentException("Tile data cannot be empty", nameof(tileData));
+        }
+
         using var connection = CreateConnection();
 
         using var cmd = connection.CreateCommand();
@@ -315,6 +358,7 @@ public sealed class MbTilesStorage : IDisposable
 
         cmd.ExecuteNonQuery();
     }
+
     /// <summary>
     /// Get tile extent (min/max coordinates) for a specific zoom level
     /// </summary>

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using SkiaSharp;
 using Vintagestory.API.Common;
@@ -752,7 +753,9 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
 
     /// <summary>
     /// Convert uint ARGB color to SKColor.
+    /// Inlined for better performance in hot rendering path.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static SKColor ConvertToSkColor(uint color)
     {
         var a = (byte)((color >> 24) & 0xFF);
@@ -821,7 +824,9 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
     /// <summary>
     /// Calculate altitude differences with neighboring blocks for hill shading.
     /// Optimized to stay within chunk boundaries.
+    /// Inlined for better performance in hot rendering path.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static (int northWestDelta, int northDelta, int westDelta) CalculateAltitudeDiff(
         int x, int y, int z, int[] heightMap)
     {
@@ -856,7 +861,9 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
     /// <summary>
     /// Calculate slope boost multiplier for the shadow map based on altitude deltas.
     /// Returns a value to darken or lighten the pixel based on the slope direction.
+    /// Inlined for better performance in hot rendering path.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static float CalculateSlopeBoost(int northWestDelta, int northDelta, int westDelta)
     {
         var direction = Math.Sign(northWestDelta) + Math.Sign(northDelta) + Math.Sign(westDelta);
