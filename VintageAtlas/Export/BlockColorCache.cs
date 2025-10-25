@@ -96,6 +96,8 @@ public class BlockColorCache
     /// Get base color for a block (for Medieval style and simple modes)
     /// Inlined for better performance in hot rendering path.
     /// </summary>
+    /// <param name="blockId">The block ID to get color for</param>
+    /// <returns>ARGB color value, or default land color if block ID is invalid</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public uint GetBaseColor(int blockId)
     {
@@ -117,6 +119,8 @@ public class BlockColorCache
     /// Check if a block is water/lake
     /// Inlined for better performance in hot rendering path.
     /// </summary>
+    /// <param name="blockId">The block ID to check</param>
+    /// <returns>True if the block is a water/lake block, false otherwise</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool IsLake(int blockId)
     {
@@ -129,6 +133,8 @@ public class BlockColorCache
     /// <summary>
     /// Get color by material (fallback when block not in cache)
     /// </summary>
+    /// <param name="material">The block material type</param>
+    /// <returns>ARGB color value for the material, or default land color if not found</returns>
     public static uint GetColorByMaterial(EnumBlockMaterial material)
     {
         var colorCode = MapColors.GetDefaultMapColorCode(material);
