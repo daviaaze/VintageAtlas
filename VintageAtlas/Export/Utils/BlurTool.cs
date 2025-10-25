@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 
 namespace VintageAtlas.Export;
 
@@ -47,14 +48,23 @@ public static class BlurTool
         {
             var context = new BlurContext(range / 2, xStart, yStart, xEnd, yEnd);
             var w = context.XEnd - context.XStart;
-            var newColors = new byte[w];
-            var index = context.YStart * fullWidth;
-
-            for (var y = context.YStart; y < context.YEnd; y++)
+            
+            // Use ArrayPool to reduce allocations
+            var newColors = ArrayPool<byte>.Shared.Rent(w);
+            try
             {
-                ProcessHorizontalRow(pixels, index, newColors, context);
-                ApplyHorizontalRow(pixels, index, newColors, context);
-                index += fullWidth;
+                var index = context.YStart * fullWidth;
+
+                for (var y = context.YStart; y < context.YEnd; y++)
+                {
+                    ProcessHorizontalRow(pixels, index, newColors, context);
+                    ApplyHorizontalRow(pixels, index, newColors, context);
+                    index += fullWidth;
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(newColors);
             }
         }
     }
@@ -115,13 +125,22 @@ public static class BlurTool
         {
             var context = new BlurContext(range / 2, xStart, yStart, xEnd, yEnd);
             var h = context.YEnd - context.YStart;
-            var newColors = new byte[h];
-            var offsets = new VerticalOffsets(-(context.HalfRange + 1) * fullWidth, context.HalfRange * fullWidth);
-
-            for (var x = context.XStart; x < context.XEnd; x++)
+            
+            // Use ArrayPool to reduce allocations
+            var newColors = ArrayPool<byte>.Shared.Rent(h);
+            try
             {
-                ProcessVerticalColumn(pixels, fullWidth, x, newColors, context, offsets);
-                ApplyVerticalColumn(pixels, fullWidth, x, newColors, context);
+                var offsets = new VerticalOffsets(-(context.HalfRange + 1) * fullWidth, context.HalfRange * fullWidth);
+
+                for (var x = context.XStart; x < context.XEnd; x++)
+                {
+                    ProcessVerticalColumn(pixels, fullWidth, x, newColors, context, offsets);
+                    ApplyVerticalColumn(pixels, fullWidth, x, newColors, context);
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(newColors);
             }
         }
     }
