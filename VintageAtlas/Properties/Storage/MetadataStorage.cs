@@ -1,11 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
-using VintageAtlas.Export.Climate;
 using VintageAtlas.Models.Domain;
 using Vintagestory.API.MathTools;
 
@@ -258,100 +256,5 @@ public sealed class MetadataStorage : IDisposable
         {
             _initLock?.Dispose();
         }
-    }
-    
-    /// <summary>
-    /// Store climate data points in batch for efficient database writes
-    /// </summary>
-    /// <param name="layerType">Layer type identifier ("temperature" or "rainfall")</param>
-    /// <param name="points">Climate data points to store</param>
-    public async Task StoreClimateDataAsync(string layerType, List<ClimatePoint> points)
-    {
-        await EnsureInitializedAsync();
-        
-        await using var connection = CreateConnection();
-        
-        // Start transaction for batch insert
-        await using var transaction = await connection.BeginTransactionAsync();
-        
-        try
-        {
-            // Clear existing data for this layer type
-            await using (var deleteCmd = connection.CreateCommand())
-            {
-                deleteCmd.Transaction = (SqliteTransaction)transaction;
-                deleteCmd.CommandText = "DELETE FROM climate_data WHERE layer_type = @layerType";
-                deleteCmd.Parameters.AddWithValue("@layerType", layerType);
-                await deleteCmd.ExecuteNonQueryAsync();
-            }
-            
-            // Insert new data in batches
-            const int batchSize = 1000;
-            for (var i = 0; i < points.Count; i += batchSize)
-            {
-                var batch = points.GetRange(i, Math.Min(batchSize, points.Count - i));
-                
-                var sql = new StringBuilder("INSERT INTO climate_data (layer_type, x, z, value, real_value) VALUES ");
-                var first = true;
-                
-                await using var insertCmd = connection.CreateCommand();
-                insertCmd.Transaction = (SqliteTransaction)transaction;
-                
-                for (var j = 0; j < batch.Count; j++)
-                {
-                    var point = batch[j];
-                    if (!first) sql.Append(", ");
-                    first = false;
-                    
-                    sql.Append($"(@layerType, @x{j}, @z{j}, @value{j}, @realValue{j})");
-                    insertCmd.Parameters.AddWithValue($"@x{j}", point.X);
-                    insertCmd.Parameters.AddWithValue($"@z{j}", point.Z);
-                    insertCmd.Parameters.AddWithValue($"@value{j}", point.Value);
-                    insertCmd.Parameters.AddWithValue($"@realValue{j}", point.RealValue);
-                }
-                
-                insertCmd.Parameters.AddWithValue("@layerType", layerType);
-                insertCmd.CommandText = sql.ToString();
-                await insertCmd.ExecuteNonQueryAsync();
-            }
-            
-            await transaction.CommitAsync();
-        }
-        catch
-        {
-            await transaction.RollbackAsync();
-            throw;
-        }
-    }
-    
-    /// <summary>
-    /// Get climate data as GeoJSON-ready structure
-    /// </summary>
-    /// <param name="layerType">Layer type identifier ("temperature" or "rainfall")</param>
-    public async Task<List<ClimatePoint>> GetClimateDataAsync(string layerType)
-    {
-        await EnsureInitializedAsync();
-        
-        await using var connection = CreateConnection();
-        await using var cmd = connection.CreateCommand();
-        
-        cmd.CommandText = "SELECT x, z, value, real_value FROM climate_data WHERE layer_type = @layerType";
-        cmd.Parameters.AddWithValue("@layerType", layerType);
-        
-        var points = new List<ClimatePoint>();
-        await using var reader = await cmd.ExecuteReaderAsync();
-        
-        while (await reader.ReadAsync())
-        {
-            points.Add(new ClimatePoint
-            {
-                X = reader.GetInt32(0),
-                Z = reader.GetInt32(1),
-                Value = reader.GetFloat(2),
-                RealValue = reader.GetFloat(3)
-            });
-        }
-        
-        return points;
     }
 }

@@ -102,25 +102,17 @@ public sealed class ServerManager(
 
         // Inject coordinate service into controllers
         var statusController = new StatusController(_sapi);
-        var weatherController = new WeatherController(_sapi, coordinateService);
         var geoJsonController = new GeoJsonController(_sapi, coordinateService, _metadataStorage);
-        var climateGeoJsonController = new ClimateGeoJsonController(_sapi, _metadataStorage);
         var tileController = new TileController(_sapi, _config, _tileGenerator, mapConfigController);
-        
+
         // Use generic climate layer tile controllers
-        var rainTileController = new ClimateLayerTileController(_sapi, _storage, ClimateLayerType.Rain);
-        var tempTileController = new ClimateLayerTileController(_sapi, _storage, ClimateLayerType.Temperature);
-        
+
         var router = new RequestRouter(
             configController,
             statusController,
-            weatherController,
             geoJsonController,
-            climateGeoJsonController,
             mapConfigController,
             tileController,
-            rainTileController,
-            tempTileController,
             staticFileServer
         );
 
