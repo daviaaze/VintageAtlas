@@ -37,7 +37,7 @@ public sealed class FastBitmapRenderer
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _colorCache = colorCache ?? throw new ArgumentNullException(nameof(colorCache));
         _microBlocks = microBlocks ?? throw new ArgumentNullException(nameof(microBlocks));
-        
+
         var mapYHalf = sapi.WorldManager.MapSizeY / 2;
         _colorResolver = new PixelColorResolver(_colorCache, config, mapYHalf);
     }
@@ -54,7 +54,7 @@ public sealed class FastBitmapRenderer
 
             // Use BGRA8888 for direct pixel manipulation (much faster than DrawPoint)
             using var bitmap = new SKBitmap(tileSize, tileSize, SKColorType.Bgra8888, SKAlphaType.Unpremul);
-            
+
             var randomForTile = CreateTileRandomizer(tileData);
             var shadowMap = InitializeShadowMap(tileSize);
 
@@ -182,7 +182,7 @@ public sealed class FastBitmapRenderer
         var r = (argbColor >> 16) & 0xFF;
         var g = (argbColor >> 8) & 0xFF;
         var b = argbColor & 0xFF;
-        
+
         // BGRA format: B in lowest byte, then G, R, A
         return b | (g << 8) | (r << 16) | (a << 24);
     }
@@ -213,12 +213,12 @@ public sealed class FastBitmapRenderer
         // Handle snow blocks: look at the block underneath
         if (_sapi.World.Blocks[blockId].BlockMaterial != EnumBlockMaterial.Snow)
             return new BlockIdResult(blockId, heightOffset);
-        
+
         heightOffset = 1;
         var adjustedHeight = height - 1;
-        if (adjustedHeight < 0) 
+        if (adjustedHeight < 0)
             return new BlockIdResult(blockId, heightOffset);
-        
+
         var adjustedLocalY = adjustedHeight % ChunkSize;
         var adjustedBlockIndex = adjustedLocalY * ChunkSize * ChunkSize + z * ChunkSize + x;
         if (adjustedBlockIndex >= 0 && adjustedBlockIndex < blockIds.Length)
@@ -236,9 +236,9 @@ public sealed class FastBitmapRenderer
     {
         uint? overrideColor = null;
 
-        if (!_microBlocks.Contains(blockId)) 
+        if (!_microBlocks.Contains(blockId))
             return (blockId, overrideColor);
-        
+
         var worldX = snapshot.ChunkX * ChunkSize + ctx.X;
         var worldZ = snapshot.ChunkZ * ChunkSize + ctx.Z;
         var blockPos = new BlockPos(worldX, ctx.Height, worldZ, 0);

@@ -20,8 +20,8 @@ public abstract class TileControllerBase : BaseController
     /// Serve a tile with proper caching headers and ETag support
     /// </summary>
     protected async Task ServeTileData(
-        HttpListenerContext context, 
-        byte[]? tileData, 
+        HttpListenerContext context,
+        byte[]? tileData,
         int[] coordinates,
         string requestPath)
     {
@@ -70,7 +70,7 @@ public abstract class TileControllerBase : BaseController
     protected bool TryParseCoordinates(string path, Regex regex, out int[] coordinates)
     {
         coordinates = Array.Empty<int>();
-        
+
         var match = regex.Match(path);
         if (!match.Success)
         {

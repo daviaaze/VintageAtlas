@@ -70,7 +70,7 @@ public sealed class PixelColorResolver
             return false;
 
         const int chunkSize = 32;
-        
+
         // Check boundaries - edges are always rendered as water
         if (x == 0 || x == chunkSize - 1 || z == 0 || z == chunkSize - 1)
             return false;
@@ -95,7 +95,7 @@ public sealed class PixelColorResolver
     private static int GetBlockAtPosition(int x, int z, int[] heightMap, int[] blockIds)
     {
         const int chunkSize = 32;
-        
+
         if (x < 0 || x >= chunkSize || z < 0 || z >= chunkSize)
             return 0;
 

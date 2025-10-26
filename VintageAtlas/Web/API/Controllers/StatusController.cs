@@ -24,13 +24,13 @@ public class StatusController : JsonController
         try
         {
             var calendar = Sapi.World.Calendar;
-            
+
             // Calculate season information
             var (name, progress) = GetSeasonInfo(calendar);
-            
+
             // Get time of day in hours (0-24)
             var hourOfDay = calendar.HourOfDay;
-            
+
             var statusData = new
             {
                 // Calendar information
@@ -43,39 +43,39 @@ public class StatusController : JsonController
                     dayOfYear = calendar.DayOfYear,
                     season = name,
                     seasonProgress = progress, // 0.0 to 1.0 through current season
-                    
+
                     // Time information
                     totalHours = calendar.TotalHours,
                     hourOfDay = hourOfDay,
                     minute = (int)(hourOfDay % 1.0 * 60),
-                    
+
                     // Additional useful info
                     daysPerMonth = calendar.DaysPerMonth,
                     hoursPerDay = calendar.HoursPerDay,
                     speedOfTime = calendar.SpeedOfTime,
                 },
-                
+
                 // Climate modifiers for temperature calculation
                 temperature = new
                 {
                     // Season modifier: approximately -15°C (winter) to +15°C (summer)
                     seasonModifier = CalculateSeasonModifier(progress, name),
-                    
+
                     // Time of day modifier: approximately -10°C (4am) to +15°C (4pm)
                     timeOfDayModifier = CalculateTimeOfDayModifier(hourOfDay),
-                    
+
                     // Combined modifier (approx)
-                    totalModifier = CalculateSeasonModifier(progress, name) + 
+                    totalModifier = CalculateSeasonModifier(progress, name) +
                                    CalculateTimeOfDayModifier(hourOfDay)
                 },
-                
+
                 // Server information
                 server = new
                 {
                     playersOnline = Sapi.World.AllOnlinePlayers?.Length ?? 0,
                     serverName = Sapi.World.Config.GetString("ServerName", "Vintage Story Server")
                 },
-                
+
                 // Weather information (if available)
                 weather = GetWeatherInfo()
             };
@@ -100,10 +100,10 @@ public class StatusController : JsonController
         var daysPerYear = calendar.DaysPerMonth * 12; // Usually 108 days
         var dayOfYear = calendar.DayOfYear % daysPerYear;
         var daysPerSeason = daysPerYear / 4.0;
-        
+
         var seasonIndex = (int)(dayOfYear / daysPerSeason);
         var seasonProgress = (dayOfYear % daysPerSeason) / daysPerSeason;
-        
+
         var seasonName = seasonIndex switch
         {
             0 => "Spring",
@@ -112,7 +112,7 @@ public class StatusController : JsonController
             3 => "Winter",
             _ => "Spring"
         };
-        
+
         return (seasonName, seasonProgress);
     }
 
@@ -145,7 +145,7 @@ public class StatusController : JsonController
         var hourAngle = (hourOfDay - 4.0) / 24.0 * 2.0 * Math.PI;
         var amplitude = 12.5; // ±12.5°C variation
         var baseline = 2.5;   // +2.5°C average offset
-        
+
         return baseline + (amplitude * Math.Sin(hourAngle));
     }
 

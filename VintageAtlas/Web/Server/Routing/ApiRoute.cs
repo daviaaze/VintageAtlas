@@ -27,7 +27,7 @@ public class ApiRoute(string[] patterns, RouteHandler handler, string? httpMetho
             return false;
         }
 
-        return Patterns.Any(pattern => 
+        return Patterns.Any(pattern =>
             string.Equals(path, pattern, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(path, pattern + "/", StringComparison.OrdinalIgnoreCase) ||
             path.StartsWith(pattern + "/", StringComparison.OrdinalIgnoreCase));

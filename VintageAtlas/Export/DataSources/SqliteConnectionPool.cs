@@ -43,13 +43,13 @@ public sealed class SqliteConnectionPool : IDisposable
             catch (Exception ex)
             {
                 _logger.Error($"Failed to create SQLite connection {i + 1}/{poolSize}: {ex.Message}");
-                
+
                 // Clean up any connections we've already created
                 for (var j = 0; j < i; j++)
                 {
                     _connections[j]?.Dispose();
                 }
-                
+
                 throw;
             }
         }
@@ -126,7 +126,7 @@ public sealed class SqliteConnectionLease : IDisposable
     private bool _disposed;
 
     internal bool InUse { get; set; }
-    
+
     /// <summary>
     /// The underlying SQLite connection.
     /// All operations should be performed within a lock on this lease.
@@ -146,7 +146,7 @@ public sealed class SqliteConnectionLease : IDisposable
     public T Execute<T>(System.Func<SqliteConnection, T> action)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        
+
         lock (_connectionLock)
         {
             return action(Connection);
@@ -159,7 +159,7 @@ public sealed class SqliteConnectionLease : IDisposable
     public void Execute(System.Action<SqliteConnection> action)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        
+
         lock (_connectionLock)
         {
             action(Connection);
@@ -177,7 +177,7 @@ public sealed class SqliteConnectionLease : IDisposable
         lock (_connectionLock)
         {
             if (!InUse) return; // Already returned
-            
+
             InUse = false;
             _pool?.ReleaseConnection();
         }

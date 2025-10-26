@@ -36,7 +36,7 @@ public sealed class SavegameDataSource : IChunkDataSource, IDisposable
         _server = server;
         _config = config;
         _logger = logger;
-        
+
         // Create repository with pool size from config
         _repository = new SavegameRepository(server, config.MaxDegreeOfParallelism, logger);
     }
@@ -50,7 +50,7 @@ public sealed class SavegameDataSource : IChunkDataSource, IDisposable
         var positions = _repository.GetAllMapChunkPositions()
             .Select(p => new Vec2i(p.X, p.Z))
             .ToList();
-        
+
         _logger.Notification($"[VintageAtlas] Found {positions.Count} map chunks in savegame database");
         return positions;
     }
@@ -194,7 +194,7 @@ public sealed class SavegameDataSource : IChunkDataSource, IDisposable
             var loadedChunks = new Dictionary<int, ServerChunk>();
             var allBlockEntities = new Dictionary<BlockPos, BlockEntity>();
             var allTraders = new Dictionary<long, Trader>();
-            
+
             foreach (var y in chunksToLoad)
             {
                 var chunkPos = new ChunkPos(chunkX, y, chunkZ);

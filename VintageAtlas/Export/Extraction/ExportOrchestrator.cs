@@ -22,7 +22,7 @@ public class ExportOrchestrator : IDisposable
     private readonly ServerMain _server;
     private readonly ModConfig _config;
     private readonly List<IDataExtractor> _extractors = new();
-    
+
     private const int ChunkSize = 32;
 
     public ExportOrchestrator(ICoreServerAPI sapi, ModConfig config)
@@ -116,7 +116,7 @@ public class ExportOrchestrator : IDisposable
                                     $"({chunkSnapshot.ChunkX},{chunkSnapshot.ChunkZ}): {ex.Message}");
                             }
                         }
-                        
+
                         totalChunks++;
                     }
                 }

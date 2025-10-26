@@ -41,21 +41,21 @@ public sealed class SavegameRepository : ISavegameRepository, IDisposable
     public IEnumerable<ChunkPos> GetAllMapChunkPositions()
     {
         using var lease = _pool.AcquireConnection();
-        
+
         return lease.Execute(conn =>
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT position FROM mapchunk";
-            
+
             using var reader = cmd.ExecuteReader();
             var positions = new List<ChunkPos>();
-            
+
             while (reader.Read())
             {
                 var pos = (long)reader["position"];
                 positions.Add(ChunkPos.FromChunkIndex_saveGamev2((ulong)pos));
             }
-            
+
             return positions;
         });
     }
@@ -63,22 +63,22 @@ public sealed class SavegameRepository : ISavegameRepository, IDisposable
     public IEnumerable<Vec2i> GetAllMapRegionPositions()
     {
         using var lease = _pool.AcquireConnection();
-        
+
         return lease.Execute(conn =>
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT position FROM mapregion";
-            
+
             using var reader = cmd.ExecuteReader();
             var positions = new List<Vec2i>();
-            
+
             while (reader.Read())
             {
                 var pos = (long)reader["position"];
                 var vec2i = new Vec2i((int)(pos % 16), (int)(pos / 16));
                 positions.Add(vec2i);
             }
-            
+
             return positions;
         });
     }
@@ -92,15 +92,15 @@ public sealed class SavegameRepository : ISavegameRepository, IDisposable
     public ServerMapChunk? GetMapChunk(ulong positionIndex)
     {
         using var lease = _pool.AcquireConnection();
-        
+
         return lease.Execute(conn =>
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT data FROM mapchunk WHERE position = @position";
             cmd.Parameters.AddWithValue("@position", positionIndex);
-            
+
             using var reader = cmd.ExecuteReader();
-            
+
             if (!reader.Read())
                 return null;
 
@@ -132,15 +132,15 @@ public sealed class SavegameRepository : ISavegameRepository, IDisposable
     public ServerChunk? GetChunk(ulong positionIndex)
     {
         using var lease = _pool.AcquireConnection();
-        
+
         return lease.Execute(conn =>
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT data FROM chunk WHERE position = @position";
             cmd.Parameters.AddWithValue("@position", positionIndex);
-            
+
             using var reader = cmd.ExecuteReader();
-            
+
             if (!reader.Read())
                 return null;
 
@@ -160,15 +160,15 @@ public sealed class SavegameRepository : ISavegameRepository, IDisposable
     public ServerMapRegion? GetMapRegion(ulong positionIndex)
     {
         using var lease = _pool.AcquireConnection();
-        
+
         return lease.Execute(conn =>
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT data FROM mapregion WHERE position = @position";
             cmd.Parameters.AddWithValue("@position", positionIndex);
-            
+
             using var reader = cmd.ExecuteReader();
-            
+
             if (!reader.Read())
                 return null;
 
@@ -188,14 +188,14 @@ public sealed class SavegameRepository : ISavegameRepository, IDisposable
     public SaveGame? GetGameData()
     {
         using var lease = _pool.AcquireConnection();
-        
+
         return lease.Execute(conn =>
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT data FROM gamedata LIMIT 1";
-            
+
             using var reader = cmd.ExecuteReader();
-            
+
             if (!reader.Read())
                 return null;
 
@@ -217,27 +217,27 @@ public sealed class SavegameRepository : ISavegameRepository, IDisposable
     public void SaveMapChunks(IDictionary<long, ServerMapChunk> chunks)
     {
         using var lease = _pool.AcquireConnection();
-        
+
         lease.Execute(conn =>
         {
             using var transaction = conn.BeginTransaction();
-            
+
             try
             {
                 using var cmd = conn.CreateCommand();
                 cmd.Transaction = transaction;
                 cmd.CommandText = "INSERT OR REPLACE INTO mapchunk (position, data) VALUES (@position, @data)";
-                
+
                 var positionParam = cmd.Parameters.Add("@position", SqliteType.Integer);
                 var dataParam = cmd.Parameters.Add("@data", SqliteType.Blob);
-                
+
                 foreach (var kvp in chunks)
                 {
                     positionParam.Value = kvp.Key;
                     dataParam.Value = kvp.Value.ToBytes();
                     cmd.ExecuteNonQuery();
                 }
-                
+
                 transaction.Commit();
             }
             catch (Exception ex)
@@ -253,7 +253,7 @@ public sealed class SavegameRepository : ISavegameRepository, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        
+
         _pool?.Dispose();
         _chunkDataPool?.FreeAll();
     }

@@ -21,7 +21,7 @@ public static class ETagHelper
     public static string GenerateFromTileData(byte[] tileData, params int[] coordinates)
     {
         var fingerprint = tileData.Length;
-        
+
         if (tileData.Length >= 16)
         {
             for (var i = 0; i < 16; i++)

@@ -24,7 +24,7 @@ public class TileExtractor : IDataExtractor
     private readonly ICoreServerAPI _sapi;
     // Organize chunks by tile coordinates (tileX, tileZ) -> TileChunkData
     private readonly Dictionary<(int, int), TileChunkData> _tileChunks = new();
-    
+
     private const int ChunkSize = 32;
 
     public string Name => "Map Tiles";
@@ -74,7 +74,7 @@ public class TileExtractor : IDataExtractor
 
         // Add this chunk to the tile
         tileData.AddChunk(chunk);
-        
+
         return Task.CompletedTask;
     }
 
@@ -102,7 +102,7 @@ public class TileExtractor : IDataExtractor
                 maxConcurrentZoomTiles: Math.Max(2, _config.MaxDegreeOfParallelism / 4)
             );
             _tileGenerator.Logger.Notification("[VintageAtlas] ⚡ Incremental zoom generation enabled - tiles will render in zoom-optimized order");
-            
+
             // Sort tiles by parent zoom tile to maximize early zoom generation
             tiles = SortTilesByZoomParent(tiles);
             _tileGenerator.Logger.Notification("[VintageAtlas] ✨ Tiles sorted by parent zoom coordinates for optimal generation order");
@@ -160,7 +160,7 @@ public class TileExtractor : IDataExtractor
         if (zoomTracker != null)
         {
             await zoomTracker.WaitForCompletionAsync();
-            
+
             var (total, perZoom) = zoomTracker.GetStatistics();
             if (total > 0)
             {
@@ -174,7 +174,7 @@ public class TileExtractor : IDataExtractor
 
         // Invalidate map config cache
         _mapConfigController?.InvalidateCache();
-        
+
         _tileGenerator.Logger.Notification("[VintageAtlas] Tile extraction complete");
     }
 

@@ -4,9 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
-using VintageAtlas.Export.Data;
 
 namespace VintageAtlas.Export.Generation;
 
@@ -21,29 +19,29 @@ public class IncrementalZoomTracker
     private readonly UnifiedTileGenerator _generator;
     private readonly int _baseZoom;
     private readonly int _minZoom;
-    
+
     // Track how many child tiles have completed for each parent tile
     // Key: (zoom, tileX, tileZ), Value: count of completed children (0-4)
     private readonly ConcurrentDictionary<(int zoom, int x, int z), int> _completionCount = new();
-    
+
     // Track tiles that are currently being generated (to avoid duplicates)
     private readonly ConcurrentDictionary<(int zoom, int x, int z), byte> _generatingTiles = new();
-    
+
     // Track tiles that have been generated (for statistics)
     private readonly ConcurrentDictionary<int, int> _tilesPerZoom = new();
-    
+
     // Semaphore to limit concurrent zoom tile generation
     private readonly SemaphoreSlim _generationSemaphore;
-    
+
     // Track in-progress generation tasks
     private readonly ConcurrentBag<Task> _activeTasks = new();
-    
+
     private int _totalZoomTilesGenerated;
     private bool _isEnabled;
 
     public IncrementalZoomTracker(
-        ICoreServerAPI sapi, 
-        UnifiedTileGenerator generator, 
+        ICoreServerAPI sapi,
+        UnifiedTileGenerator generator,
         int baseZoom,
         int minZoom = 0,
         int maxConcurrentZoomTiles = 4)
@@ -106,7 +104,7 @@ public class IncrementalZoomTracker
                 {
                     try
                     {
-                            await GenerateZoomTileAsync(parentZoom, parentX, parentZ);
+                        await GenerateZoomTileAsync(parentZoom, parentX, parentZ);
                     }
                     catch (Exception ex)
                     {
@@ -132,7 +130,7 @@ public class IncrementalZoomTracker
         {
             // Generate the tile
             var tileData = await _generator.GetTileDataAsync(zoom + 1, tileX * 2, tileZ * 2);
-            
+
             if (tileData != null)
             {
                 var downsampler = new PyramidTileDownsampler(_sapi, _generator.Config, _generator);
@@ -141,7 +139,7 @@ public class IncrementalZoomTracker
                 if (downsampledTile != null)
                 {
                     await _generator.Storage.PutTileAsync(zoom, tileX, tileZ, downsampledTile);
-                    
+
                     // Track statistics
                     Interlocked.Increment(ref _totalZoomTilesGenerated);
                     _tilesPerZoom.AddOrUpdate(zoom, 1, (k, v) => v + 1);

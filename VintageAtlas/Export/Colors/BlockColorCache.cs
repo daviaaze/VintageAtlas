@@ -226,7 +226,7 @@ public class BlockColorCache
 
                     foreach (var block in _sapi.World.Blocks)
                     {
-                        if (block is { Id: 0}) 
+                        if (block is { Id: 0 })
                             continue;
 
                         if (!regex.IsMatch(block.Code.ToString()))

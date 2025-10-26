@@ -247,15 +247,15 @@ public sealed class MbTilesStorage : IDisposable
     public async Task<byte[]?> GetRainTileAsync(int x, int y)
     {
         await using var connection = CreateConnection();
-        
+
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
                           SELECT tile_data FROM rain_tiles where tile_column = @x and tile_row = @y
                           """;
-        
+
         cmd.Parameters.AddWithValue("@x", x);
         cmd.Parameters.AddWithValue("@y", y);
-        
+
         var result = await cmd.ExecuteScalarAsync();
         return result as byte[];
     }
@@ -282,17 +282,17 @@ public sealed class MbTilesStorage : IDisposable
     public async Task<byte[]?> GetTempTileAsync(int x, int y)
     {
         await EnsureInitializedAsync();
-        
+
         await using var connection = CreateConnection();
-        
+
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
                           SELECT tile_data FROM temp_tiles where tile_column = @x and tile_row = @y
                           """;
-        
+
         cmd.Parameters.AddWithValue("@x", x);
         cmd.Parameters.AddWithValue("@y", y);
-        
+
         var result = await cmd.ExecuteScalarAsync();
         return result as byte[];
     }
