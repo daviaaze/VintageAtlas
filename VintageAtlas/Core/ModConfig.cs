@@ -6,6 +6,27 @@ using Vintagestory.API.Config;
 namespace VintageAtlas.Core;
 
 /// <summary>
+/// Climate extraction mode for generating climate data
+/// </summary>
+public enum ClimateExtractionMode
+{
+    /// <summary>
+    /// Fast extraction using world generation values (no chunk loading required)
+    /// </summary>
+    Fast,
+
+    /// <summary>
+    /// On-demand chunk loading for accurate seasonal/calendar climate data
+    /// </summary>
+    OnDemand,
+
+    /// <summary>
+    /// Only use currently loaded chunks (for real-time updates)
+    /// </summary>
+    Live
+}
+
+/// <summary>
 /// Main configuration for VintageAtlas mod
 /// </summary>
 public class ModConfig
@@ -109,6 +130,15 @@ public class ModConfig
     /// Default: false
     /// </summary>
     public bool ExportChunkVersionMap { get; set; } = false;
+
+    /// <summary>
+    /// Climate extraction mode for generating climate GeoJSON data
+    /// Fast: Uses world generation values (no chunk loading, ~5-10s)
+    /// OnDemand: Loads chunks as needed for accurate data (slower, ~30-60s)
+    /// Live: Only uses currently loaded chunks (fastest for small areas)
+    /// Default: Fast
+    /// </summary>
+    public ClimateExtractionMode ClimateMode { get; set; } = ClimateExtractionMode.Fast;
 
     /// <summary>
     /// Kicks everyone from the server and pauses for export
