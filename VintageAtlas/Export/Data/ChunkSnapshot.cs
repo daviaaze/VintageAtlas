@@ -57,13 +57,20 @@ public class ChunkSnapshot
     /// </summary>
     public Dictionary<BlockPos, BlockEntity> BlockEntities { get; set; }
     public Dictionary<long, Trader> Traders { get; set; }
+    
+    /// <summary>
+    /// Climate data for this chunk (Temperature/Rainfall)
+    /// Packed int or raw values
+    /// </summary>
+    public int[] ClimateData { get; set; }
 
     public ChunkSnapshot()
     {
         BlockIds = [];
         HeightMap = [];
-        BlockEntities = new Dictionary<BlockPos, BlockEntity>();
-        Traders = new Dictionary<long, Trader>();
+        ClimateData = [];
+        BlockEntities = [];
+        Traders = [];
         IsLoaded = false;
         SnapshotTime = DateTime.UtcNow;
     }

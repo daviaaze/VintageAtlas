@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using VintageAtlas.Core.Configuration;
 using VintageAtlas.Export.Colors;
 using Vintagestory.API.Config;
 using Vintagestory.API.Server;
@@ -32,13 +33,13 @@ public static class ConfigValidator
 
     private static void ValidateOutputDirectory(ModConfig config, List<string> errors)
     {
-        if (string.IsNullOrWhiteSpace(config.OutputDirectory))
+        if (string.IsNullOrWhiteSpace(config.Export.OutputDirectory))
         {
             errors.Add("OutputDirectory cannot be empty");
             return;
         }
 
-        if (config.OutputDirectory == GamePaths.DataPath)
+        if (config.Export.OutputDirectory == GamePaths.DataPath)
         {
             errors.Add("OutputDirectory cannot be the root data folder - please specify a subfolder (e.g., ModData/VintageAtlas)");
         }
@@ -46,28 +47,28 @@ public static class ConfigValidator
 
     private static void ValidateTileSize(ModConfig config, List<string> errors)
     {
-        if (config.TileSize % 32 != 0)
+        if (config.Export.TileSize % Constants.ChunkSize != 0)
         {
-            errors.Add($"TileSize ({config.TileSize}) must be evenly divisible by 32");
+            errors.Add($"TileSize ({config.Export.TileSize}) must be evenly divisible by {Constants.ChunkSize}");
         }
 
-        if (config.TileSize is < 32 or > 1024)
+        if (config.Export.TileSize is < Constants.MinTileSize or > Constants.MaxTileSize)
         {
-            errors.Add($"TileSize ({config.TileSize}) must be between 32 and 1024");
+            errors.Add($"TileSize ({config.Export.TileSize}) must be between {Constants.MinTileSize} and {Constants.MaxTileSize}");
         }
     }
 
     private static void ValidateZoomLevel(ModConfig config, List<string> errors)
     {
-        if (config.BaseZoomLevel is < 1 or > 15)
+        if (config.Export.BaseZoomLevel is < Constants.MinZoomLevel or > Constants.MaxZoomLevel)
         {
-            errors.Add($"BaseZoomLevel ({config.BaseZoomLevel}) must be between 1 and 15");
+            errors.Add($"BaseZoomLevel ({config.Export.BaseZoomLevel}) must be between {Constants.MinZoomLevel} and {Constants.MaxZoomLevel}");
         }
     }
 
     private static void ValidateParallelism(ModConfig config, List<string> errors)
     {
-        if (config.MaxDegreeOfParallelism is < -1 or 0)
+        if (config.Export.MaxDegreeOfParallelism is < -1 or 0)
         {
             errors.Add($"MaxDegreeOfParallelism must be -1 (auto) or a positive number");
         }
@@ -75,53 +76,43 @@ public static class ConfigValidator
 
     private static void ValidateWebServer(ModConfig config, List<string> errors)
     {
-        if (!config.EnableLiveServer)
+        if (!config.WebServer.EnableLiveServer)
         {
             return;
         }
 
-        if (config.LiveServerPort is < 1 or > 65535)
+        if (config.WebServer.LiveServerPort is < Constants.MinPortNumber or > Constants.MaxPortNumber)
         {
-            errors.Add($"LiveServerPort ({config.LiveServerPort.Value}) must be between 1 and 65535");
+            errors.Add($"LiveServerPort ({config.WebServer.LiveServerPort.Value}) must be between {Constants.MinPortNumber} and {Constants.MaxPortNumber}");
         }
 
-        if (config.MaxConcurrentRequests is < 1 or > 1000)
+        if (config.WebServer.MaxConcurrentRequests < Constants.MinConcurrentRequests || config.WebServer.MaxConcurrentRequests > Constants.MaxConcurrentRequests)
         {
-            errors.Add($"MaxConcurrentRequests ({config.MaxConcurrentRequests.Value}) must be between 1 and 1000");
+            errors.Add($"MaxConcurrentRequests ({config.WebServer.MaxConcurrentRequests}) must be between {Constants.MinConcurrentRequests} and {Constants.MaxConcurrentRequests}");
         }
 
-        if (config.MaxConcurrentTileRequests is < 10 or > 2000)
+        if (config.WebServer.MapExportIntervalMs < Constants.MinMapExportIntervalMs)
         {
-            errors.Add($"MaxConcurrentTileRequests ({config.MaxConcurrentTileRequests.Value}) must be between 10 and 2000");
-        }
-
-        if (config.MaxConcurrentStaticRequests is < 10 or > 1000)
-        {
-            errors.Add($"MaxConcurrentStaticRequests ({config.MaxConcurrentStaticRequests.Value}) must be between 10 and 1000");
-        }
-
-        if (config.MapExportIntervalMs < 10000)
-        {
-            errors.Add($"MapExportIntervalMs ({config.MapExportIntervalMs}) should be at least 10000ms (10 seconds) to avoid performance issues");
+            errors.Add($"MapExportIntervalMs ({config.WebServer.MapExportIntervalMs}) should be at least {Constants.MinMapExportIntervalMs}ms to avoid performance issues");
         }
     }
 
     private static void ValidateHistoricalTracking(ModConfig config, List<string> errors)
     {
-        if (config is { EnableHistoricalTracking: true, HistoricalTickIntervalMs: < 1000 })
+        if (config.Tracking is { EnableHistoricalTracking: true, HistoricalTickIntervalMs: < Constants.MinHistoricalTickIntervalMs })
         {
-            errors.Add($"HistoricalTickIntervalMs ({config.HistoricalTickIntervalMs}) should be at least 1000ms (1 second)");
+            errors.Add($"HistoricalTickIntervalMs ({config.Tracking.HistoricalTickIntervalMs}) should be at least {Constants.MinHistoricalTickIntervalMs}ms");
         }
     }
 
     private static void ValidateFeatureDependencies(ModConfig config, List<string> errors)
     {
-        if (config is { CreateZoomLevels: true, ExtractWorldMap: false })
+        if (config.Export is { CreateZoomLevels: true, ExtractWorldMap: false })
         {
             errors.Add("CreateZoomLevels requires ExtractWorldMap to be enabled (it generates zoom levels from the base map tiles)");
         }
 
-        if (config is { ExportHeightmap: true, ExtractWorldMap: false })
+        if (config.Export is { ExportHeightmap: true, ExtractWorldMap: false })
         {
             errors.Add("ExportHeightmap requires ExtractWorldMap to be enabled");
         }
@@ -145,8 +136,11 @@ public static class ConfigValidator
         var modDataPath = Path.Combine(GamePaths.DataPath, "ModData", "VintageAtlas");
         config = new ModConfig
         {
-            Mode = ImageMode.MedievalStyleWithHillShading,
-            OutputDirectory = modDataPath
+            Export = new MapExportSettings
+            {
+                Mode = ImageMode.MedievalStyleWithHillShading,
+                OutputDirectory = modDataPath
+            }
         };
 
         sapi.StoreModConfig(config, "VintageAtlasConfig.json");
@@ -184,22 +178,22 @@ public static class ConfigValidator
     private static void ApplyAutoFixes(ModConfig config)
     {
         // Auto-fix tile size to nearest valid value
-        if (config.TileSize % 32 != 0)
+        if (config.Export.TileSize % Constants.ChunkSize != 0)
         {
-            config.TileSize = config.TileSize / 32 * 32;
-            if (config.TileSize < 32) config.TileSize = 32;
+            config.Export.TileSize = config.Export.TileSize / Constants.ChunkSize * Constants.ChunkSize;
+            if (config.Export.TileSize < Constants.ChunkSize) config.Export.TileSize = Constants.ChunkSize;
         }
 
         // Limit parallelism to processor count
-        if (config.MaxDegreeOfParallelism == -1 || config.MaxDegreeOfParallelism > Environment.ProcessorCount * 2)
+        if (config.Export.MaxDegreeOfParallelism == -1 || config.Export.MaxDegreeOfParallelism > Environment.ProcessorCount * 2)
         {
-            config.MaxDegreeOfParallelism = Environment.ProcessorCount;
+            config.Export.MaxDegreeOfParallelism = Environment.ProcessorCount;
         }
 
         // Ensure the base path format
-        if (!config.BasePath.StartsWith('/'))
+        if (!config.WebServer.BasePath.StartsWith('/'))
         {
-            config.BasePath = $"/{config.BasePath}";
+            config.WebServer.BasePath = $"/{config.WebServer.BasePath}";
         }
     }
 }

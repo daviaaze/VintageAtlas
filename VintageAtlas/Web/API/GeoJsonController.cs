@@ -16,10 +16,13 @@ namespace VintageAtlas.Web.API;
 /// Provides GeoJSON data dynamically via API with efficient caching
 /// Scans loaded chunks in memory to find signs, signposts, traders, and translocators
 /// </summary>
-public class GeoJsonController : JsonController
+public class GeoJsonController(
+    ICoreServerAPI sapi,
+    CoordinateTransformService coordinateService,
+    IMetadataStorage metadataStorage) : JsonController(sapi)
 {
-    private readonly CoordinateTransformService _coordinateService;
-    private readonly MetadataStorage _metadataStorage;
+    private readonly CoordinateTransformService _coordinateService = coordinateService ?? throw new ArgumentNullException(nameof(coordinateService));
+    private readonly IMetadataStorage _metadataStorage = metadataStorage ?? throw new ArgumentNullException(nameof(metadataStorage));
 
     // Cache GeoJSON data with timestamps (in milliseconds)
     private TraderGeoJson? _cachedTraders;
@@ -27,15 +30,6 @@ public class GeoJsonController : JsonController
     private readonly object _cacheLock = new();
 
     private const int TraderCacheMs = 600000; // 10 minutes - traders can move/spawn
-
-    public GeoJsonController(
-        ICoreServerAPI sapi,
-        CoordinateTransformService coordinateService,
-        MetadataStorage metadataStorage) : base(sapi)
-    {
-        _coordinateService = coordinateService ?? throw new ArgumentNullException(nameof(coordinateService));
-        _metadataStorage = metadataStorage ?? throw new ArgumentNullException(nameof(metadataStorage));
-    }
 
     /// <summary>
     /// Get all traders as GeoJSON

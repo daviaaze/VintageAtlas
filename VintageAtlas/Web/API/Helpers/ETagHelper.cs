@@ -18,7 +18,7 @@ public static class ETagHelper
     /// Generate ETag for tile data using first 16 bytes + size as fingerprint
     /// (full hash would be expensive for high-volume tile serving)
     /// </summary>
-    public static string GenerateFromTileData(byte[] tileData, params int[] coordinates)
+    public static string GenerateFromTileData(byte[] tileData, int zoom, int gridX, int gridY)
     {
         var fingerprint = tileData.Length;
 
@@ -30,7 +30,7 @@ public static class ETagHelper
             }
         }
 
-        var coordString = string.Join("-", coordinates);
+        var coordString = string.Join("-", zoom, gridX, gridY);
         return $"\"{coordString}-{fingerprint:X}\"";
     }
 

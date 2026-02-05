@@ -1,6 +1,6 @@
 using System;
 using Vintagestory.API.MathTools;
-using VintageAtlas.Core;
+using VintageAtlas.Core.Configuration;
 using VintageAtlas.Export.Colors;
 using VintageAtlas.Export.Data;
 
@@ -10,18 +10,11 @@ namespace VintageAtlas.Export.Rendering;
 /// Handles all pixel color calculation logic for different rendering modes.
 /// Extracted from UnifiedTileGenerator for better componentization.
 /// </summary>
-public sealed class PixelColorResolver
+public sealed class PixelColorResolver(IBlockColorCache colorCache, ModConfig config, int mapYHalf)
 {
-    private readonly BlockColorCache _colorCache;
-    private readonly ModConfig _config;
-    private readonly int _mapYHalf;
-
-    public PixelColorResolver(BlockColorCache colorCache, ModConfig config, int mapYHalf)
-    {
-        _colorCache = colorCache ?? throw new ArgumentNullException(nameof(colorCache));
-        _config = config ?? throw new ArgumentNullException(nameof(config));
-        _mapYHalf = mapYHalf;
-    }
+    private readonly IBlockColorCache _colorCache = colorCache ?? throw new ArgumentNullException(nameof(colorCache));
+    private readonly ModConfig _config = config ?? throw new ArgumentNullException(nameof(config));
+    private readonly int _mapYHalf = mapYHalf;
 
     /// <summary>
     /// Calculate the final pixel color based on the configured render mode.
@@ -32,7 +25,7 @@ public sealed class PixelColorResolver
         if (overrideColor.HasValue)
             return overrideColor.Value;
 
-        return _config.Mode switch
+        return _config.Export.Mode switch
         {
             ImageMode.OnlyOneColor => _colorCache.GetBaseColor(blockId),
             ImageMode.ColorVariations => _colorCache.GetRandomColorVariation(blockId, random),

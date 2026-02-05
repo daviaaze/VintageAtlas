@@ -1,37 +1,33 @@
 using System;
 using System.Threading.Tasks;
 using Vintagestory.API.Server;
-using Vintagestory.Server;
+using VintageAtlas.Application.DTOs;
+using VintageAtlas.Application.UseCases;
 using VintageAtlas.Core;
-using VintageAtlas.Export.Extraction;
+using VintageAtlas.Core.Configuration;
 
 namespace VintageAtlas.Export;
 
 /// <summary>
-/// Manages map export operations using the extraction orchestrator.
-/// Coordinates the extraction pipeline with appropriate server modes (save mode, etc.)
+/// Adapter for map export operations.
+/// Delegates to ExportMapUseCase following Clean Architecture principles.
+/// This class is now a thin infrastructure adapter that bridges the game API
+/// with the application layer.
 /// </summary>
-public class MapExporter : IMapExporter
+public class MapExporter(
+    ICoreServerAPI sapi,
+    ModConfig config,
+    IExportMapUseCase exportUseCase) : IMapExporter
 {
-    private readonly ICoreServerAPI _sapi;
-    private readonly ModConfig _config;
-    private readonly ExportOrchestrator _orchestrator;
-    private readonly ServerMain _server;
-    private string? _serverPassword;
+    private readonly ICoreServerAPI _sapi = sapi ?? throw new ArgumentNullException(nameof(sapi));
+    private readonly ModConfig _config = config ?? throw new ArgumentNullException(nameof(config));
+    private readonly IExportMapUseCase _exportUseCase = exportUseCase ?? throw new ArgumentNullException(nameof(exportUseCase));
 
-    public bool IsRunning { get; private set; }
+    public bool IsRunning => _exportUseCase.IsRunning;
 
-    public MapExporter(
-        ICoreServerAPI sapi,
-        ModConfig config,
-        ExportOrchestrator orchestrator)
-    {
-        _sapi = sapi;
-        _config = config;
-        _orchestrator = orchestrator;
-        _server = (ServerMain)_sapi.World;
-    }
-
+    /// <summary>
+    /// Start the map export process asynchronously
+    /// </summary>
     public void StartExport()
     {
         if (IsRunning)
@@ -43,79 +39,34 @@ public class MapExporter : IMapExporter
         Task.Run(ExecuteExportAsync);
     }
 
+    /// <summary>
+    /// Execute the export by delegating to the use case
+    /// </summary>
     private async Task ExecuteExportAsync()
     {
-        if (IsRunning) return;
-
-        IsRunning = true;
-
-        try
+        var options = new ExportOptions
         {
-            _sapi.Logger.Notification("[VintageAtlas] Starting full map export...");
+            SaveMode = _config.Export.SaveMode,
+            StopOnDone = _config.Export.StopOnDone,
+            ReportProgress = true
+        };
 
-            if (_config.SaveMode)
-            {
-                EnableSaveMode();
-            }
+        var result = await _exportUseCase.ExecuteAsync(options);
 
-            // Execute all registered extractors through the orchestrator
-            await _orchestrator.ExecuteFullExportAsync();
-
-            _sapi.Logger.Notification("[VintageAtlas] Full map export completed successfully!");
+        if (result.Success)
+        {
+            _sapi.Logger.Notification(
+                $"[VintageAtlas] Export completed: {result.TilesProcessed} tiles, " +
+                $"{result.ChunksProcessed} chunks in {result.Duration.TotalSeconds:F2}s"
+            );
         }
-        catch (Exception e)
+        else
         {
-            _sapi.Logger.Error($"[VintageAtlas] Map export failed: {e.Message}");
-            _sapi.Logger.Error(e.StackTrace ?? "");
-        }
-        finally
-        {
-            if (_config.SaveMode)
+            _sapi.Logger.Error($"[VintageAtlas] Export failed: {result.ErrorMessage}");
+            if (result.Exception != null)
             {
-                DisableSaveMode();
-            }
-
-            if (_config.StopOnDone)
-            {
-                _server.Stop("Map export complete");
-            }
-
-            IsRunning = false;
-        }
-    }
-
-    private void EnableSaveMode()
-    {
-        _serverPassword = _sapi.Server.Config.Password;
-        _sapi.Server.Config.Password = Random.Shared.Next().ToString();
-
-        // Disconnect all players safely
-        var players = _sapi.World.AllOnlinePlayers;
-        foreach (var player1 in players)
-        {
-            try
-            {
-                var player = (IServerPlayer)player1;
-                if (player?.Entity == null)
-                    continue;
-
-                _sapi.Logger.Debug($"[VintageAtlas] Disconnecting player {player.PlayerName} for export");
-                player.Disconnect("Exporting the map now");
-            }
-            catch (Exception ex)
-            {
-                _sapi.Logger.Warning($"[VintageAtlas] Failed to disconnect player during export: {ex.Message}");
+                _sapi.Logger.Error(result.Exception.StackTrace ?? "");
             }
         }
-
-        // Wait a moment for disconnections to complete
-        System.Threading.Thread.Sleep(500);
-        _server.Suspend(true, 1000);
-    }
-
-    private void DisableSaveMode()
-    {
-        _server.Suspend(false);
-        _sapi.Server.Config.Password = _serverPassword;
     }
 }

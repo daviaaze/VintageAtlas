@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Vintagestory.API.Server;
 using VintageAtlas.Core;
+using VintageAtlas.Core.Configuration;
 using VintageAtlas.Web.API.Base;
 using VintageAtlas.Web.API.Helpers;
 
@@ -14,23 +15,15 @@ namespace VintageAtlas.Web.API;
 /// <summary>
 /// Handles configuration and export trigger API endpoints
 /// </summary>
-public class ConfigController : JsonController
+public class ConfigController(
+    ICoreServerAPI sapi,
+    ModConfig config,
+    IMapExporter mapExporter) : JsonController(sapi)
 {
-    private readonly ModConfig _config;
-    private readonly IMapExporter _mapExporter;
-    private bool _autoExportEnabled;
-    private bool _historicalTrackingEnabled;
-
-    public ConfigController(
-        ICoreServerAPI sapi,
-        ModConfig config,
-        IMapExporter mapExporter) : base(sapi)
-    {
-        _config = config ?? throw new ArgumentNullException(nameof(config));
-        _mapExporter = mapExporter ?? throw new ArgumentNullException(nameof(mapExporter));
-        _autoExportEnabled = config.AutoExportMap;
-        _historicalTrackingEnabled = config.EnableHistoricalTracking;
-    }
+    private readonly ModConfig _config = config ?? throw new ArgumentNullException(nameof(config));
+    private readonly IMapExporter _mapExporter = mapExporter ?? throw new ArgumentNullException(nameof(mapExporter));
+    private bool _autoExportEnabled = config.WebServer.AutoExportMap;
+    private bool _historicalTrackingEnabled = config.Tracking.EnableHistoricalTracking;
 
     // Initialize runtime state from config
 
@@ -45,10 +38,10 @@ public class ConfigController : JsonController
             {
                 autoExportMap = _autoExportEnabled,
                 historicalTracking = _historicalTrackingEnabled,
-                exportIntervalMs = _config.MapExportIntervalMs,
+                exportIntervalMs = _config.WebServer.MapExportIntervalMs,
                 isExporting = _mapExporter.IsRunning,
-                enableLiveServer = _config.EnableLiveServer,
-                maxConcurrentRequests = _config.MaxConcurrentRequests ?? 50
+                enableLiveServer = _config.WebServer.EnableLiveServer,
+                maxConcurrentRequests = _config.WebServer.MaxConcurrentRequests
             };
 
             await ServeJson(context, configData, cacheControl: CacheHelper.NoCache);
@@ -96,8 +89,8 @@ public class ConfigController : JsonController
             // Optionally save to persistent config
             if (update.ContainsKey("saveToDisk") && Convert.ToBoolean(update["saveToDisk"]))
             {
-                _config.AutoExportMap = _autoExportEnabled;
-                _config.EnableHistoricalTracking = _historicalTrackingEnabled;
+                _config.WebServer.AutoExportMap = _autoExportEnabled;
+                _config.Tracking.EnableHistoricalTracking = _historicalTrackingEnabled;
                 SaveConfig(_config);
                 Sapi.Logger.Notification("[VintageAtlas] Runtime config saved to disk");
             }

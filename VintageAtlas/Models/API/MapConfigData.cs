@@ -41,12 +41,6 @@ public class MapConfigData
     public double[] ViewResolutions { get; set; } = [];
 
     /// <summary>
-    /// Absolute tile origin per zoom level (X,Y) in storage coordinates.
-    /// Allows the frontend to offset tile grid indices to direct XYZ requests.
-    /// </summary>
-    public int[][] OriginTilesPerZoom { get; set; } = [];
-
-    /// <summary>
     /// Spawn position in world block coordinates: [x, z]
     /// </summary>
     public int[] SpawnPosition { get; set; } = [];

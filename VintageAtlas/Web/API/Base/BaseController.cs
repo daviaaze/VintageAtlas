@@ -2,43 +2,22 @@ using System;
 using System.Net;
 using System.Threading.Tasks;
 using Vintagestory.API.Server;
+using VintageAtlas.Web.API.Responses;
 
 namespace VintageAtlas.Web.API.Base;
 
 /// <summary>
 /// Base controller with common HTTP response handling functionality
 /// </summary>
-public abstract class BaseController
+public abstract class BaseController(ICoreServerAPI sapi)
 {
-    protected readonly ICoreServerAPI Sapi;
-
-    protected BaseController(ICoreServerAPI sapi)
-    {
-        Sapi = sapi ?? throw new ArgumentNullException(nameof(sapi));
-    }
+    protected readonly ICoreServerAPI Sapi = sapi ?? throw new ArgumentNullException(nameof(sapi));
 
     /// <summary>
     /// Serve an error response with proper formatting
     /// </summary>
-    protected async Task ServeError(HttpListenerContext context, string message, int statusCode = 500)
-    {
-        try
-        {
-            context.Response.StatusCode = statusCode;
-            context.Response.ContentType = "application/json";
-
-            var errorJson = $"{{\"error\":\"{EscapeJson(message)}\"}}";
-            var errorBytes = System.Text.Encoding.UTF8.GetBytes(errorJson);
-
-            context.Response.ContentLength64 = errorBytes.Length;
-            await context.Response.OutputStream.WriteAsync(errorBytes);
-            context.Response.Close();
-        }
-        catch
-        {
-            // Silently fail if we can't write error response
-        }
-    }
+    protected Task ServeError(HttpListenerContext context, string message, int statusCode = 500)
+        => ErrorResponse.ServeAsync(context, message, statusCode);
 
     /// <summary>
     /// Check If-None-Match header and return 304 if ETag matches
@@ -53,19 +32,6 @@ public abstract class BaseController
         context.Response.Headers.Add("ETag", etag);
         context.Response.Close();
         return true;
-    }
-
-    /// <summary>
-    /// Escape JSON string values
-    /// </summary>
-    private static string EscapeJson(string str)
-    {
-        return str
-            .Replace("\\", "\\\\")
-            .Replace("\"", "\\\"")
-            .Replace("\n", "\\n")
-            .Replace("\r", "\\r")
-            .Replace("\t", "\\t");
     }
 
     /// <summary>

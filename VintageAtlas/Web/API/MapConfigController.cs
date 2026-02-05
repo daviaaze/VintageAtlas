@@ -13,17 +13,12 @@ namespace VintageAtlas.Web.API;
 /// Provides dynamic map configuration (extent, center, zoom levels, etc.)
 /// Replaces hardcoded values in frontend mapConfig.ts
 /// </summary>
-public class MapConfigController : JsonController
+public class MapConfigController(ICoreServerAPI sapi, ITileGenerator? tileGenerator = null) : JsonController(sapi), IMapConfigController
 {
-    private readonly ITileGenerator? _tileGenerator;
+    private readonly ITileGenerator? _tileGenerator = tileGenerator;
     private MapConfigData? _cachedConfig;
     private long _lastConfigUpdate;
     private readonly object _cacheLock = new();
-
-    public MapConfigController(ICoreServerAPI sapi, ITileGenerator? tileGenerator = null) : base(sapi)
-    {
-        _tileGenerator = tileGenerator;
-    }
 
     /// <summary>
     /// Serve map configuration as JSON
@@ -107,14 +102,15 @@ public class MapConfigController : JsonController
         int[] worldOrigin = [-mapSizeX, mapSizeZ];
         int[] defaultCenter = [spawn.X - mapSizeX, spawn.Z - mapSizeZ];
 
-        double[] webCartographerResolutions = [512, 256, 128, 64, 32, 16, 8, 4, 2, 1];
-        var maxZoom = webCartographerResolutions.Length - 1;
+        double[] tileResolutions = [512, 256, 128, 64, 32, 16, 8, 4, 2, 1];
+        double[] viewResolutions = [512, 256, 128, 64, 32, 16, 8, 4, 2, 1, 0.5, 0.25, 0.125];
+        var maxZoom = viewResolutions.Length - 1;
 
-        var originTiles = new int[webCartographerResolutions.Length][];
+        var originTiles = new int[viewResolutions.Length][];
 
-        for (var zoom = 0; zoom < webCartographerResolutions.Length; zoom++)
+        for (var zoom = 0; zoom < viewResolutions.Length; zoom++)
         {
-            var resolution = webCartographerResolutions[zoom];
+            var resolution = viewResolutions[zoom];
             int originTileX = (int)Math.Floor(worldOrigin[0] / (resolution * 256));
             int originTileY = (int)Math.Floor(worldOrigin[1] / (resolution * 256));
 
@@ -151,15 +147,14 @@ public class MapConfigController : JsonController
             BaseZoomLevel = maxZoom,
 
             TileSize = 256,
-            TileResolutions = webCartographerResolutions,
-            ViewResolutions = webCartographerResolutions,
-            OriginTilesPerZoom = originTiles,
+            TileResolutions = tileResolutions,
+            ViewResolutions = viewResolutions,
 
             MapSizeX = Sapi.World.BlockAccessor.MapSizeX,
             MapSizeZ = Sapi.World.BlockAccessor.MapSizeZ,
             MapSizeY = Sapi.World.BlockAccessor.MapSizeY,
 
-            SpawnPosition = [spawn.X, spawn.Z],
+            SpawnPosition = defaultCenter,
 
             ServerName = Sapi.Server.Config.ServerName,
             WorldName = Sapi.World.SavegameIdentifier

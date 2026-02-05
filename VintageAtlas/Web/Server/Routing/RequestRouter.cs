@@ -1,8 +1,8 @@
 using System.Net;
-using System.Text;
 using System.Threading.Tasks;
 using VintageAtlas.Web.API;
 using VintageAtlas.Web.API.Controllers;
+using VintageAtlas.Web.API.Responses;
 
 namespace VintageAtlas.Web.Server.Routing;
 
@@ -13,15 +13,17 @@ public class RequestRouter(
     ConfigController configController,
     StatusController statusController,
     GeoJsonController geoJsonController,
-    MapConfigController mapConfigController,
+    IMapConfigController mapConfigController,
     TileController tileController,
+    WaypointController waypointController,
     StaticFileServer staticFileServer)
 {
     private readonly ApiRouter _apiRouter = BuildApiRouter(
         configController,
         statusController,
         geoJsonController,
-        mapConfigController);
+        mapConfigController,
+        waypointController);
 
     public async Task RouteRequest(HttpListenerContext context)
     {
@@ -60,12 +62,17 @@ public class RequestRouter(
         ConfigController configController,
         StatusController statusController,
         GeoJsonController geoJsonController,
-        MapConfigController mapConfigController)
+
+        IMapConfigController mapConfigController,
+        WaypointController waypointController)
     {
         var router = new ApiRouter();
 
         // Status endpoint (game state: calendar, season, time)
         router.AddRoute("status", statusController.GetStatus, "GET");
+        
+        // Players endpoint (player positions and info)
+        router.AddRoute("players", statusController.GetPlayers, "GET");
 
         // Configuration endpoints (method-specific)
         router.AddRoute("config", configController.GetConfig, "GET");
@@ -79,6 +86,9 @@ public class RequestRouter(
 
         // GeoJSON endpoints
         router.AddRoute(["geojson/traders", "traders.geojson"], geoJsonController.ServeTraders);
+
+        // Waypoints endpoint
+        router.AddRoute("waypoints", waypointController.GetWaypoints, "GET");
 
         return router;
     }
@@ -96,30 +106,12 @@ public class RequestRouter(
         // Handle method not allowed for known paths
         if (_apiRouter.FindRoute(apiPath, "*") != null)
         {
-            await ServeError(context, "Method not allowed", 405);
+            await ErrorResponse.ServeMethodNotAllowedAsync(context);
             return;
         }
 
         // API endpoint not found
-        await ServeError(context, "API endpoint not found", 404);
-    }
-
-    private static async Task ServeError(HttpListenerContext context, string message, int statusCode = 500)
-    {
-        try
-        {
-            context.Response.StatusCode = statusCode;
-            context.Response.ContentType = "application/json";
-
-            var errorBytes = Encoding.UTF8.GetBytes($"{{\"error\":\"{message}\"}}");
-            context.Response.ContentLength64 = errorBytes.Length;
-            await context.Response.OutputStream.WriteAsync(errorBytes);
-            context.Response.Close();
-        }
-        catch
-        {
-            // Silently fail if we can't write an error response
-        }
+        await ErrorResponse.ServeNotFoundAsync(context, "API endpoint not found");
     }
 }
 

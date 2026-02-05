@@ -3,12 +3,12 @@ using Newtonsoft.Json;
 using VintageAtlas.Export.Colors;
 using Vintagestory.API.Config;
 
-namespace VintageAtlas.Core;
+namespace VintageAtlas.Core.Configuration;
 
 /// <summary>
-/// Main configuration for VintageAtlas mod
+/// Configuration settings specific to map export operations
 /// </summary>
-public class ModConfig
+public class MapExportSettings
 {
     #region Map Export Settings
 
@@ -123,93 +123,5 @@ public class ModConfig
     public bool StopOnDone { get; set; } = false;
 
     #endregion
-
-    #region Web Server Settings
-
-    /// <summary>
-    /// Enable live web server for real-time player and animal data
-    /// Default: true
-    /// </summary>
-    public bool EnableLiveServer { get; set; } = true;
-
-    /// <summary>
-    /// Port for the live server HTTP listener (defaults to game port + 1)
-    /// </summary>
-    public int? LiveServerPort { get; set; }
-
-    /// <summary>
-    /// Host for the live server
-    /// Default: localhost
-    /// </summary>
-    public string LiveServerHost { get; set; } = "localhost";
-
-    /// <summary>
-    /// API endpoint path for status data
-    /// Default: status
-    /// </summary>
-    public string LiveServerEndpoint { get; set; } = "status";
-
-    /// <summary>
-    /// Enable CORS for API endpoints
-    /// Default: true
-    /// </summary>
-    public bool EnableCors { get; set; } = true;
-
-    /// <summary>
-    /// Auto-export map data periodically when a live server is running
-    /// Default: true
-    /// </summary>
-    public bool AutoExportMap { get; set; } = true;
-
-    /// <summary>
-    /// Interval in milliseconds for auto map export
-    /// Default: 300000 (5 minutes)
-    /// </summary>
-    public int MapExportIntervalMs { get; set; } = 300000;
-
-    /// <summary>
-    /// Maximum concurrent API requests allowed (prevents DoS attacks)
-    /// Default: 50
-    /// Recommended: 20 for small servers, 50 for medium, 100 for large
-    /// </summary>
-    public int? MaxConcurrentRequests { get; set; } = 50;
-
-    /// <summary>
-    /// Maximum concurrent tile requests allowed (separate from API limit)
-    /// Default: 500
-    /// High value needed for map tile loading (a single map view can request 20-50+ tiles)
-    /// </summary>
-    public int? MaxConcurrentTileRequests { get; set; } = 500;
-
-    /// <summary>
-    /// Maximum concurrent static file requests allowed (separate from API limit)
-    /// Default: 200
-    /// Used for HTML, CSS, JS, fonts, etc.
-    /// </summary>
-    public int? MaxConcurrentStaticRequests { get; set; } = 200;
-
-    /// <summary>
-    /// Base path for the web application (e.g., "/" or "/vintagestory/")
-    /// Useful when serving behind nginx at a sub-path
-    /// Default: "/"
-    /// </summary>
-    public string BasePath { get; set; } = "/";
-
-    #endregion
-
-    #region Historical Tracking Settings
-
-    /// <summary>
-    /// Enable historical tracking (player positions, entity census, server stats)
-    /// Default: true
-    /// </summary>
-    public bool EnableHistoricalTracking { get; set; } = true;
-
-    /// <summary>
-    /// Interval in milliseconds for recording historical data
-    /// Default: 5000 (5 seconds)
-    /// </summary>
-    public int HistoricalTickIntervalMs { get; set; } = 5000;
-
-    #endregion
 }
+

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Vintagestory.API.Server;
 using Vintagestory.Server;
-using VintageAtlas.Core;
+using VintageAtlas.Core.Configuration;
 using Vintagestory.API.Common;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Config;
@@ -42,7 +42,7 @@ public class ChunkDataExtractor
     /// </summary>
     public TileChunkData ExtractTileData(int zoom, int tileX, int tileZ)
     {
-        var tileSize = _config.TileSize;
+        var tileSize = _config.Export.TileSize;
         var chunksPerTile = tileSize / ChunkSize;
 
         var tileData = new TileChunkData
@@ -210,7 +210,7 @@ public class ChunkDataExtractor
 
     private void ExtractBlockEntities(ChunkSnapshot snapshot, int chunkX, int surfaceChunkY, int chunkZ)
     {
-        snapshot.BlockEntities = new Dictionary<BlockPos, BlockEntity>();
+        snapshot.BlockEntities = [];
 
         try
         {

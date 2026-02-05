@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using Vintagestory.API.Common;
 using Vintagestory.API.MathTools;
 using Vintagestory.Server;
-using VintageAtlas.Core;
+using VintageAtlas.Core.Configuration;
 using Vintagestory.Common.Database;
 using Vintagestory.GameContent;
 using Vintagestory.API.Config;
@@ -20,26 +20,16 @@ namespace VintageAtlas.Export.DataSources;
 /// Used for full map exports where we need to access all chunks, even unloaded ones.
 /// Does NOT require main thread access (reads from the database directly).
 /// </summary>
-public sealed class SavegameDataSource : IChunkDataSource, IDisposable
+public sealed class SavegameDataSource(ServerMain server, ModConfig config, ILogger logger) : IChunkDataSource, IDisposable
 {
-    private readonly ISavegameRepository _repository;
-    private readonly ServerMain _server;
-    private readonly ModConfig _config;
-    private readonly ILogger _logger;
+    private readonly ISavegameRepository _repository = new SavegameRepository(server, config.Export.MaxDegreeOfParallelism, logger);
+    private readonly ServerMain _server = server;
+    private readonly ModConfig _config = config;
+    private readonly ILogger _logger = logger;
     private readonly int _chunkSize = MagicNum.ServerChunkSize;
 
     public string SourceName => "SavegameDatabase";
     public bool RequiresMainThread => false;
-
-    public SavegameDataSource(ServerMain server, ModConfig config, ILogger logger)
-    {
-        _server = server;
-        _config = config;
-        _logger = logger;
-
-        // Create repository with pool size from config
-        _repository = new SavegameRepository(server, config.MaxDegreeOfParallelism, logger);
-    }
 
     /// <summary>
     /// Get all map chunk positions that exist in the savegame database.
@@ -83,7 +73,7 @@ public sealed class SavegameDataSource : IChunkDataSource, IDisposable
         {
             try
             {
-                var chunksPerTile = _config.TileSize / _chunkSize;
+                var chunksPerTile = _config.Export.TileSize / _chunkSize;
                 var startChunkX = tileX * chunksPerTile;
                 var startChunkZ = tileZ * chunksPerTile;
 
@@ -92,7 +82,7 @@ public sealed class SavegameDataSource : IChunkDataSource, IDisposable
                     Zoom = zoom,
                     TileX = tileX,
                     TileZ = tileZ,
-                    TileSize = _config.TileSize,
+                    TileSize = _config.Export.TileSize,
                     ChunksPerTileEdge = chunksPerTile
                 };
 
@@ -305,6 +295,68 @@ public sealed class SavegameDataSource : IChunkDataSource, IDisposable
                 }
             }
 
+            // ═══════════════════════════════════════════════════════════════
+            // LOAD CLIMATE DATA
+            // ═══════════════════════════════════════════════════════════════
+            var climateData = new int[1];
+            try
+            {
+                var regionX = chunkX / 16;
+                var regionZ = chunkZ / 16;
+                var regionPos = (ulong)regionZ * (ulong)_server.BlockAccessor.MapSizeX / 16 + (ulong)regionX;
+                
+                // We need to handle map regions carefully. 
+                // Since we are inside a loop, we should probably cache regions, but for now let's fetch it.
+                // Optimization: The caller (GetTileChunksAsync) could pre-fetch regions, but it iterates chunks.
+                // SavegameRepository has internal pooling, so it should be okay.
+                
+                var mapRegion = _repository.GetMapRegion(regionPos);
+                if (mapRegion != null)
+                {
+                    // Use reflection to access ClimateMap if direct access fails or to be safe
+                    // ServerMapRegion should implement IMapRegion
+                    var climateMapProp = mapRegion.GetType().GetProperty("ClimateMap");
+                    if (climateMapProp != null)
+                    {
+                        var climateMap = climateMapProp.GetValue(mapRegion);
+                        if (climateMap != null)
+                        {
+                            var dataProp = climateMap.GetType().GetProperty("Data");
+                            var sizeProp = climateMap.GetType().GetProperty("Size");
+                            
+                            if (dataProp != null && sizeProp != null)
+                            {
+                                var data = dataProp.GetValue(climateMap) as int[];
+                                var sizeObj = sizeProp.GetValue(climateMap);
+                                
+                                if (data != null && sizeObj != null)
+                                {
+                                    var size = (int)sizeObj;
+                                    var localX = chunkX % 16;
+                                    var localZ = chunkZ % 16;
+                                    
+                                    // MapRegion ClimateMap is usually 16x16 (1 pixel per chunk)
+                                    // If size is different, we need to scale
+                                    var scale = size / 16;
+                                    var cX = localX * scale;
+                                    var cZ = localZ * scale;
+                                    
+                                    var index = cZ * size + cX;
+                                    if (index < data.Length)
+                                    {
+                                        climateData[0] = data[index];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning($"[VintageAtlas] Failed to load climate data for chunk {chunkX},{chunkZ}: {ex.Message}");
+            }
+
             return new ChunkSnapshot
             {
                 ChunkX = chunkX,
@@ -314,6 +366,7 @@ public sealed class SavegameDataSource : IChunkDataSource, IDisposable
                 BlockIds = blockIds,
                 BlockEntities = allBlockEntities,
                 Traders = allTraders,
+                ClimateData = climateData,
                 IsLoaded = true
             };
         }
@@ -323,6 +376,16 @@ public sealed class SavegameDataSource : IChunkDataSource, IDisposable
             return null;
         }
     }
+
+    // Helper to unpack packed climate int into temperature and rainfall components
+    // Helper to unpack packed climate int into temperature and rainfall components
+    // Based on DeepWiki: Temp in bits 16-23, Rain in bits 8-15
+    public static void UnpackClimateData(int packed, out int temperature, out int rainfall)
+    {
+        temperature = (packed >> 16) & 0xFF;
+        rainfall = (packed >> 8) & 0xFF;
+    }
+
 
     public void Dispose()
     {

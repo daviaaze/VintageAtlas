@@ -22,3 +22,23 @@ export interface ServerStatus {
     serverName: string;
   };
 }
+
+/**
+ * Player information
+ */
+export interface Player {
+  name: string;
+  uid: string;
+  x: number;
+  y: number;
+  yaw: number;
+  pitch: number;
+}
+
+/**
+ * Players response from /api/players endpoint
+ */
+export interface PlayersResponse {
+  players: Player[];
+  count: number;
+}

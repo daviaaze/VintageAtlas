@@ -5,7 +5,7 @@ using Vintagestory.API.Common;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 using Vintagestory.GameContent;
-using VintageAtlas.Core;
+using VintageAtlas.Core.Configuration;
 using VintageAtlas.Export.Colors;
 using VintageAtlas.Export.Data;
 using VintageAtlas.Export.Utils;
@@ -21,7 +21,7 @@ public sealed class FastBitmapRenderer
 {
     private readonly ICoreServerAPI _sapi;
     private readonly ModConfig _config;
-    private readonly BlockColorCache _colorCache;
+    private readonly IBlockColorCache _colorCache;
     private readonly PixelColorResolver _colorResolver;
     private readonly HashSet<int> _microBlocks;
 
@@ -30,7 +30,7 @@ public sealed class FastBitmapRenderer
     public FastBitmapRenderer(
         ICoreServerAPI sapi,
         ModConfig config,
-        BlockColorCache colorCache,
+        IBlockColorCache colorCache,
         HashSet<int> microBlocks)
     {
         _sapi = sapi ?? throw new ArgumentNullException(nameof(sapi));
@@ -156,7 +156,7 @@ public sealed class FastBitmapRenderer
                     var color = _colorResolver.CalculatePixelColor(blockId, overrideColor, pixelCtx, snapshot, randomForTile);
 
                     // Update shadow map for hill shading modes
-                    if (_config.Mode is ImageMode.ColorVariationsWithHillShading or ImageMode.MedievalStyleWithHillShading)
+                    if (_config.Export.Mode is ImageMode.ColorVariationsWithHillShading or ImageMode.MedievalStyleWithHillShading)
                     {
                         UpdateShadowMap(shadowMap, tileSize, blockId, pixelCtx, snapshot);
                     }
@@ -251,7 +251,7 @@ public sealed class FastBitmapRenderer
         else
         {
             // Fallback parity with Extractor
-            overrideColor = _config.Mode == ImageMode.MedievalStyleWithHillShading
+            overrideColor = _config.Export.Mode == ImageMode.MedievalStyleWithHillShading
                 ? MapColors.ColorsByCode["land"]
                 : (uint)SKColors.Green;
         }
@@ -269,7 +269,7 @@ public sealed class FastBitmapRenderer
             return;
 
         // Skip shadow calculation for lakes in medieval mode
-        if (_config.Mode == ImageMode.MedievalStyleWithHillShading && _colorCache.IsLake(blockId))
+        if (_config.Export.Mode == ImageMode.MedievalStyleWithHillShading && _colorCache.IsLake(blockId))
             return;
 
         var (nwDelta, nDelta, wDelta) = CalculateAltitudeDiff(ctx.X, ctx.Height, ctx.Z, snapshot.HeightMap);
@@ -289,7 +289,7 @@ public sealed class FastBitmapRenderer
 
     private Span<byte> InitializeShadowMap(int tileSize)
     {
-        if (_config.Mode is not (ImageMode.ColorVariationsWithHillShading or ImageMode.MedievalStyleWithHillShading))
+        if (_config.Export.Mode is not (ImageMode.ColorVariationsWithHillShading or ImageMode.MedievalStyleWithHillShading))
             return null;
 
         var shadowMap = new byte[tileSize * tileSize];
@@ -299,7 +299,7 @@ public sealed class FastBitmapRenderer
 
     private void ApplyShadowMapIfNeeded(SKBitmap bitmap, Span<byte> shadowMap, int tileSize)
     {
-        if (_config.Mode is ImageMode.ColorVariationsWithHillShading or ImageMode.MedievalStyleWithHillShading)
+        if (_config.Export.Mode is ImageMode.ColorVariationsWithHillShading or ImageMode.MedievalStyleWithHillShading)
         {
             ApplyShadowMapToBitmap(bitmap, shadowMap, tileSize);
         }

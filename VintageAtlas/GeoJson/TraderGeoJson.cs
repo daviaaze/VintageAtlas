@@ -15,5 +15,5 @@ public record TraderGeoJson
     public string Name { get; set; } = "traders";
 
     [JsonProperty("features")]
-    public List<TraderFeature> Features { get; set; } = new();
+    public List<TraderFeature> Features { get; set; } = [];
 }

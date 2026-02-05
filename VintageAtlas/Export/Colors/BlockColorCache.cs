@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Vintagestory.API.Common;
 using Vintagestory.API.Server;
-using VintageAtlas.Core;
+using VintageAtlas.Core.Configuration;
 using VintageAtlas.Export.Data;
 
 namespace VintageAtlas.Export.Colors;
@@ -16,13 +16,13 @@ namespace VintageAtlas.Export.Colors;
 /// 2. MapColors defaults - Fallback based on block material
 /// 3. Block material detection - For water/lake identification
 /// </summary>
-public class BlockColorCache
+public class BlockColorCache : IBlockColorCache
 {
     private readonly ICoreServerAPI _sapi;
     private readonly ModConfig _config;
 
     // Block ID -> List of color variations (for ColorVariations modes)
-    private readonly Dictionary<int, List<uint>> _blockColorVariations = new();
+    private readonly List<uint>?[] _blockColorVariations;
 
     // Block ID -> Base color index for Medieval style
     private readonly byte[] _blockToColorIndex;
@@ -44,6 +44,7 @@ public class BlockColorCache
         var maxBlockId = sapi.World.Blocks.Count + 1;
         _blockToColorIndex = new byte[maxBlockId];
         _blockIsLake = new bool[maxBlockId];
+        _blockColorVariations = new List<uint>?[maxBlockId];
         _colorPalette = new uint[MapColors.ColorsByCode.Count];
     }
 
@@ -72,7 +73,7 @@ public class BlockColorCache
 
         _isInitialized = true;
 
-        var variationCount = _blockColorVariations.Count;
+        var variationCount = _blockColorVariations.Count(v => v != null);
         var lakeCount = _blockIsLake.Count(b => b);
 
         _sapi.Logger.Notification($"[VintageAtlas] Block color cache initialized: " +
@@ -89,7 +90,7 @@ public class BlockColorCache
         if (blockId < 0 || blockId >= _blockToColorIndex.Length)
             return null;
 
-        return _blockColorVariations.GetValueOrDefault(blockId);
+        return _blockColorVariations[blockId];
     }
 
     /// <summary>
@@ -101,7 +102,8 @@ public class BlockColorCache
             return MapColors.ColorsByCode["land"]; // Default fallback
 
         // Try to use the first color from variations (most detailed)
-        if (_blockColorVariations.TryGetValue(blockId, out var variations) && variations.Count > 0)
+        var variations = _blockColorVariations[blockId];
+        if (variations != null && variations.Count > 0)
         {
             return variations[0];
         }
@@ -143,7 +145,7 @@ public class BlockColorCache
     {
         var customData = _sapi.LoadModConfig<ExportData>("blockColorMapping.json");
 
-        if (customData == null && _config.Mode != ImageMode.MedievalStyleWithHillShading)
+        if (customData == null && _config.Export.Mode != ImageMode.MedievalStyleWithHillShading)
         {
             _sapi.Logger.Warning("[VintageAtlas] blockColorMapping.json not found - using material-based colors only");
         }

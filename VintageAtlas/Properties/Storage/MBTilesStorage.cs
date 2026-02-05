@@ -11,7 +11,7 @@ namespace VintageAtlas.Storage;
 /// https://github.com/mapbox/mbtiles-spec
 /// Thread-safe implementation using connection string instead of shared connection
 /// </summary>
-public sealed class MbTilesStorage : IDisposable
+public sealed class MbTilesStorage : ITileStorage
 {
     private readonly string _connectionString;
     private readonly string _dbPath;
@@ -162,6 +162,26 @@ public sealed class MbTilesStorage : IDisposable
     }
 
     /// <summary>
+    /// Execute a database action with retry logic for handling locks
+    /// </summary>
+    private async Task ExecuteWithRetryAsync(Func<Task> action, int maxRetries = 3, int delayMs = 100)
+    {
+        for (var i = 0; i < maxRetries; i++)
+        {
+            try
+            {
+                await action();
+                return;
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 5 || ex.SqliteErrorCode == 6) // SQLITE_BUSY or SQLITE_LOCKED
+            {
+                if (i == maxRetries - 1) throw;
+                await Task.Delay(delayMs * (i + 1)); // Exponential backoff
+            }
+        }
+    }
+
+    /// <summary>
     /// Store a tile in the database
     /// </summary>
     public async Task PutTileAsync(int zoom, int x, int y, byte[] tileData)
@@ -173,22 +193,25 @@ public sealed class MbTilesStorage : IDisposable
 
         await EnsureInitializedAsync(); // CRITICAL: Initialize DB before first write
 
-        await using var connection = CreateConnection();
+        await ExecuteWithRetryAsync(async () =>
+        {
+            await using var connection = CreateConnection();
 
-        await using var cmd = connection.CreateCommand();
-        cmd.CommandText = """
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
 
-                                      INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data)
-                                      VALUES (@zoom, @x, @y, @data)
-                                  
-                          """;
+                                          INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data)
+                                          VALUES (@zoom, @x, @y, @data)
+                                      
+                              """;
 
-        cmd.Parameters.AddWithValue("@zoom", zoom);
-        cmd.Parameters.AddWithValue("@x", x);
-        cmd.Parameters.AddWithValue("@y", y); // Use absolute tile coordinates
-        cmd.Parameters.AddWithValue("@data", tileData);
+            cmd.Parameters.AddWithValue("@zoom", zoom);
+            cmd.Parameters.AddWithValue("@x", x);
+            cmd.Parameters.AddWithValue("@y", y); // Use absolute tile coordinates
+            cmd.Parameters.AddWithValue("@data", tileData);
 
-        await cmd.ExecuteNonQueryAsync();
+            await cmd.ExecuteNonQueryAsync();
+        });
 
         // Maintain minzoom/maxzoom metadata automatically
         await UpdateZoomMetadataAsync(zoom);
@@ -201,23 +224,27 @@ public sealed class MbTilesStorage : IDisposable
     {
         await EnsureInitializedAsync(); // Ensure database is initialized
 
-        // Use absolute tile coordinates (no TMS conversion needed)
-        await using var connection = CreateConnection();
+        byte[]? result = null;
+        await ExecuteWithRetryAsync(async () =>
+        {
+            await using var connection = CreateConnection();
 
-        await using var cmd = connection.CreateCommand();
-        cmd.CommandText = """
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
 
-                                      SELECT tile_data FROM tiles
-                                      WHERE zoom_level = @zoom AND tile_column = @x AND tile_row = @y
-                                  
-                          """;
+                                          SELECT tile_data FROM tiles
+                                          WHERE zoom_level = @zoom AND tile_column = @x AND tile_row = @y
+                                      
+                              """;
 
-        cmd.Parameters.AddWithValue("@zoom", zoom);
-        cmd.Parameters.AddWithValue("@x", x);
-        cmd.Parameters.AddWithValue("@y", y); // Use absolute tile coordinates
+            cmd.Parameters.AddWithValue("@zoom", zoom);
+            cmd.Parameters.AddWithValue("@x", x);
+            cmd.Parameters.AddWithValue("@y", y); // Use absolute tile coordinates
 
-        var result = await cmd.ExecuteScalarAsync();
-        return result as byte[];
+            var scalar = await cmd.ExecuteScalarAsync();
+            result = scalar as byte[];
+        });
+        return result;
     }
 
     /// <summary>
@@ -225,23 +252,24 @@ public sealed class MbTilesStorage : IDisposable
     /// </summary>
     public async Task DeleteTileAsync(int zoom, int x, int y)
     {
-        // Use absolute tile coordinates (no TMS conversion needed)
-        await using var connection = CreateConnection();
-        await Task.CompletedTask; // Already opened in CreateConnection()
+        await ExecuteWithRetryAsync(async () =>
+        {
+            await using var connection = CreateConnection();
 
-        await using var cmd = connection.CreateCommand();
-        cmd.CommandText = """
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
 
-                                      DELETE FROM tiles
-                                      WHERE zoom_level = @zoom AND tile_column = @x AND tile_row = @y
-                                  
-                          """;
+                                          DELETE FROM tiles
+                                          WHERE zoom_level = @zoom AND tile_column = @x AND tile_row = @y
+                                      
+                              """;
 
-        cmd.Parameters.AddWithValue("@zoom", zoom);
-        cmd.Parameters.AddWithValue("@x", x);
-        cmd.Parameters.AddWithValue("@y", y); // Use absolute tile coordinates
+            cmd.Parameters.AddWithValue("@zoom", zoom);
+            cmd.Parameters.AddWithValue("@x", x);
+            cmd.Parameters.AddWithValue("@y", y); // Use absolute tile coordinates
 
-        await cmd.ExecuteNonQueryAsync();
+            await cmd.ExecuteNonQueryAsync();
+        });
     }
 
     public async Task<byte[]?> GetRainTileAsync(int x, int y)
@@ -426,17 +454,20 @@ public sealed class MbTilesStorage : IDisposable
     public async Task SetMetadataAsync(string name, string value)
     {
         await EnsureInitializedAsync();
-        await using var connection = CreateConnection();
-        await using var cmd = connection.CreateCommand();
-        cmd.CommandText = """
+        await ExecuteWithRetryAsync(async () =>
+        {
+            await using var connection = CreateConnection();
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
 
-                                      INSERT OR REPLACE INTO metadata (name, value)
-                                      VALUES (@name, @value)
-                                  
-                          """;
-        cmd.Parameters.AddWithValue("@name", name);
-        cmd.Parameters.AddWithValue("@value", value);
-        await cmd.ExecuteNonQueryAsync();
+                                          INSERT OR REPLACE INTO metadata (name, value)
+                                          VALUES (@name, @value)
+                                      
+                              """;
+            cmd.Parameters.AddWithValue("@name", name);
+            cmd.Parameters.AddWithValue("@value", value);
+            await cmd.ExecuteNonQueryAsync();
+        });
     }
 
     private async Task<int?> GetMetadataIntAsync(string name)

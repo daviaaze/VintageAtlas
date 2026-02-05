@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 
 namespace VintageAtlas.Export.Data;
@@ -5,6 +6,7 @@ namespace VintageAtlas.Export.Data;
 /// <summary>
 /// Collection of chunk snapshots for a tile
 /// A tile typically spans multiple chunks (e.g., 256px tile = 8x8 chunks)
+/// Thread-safe for parallel processing
 /// </summary>
 public class TileChunkData
 {
@@ -26,8 +28,9 @@ public class TileChunkData
     /// <summary>
     /// All chunk snapshots needed for this tile
     /// Key: "chunkX_chunkZ_chunkY"
+    /// Thread-safe dictionary for parallel chunk processing
     /// </summary>
-    public Dictionary<string, ChunkSnapshot> Chunks { get; set; }
+    public ConcurrentDictionary<string, ChunkSnapshot> Chunks { get; set; }
 
     /// <summary>
     /// Number of chunks per tile edge (e.g., 8 for 256px tiles)
@@ -41,7 +44,7 @@ public class TileChunkData
 
     public TileChunkData()
     {
-        Chunks = [];
+        Chunks = new ConcurrentDictionary<string, ChunkSnapshot>();
     }
 
     /// <summary>

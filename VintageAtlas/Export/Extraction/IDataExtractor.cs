@@ -42,5 +42,5 @@ public interface IDataExtractor
     /// Use this to finalize output, write to storage, generate summaries, etc.
     /// </summary>
     /// <param name="progress">Optional progress reporting for finalization steps</param>
-    Task FinalizeAsync(IProgress<ExportProgress>? progress = null);
+    Task FinalizeAsync(IProgress<Application.UseCases.ExportProgress>? progress = null);
 }

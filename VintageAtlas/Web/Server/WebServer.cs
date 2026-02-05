@@ -3,7 +3,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Vintagestory.API.Server;
-using VintageAtlas.Core;
+using VintageAtlas.Core.Configuration;
 using VintageAtlas.Web.Server.Routing;
 
 namespace VintageAtlas.Web.Server;
@@ -11,10 +11,11 @@ namespace VintageAtlas.Web.Server;
 /// <summary>
 /// Manages the HTTP server lifecycle and request handling
 /// </summary>
-public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRouter router)
+public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRouter router, WebSocketManager webSocketManager)
     : IDisposable
 {
     private HttpListener? _httpListener;
+    private readonly WebSocketManager _webSocketManager = webSocketManager;
 
     // Separate semaphores for different request types
     private SemaphoreSlim? _apiRequestSemaphore;     // Limited for API calls
@@ -32,7 +33,8 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
 
         try
         {
-            var port = config.LiveServerPort ?? sapi.Server.Config.Port + 1;
+            // Use configured port if set, otherwise default to game port + 1
+            var port = config.WebServer.LiveServerPort ?? sapi.Server.Config.Port + 1;
 
             sapi.Logger.Notification($"[VintageAtlas] Starting production web server on port {port}");
 
@@ -45,9 +47,9 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
             sapi.Logger.Notification($"[VintageAtlas] ServicePointManager optimized for high-volume serving");
 
             // Initialize separate throttling semaphores for different request types
-            var maxApiRequests = config.MaxConcurrentRequests ?? 50;
-            var maxTileRequests = config.MaxConcurrentTileRequests ?? 500;  // Much higher for tiles
-            var maxStaticRequests = config.MaxConcurrentStaticRequests ?? 200;
+            var maxApiRequests = config.WebServer.MaxConcurrentRequests;
+            var maxTileRequests = config.WebServer.MaxConcurrentRequests;  // Simplified single limit
+            var maxStaticRequests = config.WebServer.MaxConcurrentRequests;
 
             _apiRequestSemaphore = new SemaphoreSlim(maxApiRequests, maxApiRequests);
             _tileRequestSemaphore = new SemaphoreSlim(maxTileRequests, maxTileRequests);
@@ -68,7 +70,7 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
 
             sapi.Logger.Notification($"[VintageAtlas] Web server started successfully");
             sapi.Logger.Notification($"  - Web UI: http://localhost:{port}/");
-            sapi.Logger.Notification($"  - API Status: http://localhost:{port}/api/{config.LiveServerEndpoint}");
+            sapi.Logger.Notification($"  - API Status: http://localhost:{port}/api/{config.WebServer.LiveServerEndpoint}");
             sapi.Logger.Notification($"  - Accessible from network: http://<server-ip>:{port}/");
 
             _ = Task.Run(ListenAsync);
@@ -115,6 +117,14 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
             {
                 var context = await _httpListener.GetContextAsync();
 
+                // Handle WebSocket requests
+                if (context.Request.IsWebSocketRequest)
+                {
+                    var wsContext = await context.AcceptWebSocketAsync(subProtocol: null);
+                    _ = _webSocketManager.HandleConnectionAsync(wsContext);
+                    continue;
+                }
+
                 // Determine the request type and apply appropriate throttling
                 var rawPath = context.Request.Url?.AbsolutePath ?? "/";
                 var path = NormalizePath(rawPath);
@@ -146,6 +156,7 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
                     await RejectRequest(context, requestType);
                 }
             }
+
             catch (Exception ex)
             {
                 if (_httpListener.IsListening && sapi != null)
@@ -160,7 +171,7 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
     {
         try
         {
-            var basePath = config.BasePath ?? "/";
+            var basePath = config.WebServer.BasePath ?? "/";
             if (string.IsNullOrWhiteSpace(basePath) || basePath == "/") return path;
             if (!basePath.StartsWith('/')) basePath = $"/{basePath}";
             if (!basePath.EndsWith('/')) basePath += '/';
@@ -202,7 +213,6 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
         try
         {
             // Add CORS headers if enabled
-            if (config.EnableCors)
             {
                 context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
                 context.Response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -266,7 +276,7 @@ public sealed class WebServer(ICoreServerAPI sapi, ModConfig config, RequestRout
             context.Response.StatusCode = 503;
             context.Response.Headers.Add("Retry-After", "2"); // Shorter retry for tiles
 
-            if (config.EnableCors)
+            if (config.WebServer.EnableCors)
             {
                 context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
             }

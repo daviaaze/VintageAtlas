@@ -13,12 +13,17 @@ namespace VintageAtlas.Export.Generation;
 /// When all 4 child tiles for a zoom tile are ready, it immediately generates the parent tile.
 /// This allows zoom generation to happen concurrently with base tile rendering.
 /// </summary>
-public class IncrementalZoomTracker
+public class IncrementalZoomTracker(
+    ICoreServerAPI sapi,
+    UnifiedTileGenerator generator,
+    int baseZoom,
+    int minZoom = 0,
+    int maxConcurrentZoomTiles = 4)
 {
-    private readonly ICoreServerAPI _sapi;
-    private readonly UnifiedTileGenerator _generator;
-    private readonly int _baseZoom;
-    private readonly int _minZoom;
+    private readonly ICoreServerAPI _sapi = sapi ?? throw new ArgumentNullException(nameof(sapi));
+    private readonly UnifiedTileGenerator _generator = generator ?? throw new ArgumentNullException(nameof(generator));
+    private readonly int _baseZoom = baseZoom;
+    private readonly int _minZoom = minZoom;
 
     // Track how many child tiles have completed for each parent tile
     // Key: (zoom, tileX, tileZ), Value: count of completed children (0-4)
@@ -31,28 +36,13 @@ public class IncrementalZoomTracker
     private readonly ConcurrentDictionary<int, int> _tilesPerZoom = new();
 
     // Semaphore to limit concurrent zoom tile generation
-    private readonly SemaphoreSlim _generationSemaphore;
+    private readonly SemaphoreSlim _generationSemaphore = new SemaphoreSlim(maxConcurrentZoomTiles, maxConcurrentZoomTiles);
 
     // Track in-progress generation tasks
-    private readonly ConcurrentBag<Task> _activeTasks = new();
+    private readonly ConcurrentBag<Task> _activeTasks = [];
 
     private int _totalZoomTilesGenerated;
-    private bool _isEnabled;
-
-    public IncrementalZoomTracker(
-        ICoreServerAPI sapi,
-        UnifiedTileGenerator generator,
-        int baseZoom,
-        int minZoom = 0,
-        int maxConcurrentZoomTiles = 4)
-    {
-        _sapi = sapi ?? throw new ArgumentNullException(nameof(sapi));
-        _generator = generator ?? throw new ArgumentNullException(nameof(generator));
-        _baseZoom = baseZoom;
-        _minZoom = minZoom;
-        _generationSemaphore = new SemaphoreSlim(maxConcurrentZoomTiles, maxConcurrentZoomTiles);
-        _isEnabled = true;
-    }
+    private bool _isEnabled = true;
 
     /// <summary>
     /// Enable or disable incremental zoom generation.
@@ -141,17 +131,25 @@ public class IncrementalZoomTracker
                     await _generator.Storage.PutTileAsync(zoom, tileX, tileZ, downsampledTile);
 
                     // Track statistics
-                    Interlocked.Increment(ref _totalZoomTilesGenerated);
-                    _tilesPerZoom.AddOrUpdate(zoom, 1, (k, v) => v + 1);
+                    var newTotal = Interlocked.Increment(ref _totalZoomTilesGenerated);
+                    var zoomCount = _tilesPerZoom.AddOrUpdate(zoom, 1, (k, v) => v + 1);
 
-                    // Log progress every 50 tiles
-                    if (_totalZoomTilesGenerated % 50 == 0)
+                    // Log first few tiles at each zoom level for visibility
+                    if (zoomCount <= 3)
+                    {
+                        _sapi.Logger.Notification(
+                            $"[VintageAtlas] 🔄 Incremental zoom: Generated zoom {zoom} tile ({tileX},{tileZ}) - " +
+                            $"cascading from 4 completed child tiles");
+                    }
+
+                    // Log progress every 25 tiles (more frequent than before)
+                    if (newTotal % 25 == 0)
                     {
                         var stats = string.Join(", ", _tilesPerZoom
                             .OrderByDescending(kvp => kvp.Key)
                             .Select(kvp => $"z{kvp.Key}:{kvp.Value}"));
-                        _sapi.Logger.Debug(
-                            $"[VintageAtlas] Incremental zoom: {_totalZoomTilesGenerated} tiles ({stats})");
+                        _sapi.Logger.Notification(
+                            $"[VintageAtlas] 📊 Incremental zoom progress: {newTotal} zoom tiles generated ({stats})");
                     }
 
                     // Notify about this tile's completion (cascade to next zoom level)
@@ -192,7 +190,10 @@ public class IncrementalZoomTracker
                 .OrderByDescending(kvp => kvp.Key)
                 .Select(kvp => $"zoom {kvp.Key}: {kvp.Value} tiles"));
             _sapi.Logger.Notification(
-                $"[VintageAtlas] Incremental zoom generation complete: {_totalZoomTilesGenerated} total tiles ({stats})");
+                $"[VintageAtlas] ✅ Incremental zoom generation complete: {_totalZoomTilesGenerated} total zoom tiles");
+            _sapi.Logger.Notification($"[VintageAtlas] 📊 Breakdown by zoom level: {stats}");
+            _sapi.Logger.Notification(
+                "[VintageAtlas] ⚡ All zoom tiles were generated in parallel with base tiles - no post-processing delay!");
         }
     }
 

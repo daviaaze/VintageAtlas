@@ -14,7 +14,7 @@ public class ExportData
     /// Colors in ARGB format can be negative when serialized to JSON.
     /// </summary>
     [JsonProperty("Blocks")]
-    public Dictionary<string, int[]> BlocksRaw { get; set; } = new();
+    public Dictionary<string, int[]> BlocksRaw { get; set; } = [];
 
     /// <summary>
     /// Get blocks as uint[] by converting signed integers to unsigned.

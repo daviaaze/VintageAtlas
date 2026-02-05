@@ -4,17 +4,16 @@ using System.Threading.Tasks;
 using Vintagestory.API.Common;
 using Vintagestory.API.Server;
 using VintageAtlas.Web.API.Base;
+using VintageAtlas.Core;
 
 namespace VintageAtlas.Web.API.Controllers;
 
 /// <summary>
 /// Provides real-time game status information (time, date, season, etc.)
 /// </summary>
-public class StatusController : JsonController
+public class StatusController(ICoreServerAPI sapi, CoordinateTransformService coordinateService) : JsonController(sapi)
 {
-    public StatusController(ICoreServerAPI sapi) : base(sapi)
-    {
-    }
+    private readonly CoordinateTransformService _coordinateService = coordinateService ?? throw new ArgumentNullException(nameof(coordinateService));
 
     /// <summary>
     /// Get current game status including calendar and time information
@@ -168,6 +167,55 @@ public class StatusController : JsonController
         catch
         {
             return new { available = false };
+        }
+    }
+
+    /// <summary>
+    /// Get all online player positions
+    /// </summary>
+    public async Task GetPlayers(HttpListenerContext context)
+    {
+        try
+        {
+            var players = Sapi.World.AllOnlinePlayers;
+            var playerData = new System.Collections.Generic.List<object>();
+
+            if (players != null)
+            {
+                foreach (var player in players)
+                {
+                    var pos = player.Entity?.Pos;
+                    if (pos != null)
+                    {
+                        // Convert game coordinates to display coordinates
+                        var (x, y) = _coordinateService.GameToDisplay(new Vintagestory.API.MathTools.BlockPos((int)pos.X, (int)pos.Y, (int)pos.Z));
+                        
+                        playerData.Add(new
+                        {
+                            name = player.PlayerName,
+                            uid = player.PlayerUID,
+                            x,
+                            y, // No Y-flip needed for direct Feature creation
+                            yaw = pos.Yaw,
+                            pitch = pos.Pitch
+                        });
+                    }
+                }
+            }
+
+            var response = new
+            {
+                players = playerData,
+                count = playerData.Count
+            };
+
+            // Cache for 2 seconds (players move frequently but not every millisecond)
+            await ServeJson(context, response, cacheControl: "max-age=2");
+        }
+        catch (Exception ex)
+        {
+            LogError($"Error serving players: {ex.Message}", ex);
+            await ServeError(context, "Failed to get players");
         }
     }
 }

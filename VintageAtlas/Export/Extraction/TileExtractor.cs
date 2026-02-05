@@ -1,8 +1,9 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using VintageAtlas.Core;
+using VintageAtlas.Core.Configuration;
 using VintageAtlas.Export.Data;
 using VintageAtlas.Export.Generation;
 using VintageAtlas.Storage;
@@ -15,62 +16,84 @@ namespace VintageAtlas.Export.Extraction;
 /// Extractor for generating map tiles.
 /// Accumulates chunks organized by tile, then renders all tiles during finalization.
 /// </summary>
-public class TileExtractor : IDataExtractor
+public class TileExtractor(
+    UnifiedTileGenerator tileGenerator,
+    ModConfig config,
+    MbTilesStorage storage,
+    ICoreServerAPI sapi,
+    MapConfigController? mapConfigController = null) : IDataExtractor
 {
-    private readonly UnifiedTileGenerator _tileGenerator;
-    private readonly ModConfig _config;
-    private readonly MbTilesStorage _storage;
-    private readonly MapConfigController? _mapConfigController;
-    private readonly ICoreServerAPI _sapi;
+    private readonly UnifiedTileGenerator _tileGenerator = tileGenerator ?? throw new ArgumentNullException(nameof(tileGenerator));
+    private readonly ModConfig _config = config ?? throw new ArgumentNullException(nameof(config));
+    private readonly MbTilesStorage _storage = storage ?? throw new ArgumentNullException(nameof(storage));
+    private readonly MapConfigController? _mapConfigController = mapConfigController;
+    private readonly ICoreServerAPI _sapi = sapi ?? throw new ArgumentNullException(nameof(sapi));
+    
     // Organize chunks by tile coordinates (tileX, tileZ) -> TileChunkData
-    private readonly Dictionary<(int, int), TileChunkData> _tileChunks = new();
+    // Thread-safe dictionary for parallel processing
+    private readonly ConcurrentDictionary<(int, int), TileChunkData> _tileChunks = new();
+    
+    private IncrementalZoomTracker? _zoomTracker;
+    private int _tilesCompleted;
 
     private const int ChunkSize = 32;
 
     public string Name => "Map Tiles";
     public bool RequiresLoadedChunks => false; // Can work with savegame DB
 
-    public TileExtractor(
-        UnifiedTileGenerator tileGenerator,
-        ModConfig config,
-        MbTilesStorage storage,
-        ICoreServerAPI sapi,
-        MapConfigController? mapConfigController = null)
-    {
-        _tileGenerator = tileGenerator ?? throw new ArgumentNullException(nameof(tileGenerator));
-        _config = config ?? throw new ArgumentNullException(nameof(config));
-        _storage = storage ?? throw new ArgumentNullException(nameof(storage));
-        _mapConfigController = mapConfigController;
-        _sapi = sapi ?? throw new ArgumentNullException(nameof(sapi));
-    }
-
     public Task InitializeAsync()
     {
         _tileChunks.Clear();
+        _tilesCompleted = 0;
+
+        // Initialize zoom tracker if enabled
+        if (_config.Export.CreateZoomLevels)
+        {
+            // Calculate parallelism settings
+            var effectiveParallelism = _config.Export.MaxDegreeOfParallelism == -1
+                ? Environment.ProcessorCount
+                : _config.Export.MaxDegreeOfParallelism;
+
+            // Calculate optimal concurrency for zoom generation
+            var maxConcurrentZoomTiles = effectiveParallelism switch
+            {
+                <= 4 => 2,                                    // Low-end systems: minimal zoom concurrency
+                <= 8 => effectiveParallelism / 2,             // Mid-range: 50% for zoom
+                _ => Math.Max(4, effectiveParallelism / 2)    // High-end: at least 4, up to 50%
+            };
+
+            _zoomTracker = new IncrementalZoomTracker(
+                _sapi,
+                _tileGenerator,
+                _config.Export.BaseZoomLevel,
+                minZoom: 0,
+                maxConcurrentZoomTiles: maxConcurrentZoomTiles
+            );
+
+            _tileGenerator.Logger.Notification(
+                $"[VintageAtlas] ⚡ Incremental zoom generation enabled with {maxConcurrentZoomTiles} concurrent zoom tiles");
+        }
+
         return Task.CompletedTask;
     }
 
     public Task ProcessChunkAsync(ChunkSnapshot chunk)
     {
         // Calculate which tile this chunk belongs to
-        var chunksPerTile = _config.TileSize / ChunkSize;
+        var chunksPerTile = _config.Export.TileSize / ChunkSize;
         var tileX = chunk.ChunkX / chunksPerTile;
         var tileZ = chunk.ChunkZ / chunksPerTile;
         var tileKey = (tileX, tileZ);
 
-        // Get or create TileChunkData for this tile
-        if (!_tileChunks.TryGetValue(tileKey, out var tileData))
+        // Get or create TileChunkData for this tile (thread-safe)
+        var tileData = _tileChunks.GetOrAdd(tileKey, _ => new TileChunkData
         {
-            tileData = new TileChunkData
-            {
-                Zoom = _config.BaseZoomLevel,
-                TileX = tileX,
-                TileZ = tileZ,
-                TileSize = _config.TileSize,
-                ChunksPerTileEdge = chunksPerTile
-            };
-            _tileChunks[tileKey] = tileData;
-        }
+            Zoom = _config.Export.BaseZoomLevel,
+            TileX = tileX,
+            TileZ = tileZ,
+            TileSize = _config.Export.TileSize,
+            ChunksPerTileEdge = chunksPerTile
+        });
 
         // Add this chunk to the tile
         tileData.AddChunk(chunk);
@@ -78,93 +101,63 @@ public class TileExtractor : IDataExtractor
         return Task.CompletedTask;
     }
 
-    public async Task FinalizeAsync(IProgress<ExportProgress>? progress = null)
+    /// <summary>
+    /// Render a specific tile immediately and remove it from memory.
+    /// Called by the orchestrator when it knows a tile is complete.
+    /// </summary>
+    public async Task RenderTileAsync(int tileX, int tileZ)
     {
-        if (_tileChunks.Count == 0)
+        var key = (tileX, tileZ);
+        if (_tileChunks.TryRemove(key, out var tileData))
         {
-            return;
+            await RenderAndSaveTileAsync(tileData);
         }
+    }
 
-        _tileGenerator.Logger.Notification($"[VintageAtlas] Rendering {_tileChunks.Count} tiles...");
-
-        var tiles = _tileChunks.Values.ToList();
-        var tilesCompleted = 0;
-
-        // Create incremental zoom tracker (if enabled)
-        IncrementalZoomTracker? zoomTracker = null;
-        if (_config.CreateZoomLevels)
+    public async Task FinalizeAsync(IProgress<Application.UseCases.ExportProgress>? progress = null)
+    {
+        // Process any remaining tiles (that weren't explicitly rendered)
+        if (!_tileChunks.IsEmpty)
         {
-            zoomTracker = new IncrementalZoomTracker(
-                _sapi,
-                _tileGenerator,
-                _config.BaseZoomLevel,
-                minZoom: 0,
-                maxConcurrentZoomTiles: Math.Max(2, _config.MaxDegreeOfParallelism / 4)
-            );
-            _tileGenerator.Logger.Notification("[VintageAtlas] ⚡ Incremental zoom generation enabled - tiles will render in zoom-optimized order");
+            _tileGenerator.Logger.Notification($"[VintageAtlas] Rendering remaining {_tileChunks.Count} tiles...");
+
+            var tiles = _tileChunks.Values.ToList();
 
             // Sort tiles by parent zoom tile to maximize early zoom generation
-            tiles = SortTilesByZoomParent(tiles);
-            _tileGenerator.Logger.Notification("[VintageAtlas] ✨ Tiles sorted by parent zoom coordinates for optimal generation order");
+            if (_zoomTracker != null)
+            {
+                tiles = SortTilesByZoomParent(tiles);
+            }
+
+            var parallelOptions = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = _config.Export.MaxDegreeOfParallelism == -1
+                    ? Environment.ProcessorCount
+                    : _config.Export.MaxDegreeOfParallelism
+            };
+
+            await Parallel.ForEachAsync(tiles, parallelOptions, async (tileData, _) =>
+            {
+                await RenderAndSaveTileAsync(tileData, progress);
+            });
         }
 
-        // Render all accumulated tiles
-        var parallelOptions = new ParallelOptions
-        {
-            MaxDegreeOfParallelism = _config.MaxDegreeOfParallelism == -1
-                ? Environment.ProcessorCount
-                : _config.MaxDegreeOfParallelism
-        };
-
-        await Parallel.ForEachAsync(tiles, parallelOptions, async (tileData, _) =>
-        {
-            try
-            {
-                // Render the tile
-                var tileImage = await _tileGenerator.RenderTileFromChunkDataAsync(tileData);
-
-                if (tileImage != null)
-                {
-                    // Write tile to storage
-                    await _storage.PutTileAsync(_config.BaseZoomLevel, tileData.TileX, tileData.TileZ, tileImage);
-
-                    // Notify zoom tracker about completion (triggers cascade)
-                    zoomTracker?.NotifyTileComplete(_config.BaseZoomLevel, tileData.TileX, tileData.TileZ);
-
-                    var completed = System.Threading.Interlocked.Increment(ref tilesCompleted);
-
-                    if (completed % 100 == 0)
-                    {
-                        _tileGenerator.Logger.Notification(
-                            $"[VintageAtlas] Rendered {completed}/{tiles.Count} tiles ({completed * 100.0 / tiles.Count:F1}%)");
-
-                        progress?.Report(new ExportProgress
-                        {
-                            TilesCompleted = completed,
-                            TotalTiles = tiles.Count,
-                            CurrentZoomLevel = _config.BaseZoomLevel
-                        });
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _tileGenerator.Logger.Error(
-                    $"[VintageAtlas] Failed to render tile {tileData.TileX},{tileData.TileZ}: {ex.Message}");
-            }
-        });
-
-        _tileGenerator.Logger.Notification($"[VintageAtlas] Tile rendering complete: {tilesCompleted} tiles generated");
+        _tileGenerator.Logger.Notification($"[VintageAtlas] ✅ Base tile rendering complete: {_tilesCompleted} tiles generated");
 
         // Wait for incremental zoom generation to complete
-        if (zoomTracker != null)
+        if (_zoomTracker != null)
         {
-            await zoomTracker.WaitForCompletionAsync();
+            _tileGenerator.Logger.Notification("[VintageAtlas] 🔄 Waiting for remaining zoom tile cascade to complete...");
+            await _zoomTracker.WaitForCompletionAsync();
 
-            var (total, perZoom) = zoomTracker.GetStatistics();
+            var (total, perZoom) = _zoomTracker.GetStatistics();
             if (total > 0)
             {
-                _tileGenerator.Logger.Notification($"[VintageAtlas] ⚡ Incremental zoom optimization: {total} zoom tiles generated concurrently with base tiles");
+                var totalTiles = _tilesCompleted + total;
+                var zoomPercentage = total * 100.0 / totalTiles;
+                _tileGenerator.Logger.Notification(
+                    $"[VintageAtlas] 🎯 Total tiles generated: {totalTiles} " +
+                    $"({_tilesCompleted} base + {total} zoom = {zoomPercentage:F1}% were zoom tiles)");
             }
         }
 
@@ -176,6 +169,43 @@ public class TileExtractor : IDataExtractor
         _mapConfigController?.InvalidateCache();
 
         _tileGenerator.Logger.Notification("[VintageAtlas] Tile extraction complete");
+    }
+
+    private async Task RenderAndSaveTileAsync(TileChunkData tileData, IProgress<Application.UseCases.ExportProgress>? progress = null)
+    {
+        try
+        {
+            // Render the tile
+            var tileImage = await _tileGenerator.RenderTileFromChunkDataAsync(tileData);
+
+            if (tileImage != null)
+            {
+                // Write tile to storage
+                await _storage.PutTileAsync(_config.Export.BaseZoomLevel, tileData.TileX, tileData.TileZ, tileImage);
+
+                // Notify zoom tracker about completion (triggers cascade)
+                _zoomTracker?.NotifyTileComplete(_config.Export.BaseZoomLevel, tileData.TileX, tileData.TileZ);
+
+                var completed = System.Threading.Interlocked.Increment(ref _tilesCompleted);
+
+                if (completed % 100 == 0)
+                {
+                    _tileGenerator.Logger.Notification(
+                        $"[VintageAtlas] Rendered {completed} tiles");
+
+                    progress?.Report(new Application.UseCases.ExportProgress
+                    {
+                        TilesCompleted = completed,
+                        // Note: TotalTiles might be unknown if we are streaming, or we can pass it if known
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _tileGenerator.Logger.Error(
+                $"[VintageAtlas] Failed to render tile {tileData.TileX},{tileData.TileZ}: {ex.Message}");
+        }
     }
 
     /// <summary>

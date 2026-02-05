@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Vintagestory.API.Server;
-using VintageAtlas.Core;
+using VintageAtlas.Core.Configuration;
 using VintageAtlas.Export.Colors;
 using VintageAtlas.Export.Rendering;
 using VintageAtlas.Storage;
@@ -25,7 +25,7 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
 {
     private readonly ICoreServerAPI _sapi;
     private readonly ModConfig _config;
-    private readonly MbTilesStorage _storage;
+    private readonly ITileStorage _storage;
     private readonly PyramidTileDownsampler _downsampler;
     private readonly FastBitmapRenderer _renderer;
 
@@ -41,13 +41,13 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
     public ILogger Logger => _sapi.Logger;
     public ICoreServerAPI Sapi => _sapi;
     public ModConfig Config => _config;
-    public MbTilesStorage Storage => _storage;
+    public ITileStorage Storage => _storage;
 
     public UnifiedTileGenerator(
         ICoreServerAPI sapi,
         ModConfig config,
-        BlockColorCache colorCache,
-        MbTilesStorage storage)
+        IBlockColorCache colorCache,
+        ITileStorage storage)
     {
         _sapi = sapi ?? throw new ArgumentNullException(nameof(sapi));
         _config = config ?? throw new ArgumentNullException(nameof(config));
@@ -89,14 +89,14 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
 
             tiles = CalculateTileCoverageFromChunks(dataSource.GetAllMapChunkPositions());
 
-            _sapi.Logger.Notification($"[VintageAtlas] Exporting {tiles.Count} tiles at zoom {_config.BaseZoomLevel}");
+            _sapi.Logger.Notification($"[VintageAtlas] Exporting {tiles.Count} tiles at zoom {_config.Export.BaseZoomLevel}");
 
             // Generate base zoom tiles in parallel
             var parallelOptions = new ParallelOptions
             {
-                MaxDegreeOfParallelism = _config.MaxDegreeOfParallelism == -1
+                MaxDegreeOfParallelism = _config.Export.MaxDegreeOfParallelism == -1
                     ? Environment.ProcessorCount
-                    : _config.MaxDegreeOfParallelism
+                    : _config.Export.MaxDegreeOfParallelism
             };
 
             await Parallel.ForEachAsync(tiles, parallelOptions, async (tile, _) =>
@@ -104,7 +104,7 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
                 try
                 {
                     var tileData = await RenderTileAsync(
-                        _config.BaseZoomLevel,
+                        _config.Export.BaseZoomLevel,
                         tile.X,
                         tile.Y,
                         dataSource
@@ -113,7 +113,7 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
                     if (tileData != null)
                     {
                         // Write tile using absolute world coordinates (matching legacy extractor)
-                        await _storage.PutTileAsync(_config.BaseZoomLevel, tile.X, tile.Y, tileData);
+                        await _storage.PutTileAsync(_config.Export.BaseZoomLevel, tile.X, tile.Y, tileData);
 
                         var completed = System.Threading.Interlocked.Increment(ref totalTiles);
 
@@ -126,7 +126,7 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
                             {
                                 TilesCompleted = completed,
                                 TotalTiles = tiles.Count,
-                                CurrentZoomLevel = _config.BaseZoomLevel
+                                CurrentZoomLevel = _config.Export.BaseZoomLevel
                             });
                         }
                     }
@@ -143,7 +143,7 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
                 $"({totalTiles / duration.TotalSeconds:F1} tiles/sec)");
 
             // Generate zoom levels by downsampling from database
-            if (_config.CreateZoomLevels)
+            if (_config.Export.CreateZoomLevels)
             {
                 _sapi.Logger.Notification("[VintageAtlas] Generating zoom levels...");
                 await GenerateZoomLevelsAsync(progress);
@@ -176,7 +176,7 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
         }
 
         var tiles = new HashSet<Vec2i>();
-        var chunksPerTile = _config.TileSize / ChunkSize;
+        var chunksPerTile = _config.Export.TileSize / ChunkSize;
 
         _sapi.Logger.Notification($"[VintageAtlas] Calculating tile coverage from {chunkPositions.Count} chunks...");
 
@@ -200,7 +200,7 @@ public sealed partial class UnifiedTileGenerator : ITileGenerator
     /// </summary>
     public async Task GenerateZoomLevelsAsync(IProgress<ExportProgress>? progress)
     {
-        for (var zoom = _config.BaseZoomLevel - 1; zoom >= 0; zoom--)
+        for (var zoom = _config.Export.BaseZoomLevel - 1; zoom >= 0; zoom--)
         {
             await GenerateSingleZoomLevelAsync(zoom, progress);
         }

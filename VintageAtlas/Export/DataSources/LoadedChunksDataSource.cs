@@ -1,6 +1,6 @@
 using System.Threading.Tasks;
 using Vintagestory.API.Server;
-using VintageAtlas.Core;
+using VintageAtlas.Core.Configuration;
 using VintageAtlas.Export.Data;
 using VintageAtlas.Export.Utils;
 

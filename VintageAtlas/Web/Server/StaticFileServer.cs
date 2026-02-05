@@ -6,7 +6,7 @@ using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using Vintagestory.API.Server;
-using VintageAtlas.Core;
+using VintageAtlas.Core.Configuration;
 
 namespace VintageAtlas.Web.Server;
 
@@ -15,7 +15,7 @@ namespace VintageAtlas.Web.Server;
 /// </summary>
 public class StaticFileServer(ICoreServerAPI sapi, ModConfig config)
 {
-    private readonly string _basePath = config.BasePath.EndsWith('/') ? config.BasePath : $"{config.BasePath}/";
+    private readonly string _basePath = config.WebServer.BasePath.EndsWith('/') ? config.WebServer.BasePath : $"{config.WebServer.BasePath}/";
 
     // ETag cache for static files (file path -> ETag)
     private readonly ConcurrentDictionary<string, string> _etagCache = new();

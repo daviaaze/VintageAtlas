@@ -37,7 +37,7 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: '../html',
+    outDir: 'dist',
     emptyOutDir: false,  // Don't delete css/, data/, webfonts/ directories
     rollupOptions: {
       output: {

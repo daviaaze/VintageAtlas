@@ -2,9 +2,11 @@ using System;
 using System.IO;
 using Vintagestory.API.Server;
 using VintageAtlas.Core;
+using VintageAtlas.Core.Configuration;
 using VintageAtlas.Export;
 using VintageAtlas.Export.Colors;
 using VintageAtlas.Export.Generation;
+using VintageAtlas.Export.Rendering;
 using VintageAtlas.Storage;
 using VintageAtlas.Web.API;
 using VintageAtlas.Web.API.Controllers;
@@ -13,26 +15,30 @@ using VintageAtlas.Web.Server.Routing;
 namespace VintageAtlas.Web.Server;
 
 /// <summary>
-/// Manages the setup and lifecycle of the live web server and all its dependencies
+/// Manages the setup and lifecycle of the live web server and all its dependencies.
+/// Uses dependency injection with interfaces following Dependency Inversion Principle.
 /// </summary>
 public sealed class ServerManager(
     ICoreServerAPI sapi,
     ModConfig config,
-    MapExporter mapExporter,
-    BlockColorCache colorCache,
-    MbTilesStorage storage,
-    MapConfigController? controller = null,
-    MetadataStorage? metadataStorage = null)
+    IMapExporter mapExporter,
+    IBlockColorCache colorCache,
+    ITileStorage storage,
+    IMapConfigController? controller = null,
+    IMetadataStorage? metadataStorage = null)
     : IDisposable
 {
     private readonly ICoreServerAPI _sapi = sapi ?? throw new ArgumentNullException(nameof(sapi));
     private readonly ModConfig _config = config ?? throw new ArgumentNullException(nameof(config));
-    private readonly MapExporter _mapExporter = mapExporter ?? throw new ArgumentNullException(nameof(mapExporter));
-    private readonly BlockColorCache _colorCache = colorCache ?? throw new ArgumentNullException(nameof(colorCache));
-    private readonly MbTilesStorage _storage = storage ?? throw new ArgumentNullException(nameof(storage));
-    private readonly MetadataStorage _metadataStorage = metadataStorage ?? throw new ArgumentNullException(nameof(metadataStorage));
+    private readonly IMapExporter _mapExporter = mapExporter ?? throw new ArgumentNullException(nameof(mapExporter));
+    private readonly IBlockColorCache _colorCache = colorCache ?? throw new ArgumentNullException(nameof(colorCache));
+    private readonly ITileStorage _storage = storage ?? throw new ArgumentNullException(nameof(storage));
+    private readonly IMetadataStorage _metadataStorage = metadataStorage ?? throw new ArgumentNullException(nameof(metadataStorage));
     private ITileGenerator? _tileGenerator;
     private WebServer? _webServer;
+
+    private ITileStorage? _tempStorage;
+    private ITileStorage? _rainStorage;
 
     /// <summary>
     /// Initialize and start the live web server with all dependencies
@@ -62,8 +68,8 @@ public sealed class ServerManager(
     private void InitializeDirectories()
     {
         // Initialize output directories for proper path resolution
-        _config.OutputDirectoryWorld = Path.Combine(_config.OutputDirectory, "data", "world");
-        _config.OutputDirectoryGeojson = Path.Combine(_config.OutputDirectory, "data", "geojson");
+        _config.Export.OutputDirectoryWorld = Path.Combine(_config.Export.OutputDirectory, "data", "world");
+        _config.Export.OutputDirectoryGeojson = Path.Combine(_config.Export.OutputDirectory, "data", "geojson");
     }
 
     private void InitializeServices()
@@ -98,14 +104,28 @@ public sealed class ServerManager(
         var mapConfigController = controller ?? new MapConfigController(_sapi, _tileGenerator);
 
         // Create coordinate transformation service (centralized coordinate logic)
-        var coordinateService = new CoordinateTransformService(_sapi);
+        CoordinateService = new CoordinateTransformService(_sapi);
 
         // Inject coordinate service into controllers
-        var statusController = new StatusController(_sapi);
-        var geoJsonController = new GeoJsonController(_sapi, coordinateService, _metadataStorage);
-        var tileController = new TileController(_sapi, _config, _tileGenerator, mapConfigController);
+        var statusController = new StatusController(_sapi, CoordinateService);
+        var geoJsonController = new GeoJsonController(_sapi, CoordinateService, _metadataStorage);
+        
+        // Initialize climate generators
+        var tempDbPath = Path.Combine(_config.Export.OutputDirectory, "data", "temperature.mbtiles");
+        _tempStorage = new MbTilesStorage(tempDbPath);
+        var tempGen = new ClimateTileGenerator(_sapi, _config, _tempStorage, ClimateType.Temperature);
 
-        // Use generic climate layer tile controllers
+        var rainDbPath = Path.Combine(_config.Export.OutputDirectory, "data", "rainfall.mbtiles");
+        _rainStorage = new MbTilesStorage(rainDbPath);
+        var rainGen = new ClimateTileGenerator(_sapi, _config, _rainStorage, ClimateType.Rainfall);
+
+        var tileController = new TileController(_sapi, _config, _tileGenerator, mapConfigController)
+        {
+            TempGenerator = tempGen,
+            RainGenerator = rainGen
+        };
+        
+        var waypointController = new WaypointController(_sapi, CoordinateService);
 
         var router = new RequestRouter(
             configController,
@@ -113,11 +133,16 @@ public sealed class ServerManager(
             geoJsonController,
             mapConfigController,
             tileController,
+            waypointController,
             staticFileServer
         );
 
-        _webServer = new WebServer(_sapi, _config, router);
+        WebSocketManager = new WebSocketManager(_sapi);
+        _webServer = new WebServer(_sapi, _config, router, WebSocketManager);
     }
+
+    public WebSocketManager? WebSocketManager { get; private set; }
+    public CoordinateTransformService? CoordinateService { get; private set; }
 
     private void StartWebServer()
     {
@@ -132,5 +157,7 @@ public sealed class ServerManager(
     public void Dispose()
     {
         _webServer?.Dispose();
+        _tempStorage?.Dispose();
+        _rainStorage?.Dispose();
     }
 }

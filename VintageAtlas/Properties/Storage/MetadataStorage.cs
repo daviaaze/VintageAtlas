@@ -10,11 +10,10 @@ using Vintagestory.API.MathTools;
 namespace VintageAtlas.Storage;
 
 /// <summary>
-/// MBTiles storage for map tiles following the MBTiles specification
-/// https://github.com/mapbox/mbtiles-spec
+/// Metadata storage for traders, translocators, and other game entities
 /// Thread-safe implementation using connection string instead of shared connection
 /// </summary>
-public sealed class MetadataStorage : IDisposable
+public sealed class MetadataStorage : IMetadataStorage
 {
     private readonly string _connectionString;
     private readonly string _dbPath;
@@ -81,6 +80,35 @@ public sealed class MetadataStorage : IDisposable
         cmd.Parameters.AddWithValue("@type", type);
         cmd.Parameters.AddWithValue("@pos", $"{pos.X},{pos.Y},{pos.Z}");
         cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Add multiple traders in a single transaction for better performance
+    /// </summary>
+    public void AddTraders(IEnumerable<Trader> traders)
+    {
+        using var connection = CreateConnection();
+        using var transaction = connection.BeginTransaction();
+        using var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
+        
+        cmd.CommandText = "INSERT OR REPLACE INTO traders (id, name, type, pos) VALUES (@id, @name, @type, @pos)";
+        
+        var pId = cmd.Parameters.Add("@id", SqliteType.Integer);
+        var pName = cmd.Parameters.Add("@name", SqliteType.Text);
+        var pType = cmd.Parameters.Add("@type", SqliteType.Text);
+        var pPos = cmd.Parameters.Add("@pos", SqliteType.Text);
+
+        foreach (var trader in traders)
+        {
+            pId.Value = trader.Id;
+            pName.Value = trader.Name;
+            pType.Value = trader.Type;
+            pPos.Value = $"{trader.Pos.X},{trader.Pos.Y},{trader.Pos.Z}";
+            cmd.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
     }
 
     public void RemoveTrader(long id)

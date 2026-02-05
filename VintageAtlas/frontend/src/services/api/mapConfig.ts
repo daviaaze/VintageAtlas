@@ -16,7 +16,6 @@ export interface MapConfigData {
   tileSize: number; // Tile size in pixels
   tileResolutions: number[]; // Blocks per pixel at each zoom
   viewResolutions: number[]; // View resolutions for smooth zooming
-  originTilesPerZoom?: number[][]; // Absolute tile origin per zoom [x,y]
   spawnPosition: number[]; // [x, z] in world block coordinates
   mapSizeX: number;
   mapSizeZ: number;
@@ -74,7 +73,7 @@ export async function fetchMapConfig(): Promise<MapConfigData> {
       const requiredFields: (keyof MapConfigData)[] = [
         'worldExtent', 'worldOrigin', 'defaultCenter', 'defaultZoom',
         'minZoom', 'maxZoom', 'tileSize', 'tileResolutions', 'viewResolutions',
-        'spawnPosition', 'originTilesPerZoom'
+        'spawnPosition'
       ];
       
       const missingFields = requiredFields.filter(field => 

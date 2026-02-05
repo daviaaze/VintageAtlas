@@ -2,7 +2,7 @@ using System;
 using System.Threading.Tasks;
 using SkiaSharp;
 using Vintagestory.API.Server;
-using VintageAtlas.Core;
+using VintageAtlas.Core.Configuration;
 
 namespace VintageAtlas.Export;
 
@@ -21,7 +21,7 @@ public class PyramidTileDownsampler(
     /// </summary>
     public async Task<byte[]?> GenerateTileByDownsamplingAsync(int zoom, int tileX, int tileZ)
     {
-        if (zoom >= config.BaseZoomLevel)
+        if (zoom >= config.Export.BaseZoomLevel)
         {
             // Can't downsample beyond base zoom
             return null;
@@ -79,7 +79,7 @@ public class PyramidTileDownsampler(
             throw new ArgumentException("Expected 4 source tile slots for downsampling", nameof(sourceTiles));
         }
 
-        var tileSize = config.TileSize;
+        var tileSize = config.Export.TileSize;
         var halfSize = tileSize / 2;
 
         // Create output bitmap (starts transparent)

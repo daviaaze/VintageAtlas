@@ -1,18 +1,12 @@
 <script setup lang="ts">
 import AppHeader from '@/components/common/AppHeader.vue';
-import AppSidebar from '@/components/common/AppSidebar.vue';
-import { useUiStore } from '@/stores/ui';
-
-// Initialize UI store
-const uiStore = useUiStore();
 
 </script>
 
 <template>
-  <div class="app-container" :class="{ 'sidebar-open': uiStore.sidebarOpen }">
+  <div class="app-container">
     <AppHeader />
     <div class="main-layout">
-      <AppSidebar v-if="uiStore.sidebarOpen" />
       <main class="main-content">
         <router-view />
       </main>

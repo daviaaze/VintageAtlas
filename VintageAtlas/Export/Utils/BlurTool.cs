@@ -4,34 +4,19 @@ namespace VintageAtlas.Export.Utils;
 
 public static class BlurTool
 {
-    private readonly struct BlurContext
+    private readonly struct BlurContext(int halfRange, int xStart, int yStart, int xEnd, int yEnd)
     {
-        public readonly int HalfRange;
-        public readonly int XStart;
-        public readonly int YStart;
-        public readonly int XEnd;
-        public readonly int YEnd;
-
-        public BlurContext(int halfRange, int xStart, int yStart, int xEnd, int yEnd)
-        {
-            HalfRange = halfRange;
-            XStart = xStart;
-            YStart = yStart;
-            XEnd = xEnd;
-            YEnd = yEnd;
-        }
+        public readonly int HalfRange = halfRange;
+        public readonly int XStart = xStart;
+        public readonly int YStart = yStart;
+        public readonly int XEnd = xEnd;
+        public readonly int YEnd = yEnd;
     }
 
-    private readonly struct VerticalOffsets
+    private readonly struct VerticalOffsets(int oldPixelOffset, int newPixelOffset)
     {
-        public readonly int OldPixelOffset;
-        public readonly int NewPixelOffset;
-
-        public VerticalOffsets(int oldPixelOffset, int newPixelOffset)
-        {
-            OldPixelOffset = oldPixelOffset;
-            NewPixelOffset = newPixelOffset;
-        }
+        public readonly int OldPixelOffset = oldPixelOffset;
+        public readonly int NewPixelOffset = newPixelOffset;
     }
 
     public static void Blur(Span<byte> data, int sizeX, int sizeZ, int range)

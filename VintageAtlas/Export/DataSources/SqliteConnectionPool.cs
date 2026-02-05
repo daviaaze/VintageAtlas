@@ -156,7 +156,7 @@ public sealed class SqliteConnectionLease : IDisposable
     /// <summary>
     /// Executes an action with the connection, protected by a lock.
     /// </summary>
-    public void Execute(System.Action<SqliteConnection> action)
+    public void Execute(Action<SqliteConnection> action)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 

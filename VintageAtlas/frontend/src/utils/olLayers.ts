@@ -7,12 +7,18 @@ import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
 import XYZ from 'ol/source/XYZ';
 import GeoJSON from 'ol/format/GeoJSON';
+import { Feature } from 'ol';
+import { Point } from 'ol/geom';
 import { createTileGrid, getTileUrl } from './olMapConfig';
 import {
   exploredChunksStyle,
   tradersStyle,
+  createDynamicTradersStyleFn,
   translocatorsStyle,
-  landmarksStyle
+  landmarksStyle,
+  playerStyle,
+  spawnStyle,
+  waypointStyle
 } from './olStyles';
 
 /**
@@ -20,21 +26,57 @@ import {
  */
 export function createWorldLayer(): TileLayer<XYZ> {
   const tileGrid = createTileGrid(256);
-  
+
   const source = new XYZ({
     tileGrid: tileGrid,
     wrapX: false,
     interpolate: false,
     tileUrlFunction: ([z, x, y]) => getTileUrl(z, x, y)
   });
-  
+
   source.on('tileloaderror', (evt) => {
     console.error('[Tile Load Error]', evt);
   });
-  
+
   return new TileLayer({
     source: source,
     properties: { name: 'terrain' }
+  });
+}
+
+export function createTemperatureLayer(): TileLayer<XYZ> {
+  const tileGrid = createTileGrid(256);
+  const source = new XYZ({
+    tileGrid: tileGrid,
+    wrapX: false,
+    interpolate: false,
+    tileUrlFunction: ([z, x, y]) => `/tiles/temperature/${z}/${x}_${y}.png`
+  });
+  source.on('tileloaderror', (evt) => {
+    console.error('[Tile Load Error] Temperature', evt);
+  });
+  return new TileLayer({
+    source: source,
+    properties: { name: 'temperature' },
+    visible: false
+  });
+}
+
+export function createRainfallLayer(): TileLayer<XYZ> {
+  const tileGrid = createTileGrid(256);
+  const source = new XYZ({
+    tileGrid: tileGrid,
+    wrapX: false,
+    interpolate: false,
+    tileUrlFunction: ([z, x, y]) => `/tiles/rainfall/${z}/${x}_${y}.png`
+  });
+  source.on('tileloaderror', (evt) => {
+    console.error('[Tile Load Error] Rainfall', evt);
+  });
+  return new TileLayer({
+    source: source,
+    properties: { name: 'rainfall' },
+    visible: false
   });
 }
 
@@ -59,8 +101,13 @@ export function createExploredChunksLayer(): VectorLayer<VectorSource> {
 
 /**
  * Create traders layer (Spec lines 145-188)
+ * Pass a getter function to dynamically read sublayer visibility
  */
-export function createTradersLayer(): VectorLayer<VectorSource> {
+export function createTradersLayer(getVisibility?: (category: string) => boolean): VectorLayer<VectorSource> {
+  const styleFunction = getVisibility
+    ? createDynamicTradersStyleFn(getVisibility)
+    : tradersStyle;
+
   return new VectorLayer({
     source: new VectorSource({
       url: '/api/geojson/traders',
@@ -69,7 +116,7 @@ export function createTradersLayer(): VectorLayer<VectorSource> {
         featureProjection: 'EPSG:3857'
       })
     }),
-    style: tradersStyle,
+    style: styleFunction,
     properties: { name: 'traders' }
   });
 }
@@ -110,5 +157,50 @@ export function createLandmarksLayer(mapInstance: any): VectorLayer<VectorSource
     },
     minZoom: 2,
     properties: { name: 'landmarks' }
+  });
+}
+
+/**
+ * Create players layer - shows online player positions
+ */
+export function createPlayersLayer(): VectorLayer<VectorSource> {
+  return new VectorLayer({
+    source: new VectorSource({
+      features: []
+    }),
+    style: playerStyle,
+    zIndex: 100,
+    properties: { name: 'players' }
+  });
+}
+
+/**
+ * Create spawn point layer - shows the world spawn
+ */
+export function createSpawnLayer(spawnX: number, spawnY: number): VectorLayer<VectorSource> {
+  const spawnFeature = new Feature({
+    geometry: new Point([spawnX, spawnY]),
+    name: 'Spawn'
+  });
+
+  return new VectorLayer({
+    source: new VectorSource({
+      features: [spawnFeature]
+    }),
+    style: spawnStyle,
+    zIndex: 50,
+    properties: { name: 'spawn' }
+  });
+}
+
+// Waypoints layer
+export function createWaypointsLayer(): VectorLayer<VectorSource> {
+  return new VectorLayer({
+    source: new VectorSource({
+      features: []
+    }),
+    style: waypointStyle,
+    properties: { name: 'waypoints' },
+    visible: false
   });
 }
